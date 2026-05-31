@@ -430,6 +430,7 @@ void TimeSplitsFileManagement(uint32_t action, const char* listEntry, std::vecto
 
 void TimeSplitsPopUpContext() {
     if ((popupID != -1) && ImGui::BeginPopup("TimeSplitsPopUp")) {
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
         if (popupID == ITEM_SKULL_TOKEN) {
             ImGui::BeginTable("Token Table", 2);
             ImGui::TableNextColumn();
@@ -437,8 +438,7 @@ void TimeSplitsPopUpContext() {
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
             ImGui::ImageButton(
                 "QUEST_SKULL_TOKEN",
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                    ->GetTextureByName("QUEST_SKULL_TOKEN"),
+                gui->GetTextureByName("QUEST_SKULL_TOKEN"),
                 ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0));
             ImGui::PopStyleVar();
             ImGui::TableNextColumn();
@@ -491,8 +491,7 @@ void TimeSplitsPopUpContext() {
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
                 auto ret = ImGui::ImageButton(
                     popupObject.splitImage.c_str(),
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                        ->GetTextureByName(popupObject.splitImage),
+                    gui->GetTextureByName(popupObject.splitImage),
                     ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), popupObject.splitTint);
                 ImGui::PopStyleVar();
                 if (ret) {
@@ -656,6 +655,7 @@ void TimeSplitsDrawSplitsList() {
         ImGui::TableHeadersRow();
 
         SplitsPushImageButtonStyle();
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
         for (auto& split : splitList) {
             ImGui::TableNextColumn();
             TimeSplitsSplitBestTimeDisplay(split);
@@ -668,9 +668,8 @@ void TimeSplitsDrawSplitsList() {
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(imagePadding, imagePadding));
             auto ret = ImGui::ImageButton(
                 split.splitImage.c_str(),
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                    ->GetTextureByName(split.splitImage),
-                imageSize, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
+                gui->GetTextureByName(split.splitImage), imageSize,
+                ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
             ImGui::PopStyleVar();
             if (ret) {
                 TimeSplitsSkipSplit(dragIndex);
@@ -744,6 +743,8 @@ void TimeSplitsDrawItemList(uint32_t type) {
         }
     }
 
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+
     for (auto& split : splitObjectList) {
         if (split.splitType == type) {
             ImGui::TableNextColumn();
@@ -753,9 +754,8 @@ void TimeSplitsDrawItemList(uint32_t type) {
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(imagePadding, imagePadding));
             auto ret = ImGui::ImageButton(
                 split.splitImage.c_str(),
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                    ->GetTextureByName(split.splitImage),
-                imageSize, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
+                gui->GetTextureByName(split.splitImage), imageSize,
+                ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
             ImGui::PopStyleVar();
             if (ret) {
                 if (popupList.contains(split.splitID) && (split.splitType < SPLIT_TYPE_BOSS)) {
@@ -885,6 +885,8 @@ void TimeSplitsDrawManageList() {
         ImGui::BeginTabBar("List Preview");
         if (ImGui::BeginTabItem("Preview")) {
             ImGui::BeginChild("PreviewChild");
+            auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+
             for (auto& data : splitList) {
                 float availableWidth = ImGui::GetContentRegionAvail().x;
                 float imageWidth = 38.0f;                             // Width of your image button
@@ -897,9 +899,8 @@ void TimeSplitsDrawManageList() {
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(imagePadding, imagePadding));
                 auto ret = ImGui::ImageButton(
                     data.splitImage.c_str(),
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                        ->GetTextureByName(data.splitImage),
-                    imageSize, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), data.splitTint);
+                    gui->GetTextureByName(data.splitImage), imageSize,
+                    ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), data.splitTint);
                 ImGui::PopStyleVar();
                 if (ret) {
                     removeIndex = index;
@@ -983,10 +984,9 @@ void TimeSplitWindow::DrawElement() {
 void TimeSplitWindow::InitElement() {
     TimeSplitsUpdateWindowSize();
 
-    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-        ->LoadGuiTexture("SPECIAL_TRIFORCE_PIECE_WHITE", gWTriforcePieceTex, ImVec4(1, 1, 1, 1));
-    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-        ->LoadGuiTexture("SPECIAL_SPLIT_ENTRANCE", gSplitEntranceTex, ImVec4(1, 1, 1, 1));
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    gui->LoadGuiTexture("SPECIAL_TRIFORCE_PIECE_WHITE", gWTriforcePieceTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("SPECIAL_SPLIT_ENTRANCE", gSplitEntranceTex, ImVec4(1, 1, 1, 1));
     Color_RGBA8 defaultColour = { 0, 0, 0, 255 };
     windowColor = VecFromRGBA8(CVarGetColor(CVAR_ENHANCEMENT("TimeSplits.WindowColor.Value"), defaultColour));
 

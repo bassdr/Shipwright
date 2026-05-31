@@ -518,9 +518,9 @@ void DrawInfoTab() {
 
 void DrawBGSItemFlag(uint8_t itemID) {
     const ItemMapEntry& slotEntry = itemMapping[itemID];
-    ImGui::Image(std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                     ->GetTextureByName(slotEntry.name),
-                 ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1));
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+
+    ImGui::Image(gui->GetTextureByName(slotEntry.name), ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1));
 }
 
 void DrawInventoryTab() {
@@ -529,6 +529,8 @@ void DrawInventoryTab() {
     Checkbox(
         "Restrict to valid items", &restrictToValid,
         checkboxOptionsBase.Tooltip("Restricts items and ammo to only what is possible to legally acquire in-game"));
+
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 
     for (int32_t y = 0; y < 4; y++) {
         for (int32_t x = 0; x < 6; x++) {
@@ -608,11 +610,10 @@ void DrawInventoryTab() {
                     }
                     const ItemMapEntry& slotEntry = possibleItems[pickerIndex];
                     PushStyleButton(Colors::DarkGray);
-                    auto ret = ImGui::ImageButton(slotEntry.name.c_str(),
-                                                  std::dynamic_pointer_cast<Fast::Fast3dGui>(
-                                                      Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                                                      ->GetTextureByName(slotEntry.name),
-                                                  ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
+                    auto ret = ImGui::ImageButton(
+                        slotEntry.name.c_str(),
+                        gui->GetTextureByName(slotEntry.name),
+                        ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
                     PopStyleButton();
                     if (ret) {
                         gSaveContext.inventory.items[selectedIndex] = slotEntry.id;
@@ -644,10 +645,7 @@ void DrawInventoryTab() {
             ImGui::PushItemWidth(IMAGE_SIZE);
             ImGui::BeginGroup();
 
-            ImGui::Image(
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                    ->GetTextureByName(itemMapping[item].name),
-                ImVec2(IMAGE_SIZE, IMAGE_SIZE));
+            ImGui::Image(gui->GetTextureByName(itemMapping[item].name), ImVec2(IMAGE_SIZE, IMAGE_SIZE));
             PushStyleInput(THEME_COLOR);
             ImGui::InputScalar("##ammoInput", ImGuiDataType_S8, &AMMO(item));
             PopStyleInput();
@@ -733,7 +731,7 @@ static void DrawFlagTableSearchResults(const FlagTable& flagTable, ImGuiTextFilt
         uint16_t& flags = GetFlagTableEntry(flagTable, row);
 
         for (int32_t flagIndex = 15; flagIndex >= 0; flagIndex--) {
-            uint16_t index = static_cast<uint16_t>(row * 16 + flagIndex);
+            uint16_t index = row * 16 + flagIndex;
             auto descIt = flagTable.flagDescriptions.find(index);
             const char* desc = descIt != flagTable.flagDescriptions.end() ? descIt->second : "";
             std::string searchable = fmt::format("0x{:02X} {}", index, desc);
@@ -1291,6 +1289,9 @@ void DrawEquipmentTab() {
         ITEM_TUNIC_KOKIRI, ITEM_TUNIC_GORON,   ITEM_TUNIC_ZORA,    ITEM_NONE,
         ITEM_BOOTS_KOKIRI, ITEM_BOOTS_IRON,    ITEM_BOOTS_HOVER,   ITEM_NONE,
     };
+
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+
     for (size_t i = 0; i < equipmentValues.size(); i++) {
         // Skip over unused 4th slots for shields, boots, and tunics
         if (equipmentValues[i] == ITEM_NONE) {
@@ -1307,8 +1308,7 @@ void DrawEquipmentTab() {
         PushStyleButton(Colors::DarkGray);
         auto ret = ImGui::ImageButton(
             entry.name.c_str(),
-            std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                ->GetTextureByName(hasEquip ? entry.name : entry.nameFaded),
+            gui->GetTextureByName(hasEquip ? entry.name : entry.nameFaded),
             ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
         if (ret) {
             if (hasEquip) {
@@ -1441,10 +1441,11 @@ void DrawQuestItemButton(uint32_t item) {
     uint32_t bitMask = 1 << entry.id;
     bool hasQuestItem = (bitMask & gSaveContext.inventory.questItems) != 0;
     PushStyleButton(Colors::DarkGray);
+    
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
     auto ret = ImGui::ImageButton(
         entry.name.c_str(),
-        std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-            ->GetTextureByName(hasQuestItem ? entry.name : entry.nameFaded),
+        gui->GetTextureByName(hasQuestItem ? entry.name : entry.nameFaded),
         ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
     if (ret) {
         if (hasQuestItem) {
@@ -1463,10 +1464,12 @@ void DrawDungeonItemButton(uint32_t item, uint32_t scene) {
     uint32_t bitMask = 1 << (entry.id - ITEM_KEY_BOSS); // Bitset starts at ITEM_KEY_BOSS == 0. the rest are sequential
     bool hasItem = (bitMask & gSaveContext.inventory.dungeonItems[scene]) != 0;
     PushStyleButton(Colors::DarkGray);
+
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+
     auto ret = ImGui::ImageButton(
         entry.name.c_str(),
-        std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-            ->GetTextureByName(hasItem ? entry.name : entry.nameFaded),
+        gui->GetTextureByName(hasItem ? entry.name : entry.nameFaded),
         ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
     if (ret) {
         if (hasItem) {
@@ -1504,6 +1507,7 @@ void DrawQuestStatusTab() {
 
     ImGui::SameLine();
     DrawQuestItemButton(QUEST_GERUDO_CARD);
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
     for (const auto& [quest, entry] : songMapping) {
         if ((entry.id != QUEST_SONG_MINUET) && (entry.id != QUEST_SONG_LULLABY)) {
             ImGui::SameLine();
@@ -1514,8 +1518,7 @@ void DrawQuestStatusTab() {
         PushStyleButton(Colors::DarkGray);
         auto ret = ImGui::ImageButton(
             entry.name.c_str(),
-            std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                ->GetTextureByName(hasQuestItem ? entry.name : entry.nameFaded),
+            gui->GetTextureByName(hasQuestItem ? entry.name : entry.nameFaded),
             ImVec2(32.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
         if (ret) {
             if (hasQuestItem) {
@@ -1593,9 +1596,9 @@ void DrawQuestStatusTab() {
 
             if (dungeonItemsScene != SCENE_JABU_JABU_BOSS) {
                 float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+                auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
                 ImGui::Image(
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                        ->GetTextureByName(itemMapping[ITEM_KEY_SMALL].name),
+                    gui->GetTextureByName(itemMapping[ITEM_KEY_SMALL].name),
                     ImVec2(lineHeight, lineHeight));
                 ImGui::SameLine();
                 PushStyleInput(THEME_COLOR);
