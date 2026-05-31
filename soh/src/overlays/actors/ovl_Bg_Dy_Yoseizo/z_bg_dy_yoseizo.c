@@ -573,7 +573,7 @@ void BgDyYoseizo_Vanish(BgDyYoseizo* this, PlayState* play) {
             break;
         }
 
-        Flags_UnsetSwitch(play, 0x38);
+        Flags_UnsetSwitch(play, 0x38u);
         Actor_Kill(&this->actor);
     }
 }

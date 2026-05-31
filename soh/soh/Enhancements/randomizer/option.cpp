@@ -175,8 +175,8 @@ Option::Option(size_t key_, std::string name_, std::vector<std::string> options_
       defaultOption(defaultOption_), defaultHidden(defaultHidden_), callback(callback_), imFlags(imFlags_) {
     contextSelection = defaultOption;
     hidden = defaultHidden;
-    for (int i = 0; i < options.size(); i++) {
-        optionsMap.emplace(i, options[i].c_str());
+    for (size_t i = 0; i < options.size(); i++) {
+        optionsMap.emplace_hint(optionsMap.end(), i, options[i].c_str());
     }
     UIWidgets::LabelPositions labelPosition;
     switch (widgetType) {

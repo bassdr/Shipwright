@@ -214,7 +214,7 @@ void PadMgr_ProcessInputs(PadMgr* padMgr) {
     s32 i;
     Input* input;
     OSContPad* padnow1; // original name
-    s32 buttonDiff;
+    u32 buttonDiff;
 
     PadMgr_LockPadData(padMgr);
 
@@ -371,7 +371,7 @@ void PadMgr_RequestPadData(PadMgr* padMgr, Input* inputs, s32 mode) {
     s32 i;
     Input* ogInput;
     Input* newInput;
-    s32 buttonDiff;
+    u32 buttonDiff;
 
     PadMgr_LockPadData(padMgr);
 

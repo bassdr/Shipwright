@@ -535,7 +535,7 @@ ActorDB::Entry& ActorDB::AddEntry(const ActorDBInit& init) {
 // Get the ActorDB::Entry for the given actor id.
 ActorDB::Entry& ActorDB::RetrieveEntry(const int id) {
     static Entry invalid;
-    if ((id < 0) || (id >= db.size())) {
+    if (id < 0 || static_cast<size_t>(id) >= db.size()) {
         return invalid;
     }
     return db[id];

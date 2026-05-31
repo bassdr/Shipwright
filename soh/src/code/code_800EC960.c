@@ -1191,8 +1191,8 @@ OcarinaSongInfo gOcarinaSongNotes[OCARINA_SONG_MAX] = {
 /**
  * BSS
  */
-u32 sAudioUpdateStartTime; // 8016B7A0
-u32 sAudioUpdateEndTime;
+u64 sAudioUpdateStartTime; // 8016B7A0
+u64 sAudioUpdateEndTime;
 f32 D_8016B7A8;
 f32 D_8016B7AC;
 f32 D_8016B7B0;

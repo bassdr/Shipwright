@@ -373,9 +373,9 @@ void Actor_SetFeetPos(Actor* actor, s32 limbIndex, s32 leftFootIndex, Vec3f* lef
                       Vec3f* rightFootPos);
 void func_8002BE04(PlayState* play, Vec3f* arg1, Vec3f* arg2, f32* arg3);
 void func_8002C124(TargetContext* targetCtx, PlayState* play);
-s32 Flags_GetSwitch(PlayState* play, s32 flag);
-void Flags_SetSwitch(PlayState* play, s32 flag);
-void Flags_UnsetSwitch(PlayState* play, s32 flag);
+u32 Flags_GetSwitch(PlayState* play, u8 flag);
+void Flags_SetSwitch(PlayState* play, u8 flag);
+void Flags_UnsetSwitch(PlayState* play, u8 flag);
 s32 Flags_GetUnknown(PlayState* play, s32 flag);
 void Flags_SetUnknown(PlayState* play, s32 flag);
 void Flags_UnsetUnknown(PlayState* play, s32 flag);

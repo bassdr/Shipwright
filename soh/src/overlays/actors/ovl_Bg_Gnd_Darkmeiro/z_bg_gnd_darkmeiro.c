@@ -90,9 +90,9 @@ void BgGndDarkmeiro_Init(Actor* thisx, PlayState* play2) {
                 this->actionFlags |= 8;
             }
             if ((this->timer1 != 0) || (this->timer2 != 0)) {
-                Flags_SetSwitch(play, (this->dyna.actor.params >> 8) & 0x3F);
+                Flags_SetSwitch(play, ((u16)this->dyna.actor.params >> 8) & 0x3Fu);
             } else {
-                Flags_UnsetSwitch(play, (this->dyna.actor.params >> 8) & 0x3F);
+                Flags_UnsetSwitch(play, ((u16)this->dyna.actor.params >> 8) & 0x3Fu);
             }
             break;
     }

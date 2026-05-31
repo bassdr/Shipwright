@@ -1292,7 +1292,7 @@ typedef struct GameState {
     /* 0xA0 */ u32 unk_A0;
 } GameState; // size = 0xA4
 
-typedef struct {
+typedef struct TitleContext {
     /* 0x0000 */ GameState state;
     /* 0x00A4 */ u8* staticSegment;
     /* 0x00A8 */ View view;
@@ -1500,7 +1500,7 @@ typedef struct PlayState {
     Mtx** flexLimbOverrideMTX;
 } PlayState; // size = 0x12518
 
-typedef struct {
+typedef struct OpeningContext {
     /* 0x0000 */ GameState state;
     /* 0x00A8 */ View view;
 } OpeningContext; // size = 0x1D0

@@ -387,7 +387,7 @@ void GameplayStatsRow(const char* label, const std::string& value, ImVec4 color 
     ImGui::SameLine(ImGui::GetContentRegionAvail().x - (ImGui::CalcTextSize(value.c_str()).x));
     ImGui::Text("%s", value.c_str());
     ImGui::PopStyleColor();
-    if (tooltip != "" && ImGui::IsItemHovered()) {
+    if (tooltip != nullptr && *tooltip != '\0' && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", tooltip);
     }
 }

@@ -3440,11 +3440,11 @@ void EnHorse_TiltBody(EnHorse* this, PlayState* play) {
     f32 speed;
     f32 rollDiff;
     s32 targetRoll;
-    s16 turnVel;
+    f32 turnVel;
 
     speed = this->actor.speedXZ / this->boostSpeed;
-    turnVel = this->actor.shape.rot.y - this->lastYaw;
-    targetRoll = -((s16)((1820.0f * speed) * (turnVel / 480.00003f)));
+    turnVel = (f32)this->actor.shape.rot.y - (f32)this->lastYaw;
+    targetRoll = -(s16)(lrintf((1820.0f * speed) * (turnVel / 480.00003f)) & 0xFFFF);
     rollDiff = targetRoll - this->actor.world.rot.z;
 
     if (fabsf(targetRoll) < 100.0f) {

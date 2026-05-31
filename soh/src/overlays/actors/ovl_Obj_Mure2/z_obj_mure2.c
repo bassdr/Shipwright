@@ -51,13 +51,13 @@ static s16 D_80B9A818[] = { 9, 12, 8 };
 static s16 sActorSpawnIDs[] = { ACTOR_EN_KUSA, ACTOR_EN_KUSA, ACTOR_EN_ISHI };
 
 void ObjMure2_SetPosShrubCircle(Vec3f* vec, ObjMure2* this) {
-    s32 i;
+    u32 i;
 
     Math_Vec3f_Copy(vec, &this->actor.world.pos);
     for (i = 1; i < D_80B9A818[this->actor.params & 3]; i++) {
         Math_Vec3f_Copy(vec + i, &this->actor.world.pos);
-        (vec + i)->x += (80.0f * Math_SinS((i - 1) * 0x2000));
-        (vec + i)->z += (80.0f * Math_CosS((i - 1) * 0x2000));
+        (vec + i)->x += 80.0f * Math_SinS((s16)(u16)((i - 1) * 0x2000));
+        (vec + i)->z += 80.0f * Math_CosS((s16)(u16)((i - 1) * 0x2000));
     }
 }
 
@@ -77,12 +77,12 @@ void ObjMure2_SetPosShrubScattered(Vec3f* vec, ObjMure2* this) {
 }
 
 void ObjMure2_SetPosRockCircle(Vec3f* vec, ObjMure2* this) {
-    s32 i;
+    u32 i;
 
     for (i = 0; i < D_80B9A818[this->actor.params & 3]; i++) {
         Math_Vec3f_Copy(vec + i, &this->actor.world.pos);
-        (vec + i)->x += (80.0f * Math_SinS(i * 0x2000));
-        (vec + i)->z += (80.0f * Math_CosS(i * 0x2000));
+        (vec + i)->x += 80.0f * Math_SinS((s16)(u16)(i * 0x2000));
+        (vec + i)->z += 80.0f * Math_CosS((s16)(u16)(i * 0x2000));
     }
 }
 

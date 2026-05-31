@@ -3129,7 +3129,7 @@ void FileChoose_Init(GameState* thisx) {
     View_Init(&this->view, this->state.gfxCtx);
     this->state.main = FileChoose_Main;
     this->state.destroy = FileChoose_Destroy;
-    FileChoose_InitContext(&this->state);
+    FileChoose_InitContext(this);
     if (ResourceMgr_GetGameRegion(0) == GAME_REGION_PAL && gSaveContext.language != LANGUAGE_JPN) {
         Font_LoadOrderedFont(&this->font);
     } else { // GAME_REGION_NTSC

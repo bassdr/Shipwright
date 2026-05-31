@@ -1,6 +1,6 @@
 #include "global.h"
 
-#define FTOFRAC8(x) ((s32)MIN(((x) * (128.0f)), 127.0f) & 0xff)
+#define FTOFRAC8(x) (s8)MAX(MIN(((x) * 128.0f), (float)INT8_MAX), (float)INT8_MIN)
 
 /**
  * guLookAtHiliteF

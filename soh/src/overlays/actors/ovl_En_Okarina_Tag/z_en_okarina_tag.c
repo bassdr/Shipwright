@@ -78,8 +78,7 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play) {
     osSyncPrintf(VT_FGCOL(GREEN) "☆☆☆☆☆ 当り？\t\t ☆☆☆☆☆ %d\n" VT_RST, this->unk_158);
     osSyncPrintf("\n\n");
 
-    if (GameInteractor_Should(VB_OKARINA_TAG_COMPLETED,
-                              (this->switchFlag >= 0) && (Flags_GetSwitch(play, this->switchFlag)), this)) {
+    if (GameInteractor_Should(VB_OKARINA_TAG_COMPLETED, (this->switchFlag >= 0) && (Flags_GetSwitch(play, this->switchFlag)), this)) {
         Actor_Kill(&this->actor);
     } else {
         switch (this->type) {

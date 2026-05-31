@@ -409,7 +409,7 @@ void Audio_QueueCmdS32(u32 opArgs, s32 data) {
 }
 
 void Audio_QueueCmdS8(u32 opArgs, s8 data) {
-    u32 uData = data << 0x18;
+    u32 uData = (u32)(u8)data << 0x18;
 
     Audio_QueueCmd(opArgs, uData);
 }

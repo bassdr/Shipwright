@@ -5338,7 +5338,7 @@ s32 Player_ActionHandler_1(Player* this, PlayState* play) {
 
                 this->yaw = doorShutter->dyna.actor.home.rot.y;
                 if (doorDirection > 0) {
-                    this->yaw -= 0x8000;
+                    this->yaw -= INT16_MAX;
                 }
                 this->actor.shape.rot.y = this->yaw;
 

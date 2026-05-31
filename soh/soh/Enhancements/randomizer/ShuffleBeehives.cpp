@@ -25,7 +25,7 @@ void ObjComb_RandomizerChooseItemDrop(ObjComb* objComb, PlayState* play) {
         return;
     }
 
-    if ((params > 0) || (params < 0x1A)) {
+    if ((params > 0) && (params < 0x1A)) {
         if (params == 6) {
             if (Flags_GetCollectible(play, (objComb->actor.params >> 8) & 0x3F)) {
                 params = -1;

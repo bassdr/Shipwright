@@ -90,16 +90,16 @@ void* THA_AllocStart1(TwoHeadArena* tha) {
 }
 
 void* THA_AllocEnd(TwoHeadArena* tha, size_t size) {
-    size_t mask;
+    uintptr_t mask;
 
     if (size == 8) {
-        mask = ~7;
+        mask = ~(uintptr_t)7u;
     } else if (size == 4 || size == 12) {
-        mask = ~3;
+        mask = ~(uintptr_t)3u;
     } else if (size == 2 || size == 6 || size == 10 || size == 12 || size == 14) {
-        mask = ~1;
+        mask = ~(uintptr_t)1u;
     } else {
-        mask = (size >= 0x10) ? ~0xF : 0;
+        mask = (size >= 0x10) ? ~(uintptr_t)0xFu : 0;
     }
 
     tha->tail = (((uintptr_t)tha->tail & mask) - size) & mask;
@@ -107,7 +107,7 @@ void* THA_AllocEnd(TwoHeadArena* tha, size_t size) {
 }
 
 void* THA_AllocEndAlign16(TwoHeadArena* tha, size_t size) {
-    size_t mask = ~0xF;
+    uintptr_t mask = ~(uintptr_t)0xF;
 
     tha->tail = (((uintptr_t)tha->tail & mask) - size) & mask;
     return tha->tail;

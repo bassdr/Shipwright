@@ -5844,10 +5844,10 @@ s32 Camera_Demo3(Camera* camera) {
             sp68.y = anim->initialAt.y + 40.0f;
             sp68.z = anim->initialAt.z + (Math_CosS(angle) * 40.0f);
             if (camera->play->state.frames & 1) {
-                angle -= 0x3FFF;
+                angle -= (s16)0x3FFF;
                 anim->yawDir = 1;
             } else {
-                angle += 0x3FFF;
+                angle += (s16)0x3FFF;
                 anim->yawDir = -1;
             }
             sp74.x = sp68.x + (D_8011D658[1].r * Math_SinS(angle));

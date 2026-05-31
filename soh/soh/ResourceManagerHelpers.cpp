@@ -148,6 +148,8 @@ extern "C" uint32_t ResourceMgr_GetGameRegion(int index) {
             assert(false);
             return GAME_REGION_UNKNOWN;
     }
+
+    return GAME_REGION_NTSC;
 }
 
 extern "C" char* _message_0xFFFC_nes;

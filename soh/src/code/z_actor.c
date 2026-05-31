@@ -661,19 +661,19 @@ void func_8002C7BC(TargetContext* targetCtx, Player* player, Actor* actorArg, Pl
 /**
  * Tests if current scene switch flag is set.
  */
-s32 Flags_GetSwitch(PlayState* play, s32 flag) {
+u32 Flags_GetSwitch(PlayState* play, u8 flag) {
     if (flag < 0x20) {
-        return play->actorCtx.flags.swch & (1 << flag);
+        return play->actorCtx.flags.swch & (1u << flag);
     } else {
-        return play->actorCtx.flags.tempSwch & (1 << (flag - 0x20));
+        return play->actorCtx.flags.tempSwch & (1u << (flag - 0x20));
     }
 }
 
 /**
  * Sets current scene switch flag.
  */
-void Flags_SetSwitch(PlayState* play, s32 flag) {
-    u8 previouslyOff = !Flags_GetSwitch(play, flag);
+void Flags_SetSwitch(PlayState* play, u8 flag) {
+    bool previouslyOff = !Flags_GetSwitch(play, flag);
     if (flag < 0x20) {
         play->actorCtx.flags.swch |= (1 << flag);
     } else {
@@ -688,12 +688,12 @@ void Flags_SetSwitch(PlayState* play, s32 flag) {
 /**
  * Unsets current scene switch flag.
  */
-void Flags_UnsetSwitch(PlayState* play, s32 flag) {
+void Flags_UnsetSwitch(PlayState* play, u8 flag) {
     u8 previouslyOn = Flags_GetSwitch(play, flag);
     if (flag < 0x20) {
-        play->actorCtx.flags.swch &= ~(1 << flag);
+        play->actorCtx.flags.swch &= ~(1u << flag);
     } else {
-        play->actorCtx.flags.tempSwch &= ~(1 << (flag - 0x20));
+        play->actorCtx.flags.tempSwch &= ~(1u << (flag - 0x20));
     }
     if (previouslyOn) {
         LUSLOG_INFO("Switch Flag Unset - %#x", flag);

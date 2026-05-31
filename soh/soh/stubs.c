@@ -202,9 +202,11 @@ void Audio_SetBGM(u32 bgmId) {
 }
 
 s32 osContSetCh(u8 ch) {
+    return 0;
 }
 
 u32 osDpGetStatus(void) {
+    return 0;
 }
 
 void osDpSetStatus(u32 status) {

@@ -317,7 +317,7 @@ void EnIshi_Init(Actor* thisx, PlayState* play) {
         this->actor.uncullZoneForward += 1000.0f;
     }
     if (this->actor.shape.rot.y == 0) {
-        this->actor.shape.rot.y = this->actor.world.rot.y = Rand_ZeroFloat(0x10000);
+        this->actor.shape.rot.y = this->actor.world.rot.y = (s16)(u16)Rand_ZeroFloat(UINT16_MAX);
     }
     Actor_SetScale(&this->actor, sRockScales[type]);
     EnIshi_InitCollider(&this->actor, play);
