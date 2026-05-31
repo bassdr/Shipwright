@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "mixer.h"
 #ifndef __clang__
@@ -91,6 +92,14 @@ static inline int32_t clamp32(int64_t v) {
     return (int32_t)v;
 }
 
+
+/* clamp: saturate a float accumulator to S16 range before final conversion.
+ * Used by the F32 mixing paths to avoid intermediate S16 truncation. */
+static inline int16_t clamp(double v) {
+    if (v > INT16_MAX) return INT16_MAX;
+    if (v < INT16_MIN) return INT16_MIN;
+    return (int16_t)lrint(v);
+}
 void aClearBufferImpl(uint16_t addr, int nbytes) {
     nbytes = ROUND_UP_16(nbytes);
     memset(BUF_U8(addr), 0, nbytes);
@@ -242,7 +251,6 @@ void aResampleImpl(uint8_t flags, uint16_t pitch, RESAMPLE_STATE state) {
     uint32_t pitch_accumulator;
     int i;
     int16_t* tbl;
-    int32_t sample;
 
     if (flags & A_INIT) {
         memset(tmp, 0, 5 * sizeof(int16_t));
@@ -257,12 +265,27 @@ void aResampleImpl(uint8_t flags, uint16_t pitch, RESAMPLE_STATE state) {
     pitch_accumulator = (uint16_t)tmp[4];
     memcpy(in, tmp, 4 * sizeof(int16_t));
 
+    /* Double-precision FIR accumulation.
+     *
+     * Original code rounded each tap independently before summation:
+     *
+     *     ((x * c + 0x4000) >> 15)
+     *
+     * which introduces four separate quantization steps per output sample.
+     *
+     * This version accumulates all four taps in double precision and performs
+     * a single final rounding during clamp(), reducing quantization noise and
+     * improving interpolation accuracy, especially for low-volume signals and
+     * slow pitch changes.
+     */
     do {
         for (i = 0; i < 8; i++) {
             tbl = resample_table[pitch_accumulator * 64 >> 16];
-            sample = ((in[0] * tbl[0] + 0x4000) >> 15) + ((in[1] * tbl[1] + 0x4000) >> 15) +
-                     ((in[2] * tbl[2] + 0x4000) >> 15) + ((in[3] * tbl[3] + 0x4000) >> 15);
-            *out++ = clamp16(sample);
+            double sample = (double)in[0] * (double)tbl[0]
+                          + (double)in[1] * (double)tbl[1]
+                          + (double)in[2] * (double)tbl[2]
+                          + (double)in[3] * (double)tbl[3];
+            *out++ = clamp(sample / 32768.0);
 
             pitch_accumulator += (pitch << 1);
             in += pitch_accumulator >> 16;
@@ -296,29 +319,49 @@ void aEnvSetup2Impl(uint16_t initial_vol_left, uint16_t initial_vol_right) {
 
 void aEnvMixerImpl(uint16_t in_addr, uint16_t n_samples, bool swap_reverb, bool neg_3, bool neg_2, bool neg_left,
                    bool neg_right, int32_t wet_dry_addr, u32 unk) {
-    int16_t* in = BUF_S16(in_addr);
+    const int16_t* in = BUF_S16(in_addr);
     int16_t* dry[2] = { BUF_S16(((wet_dry_addr >> 24) & 0xFF) << 4), BUF_S16(((wet_dry_addr >> 16) & 0xFF) << 4) };
     int16_t* wet[2] = { BUF_S16(((wet_dry_addr >> 8) & 0xFF) << 4), BUF_S16(((wet_dry_addr)&0xFF) << 4) };
-    int16_t negs[4] = { neg_left ? -1 : 0, neg_right ? -1 : 0, neg_3 ? -4 : 0, neg_2 ? -2 : 0 };
-    int swapped[2] = { swap_reverb ? 1 : 0, swap_reverb ? 0 : 1 };
+    const int negs[4] = { neg_left ? -1 : 1, neg_right ? -1 : 1, neg_3 ? -1 : 1, neg_2 ? -1 : 1 };
+    const int swapped[2] = { swap_reverb ? 1 : 0, swap_reverb ? 0 : 1 };
     int n = ROUND_UP_16(n_samples);
 
     uint16_t vols[2] = { rspa.vol[0], rspa.vol[1] };
-    uint16_t rates[2] = { rspa.rate[0], rspa.rate[1] };
+    const uint16_t rates[2] = { rspa.rate[0], rspa.rate[1] };
     uint16_t vol_wet = rspa.vol_wet;
-    uint16_t rate_wet = rspa.rate_wet;
+    const uint16_t rate_wet = rspa.rate_wet;
+
+    /* Double-precision envelope and wet/dry mixing.
+     *
+     * Original code truncated each scaled sample immediately after:
+     *
+     *     (sample * volume) >> 16
+     *
+     * before accumulation into the destination buffers.
+     *
+     * This version keeps envelope scaling and wet/dry mixing in double
+     * precision until the final clamp(), preserving fractional precision
+     * across volume ramps and reducing cumulative quantization noise during
+     * multi-voice mixing.
+     */
+    const double kScale = 1.0 / 65536.0;
 
     do {
+        const double fvols[2] = { vols[0] * negs[0] * kScale, vols[1] * negs[1] * kScale };
+        const double fvol_wet[2] = { vol_wet * negs[2] * kScale, vol_wet * negs[3] * kScale };
+
         for (int i = 0; i < 8; i++) {
-            int16_t samples[2] = { *in, *in };
+            const double samples[2] = {
+                *in * fvols[0],
+                *in * fvols[1],
+            };
             in++;
+
             for (int j = 0; j < 2; j++) {
-                samples[j] = (samples[j] * vols[j] >> 16) ^ negs[j];
-            }
-            for (int j = 0; j < 2; j++) {
-                *dry[j] = clamp16(*dry[j] + samples[j]);
+                *dry[j] = clamp(*dry[j] + samples[j]);
                 dry[j]++;
-                *wet[j] = clamp16(*wet[j] + ((samples[swapped[j]] * vol_wet >> 16) ^ negs[2 + j]));
+
+                *wet[j] = clamp(*wet[j] + (samples[swapped[j]] * fvol_wet[j]));
                 wet[j]++;
             }
         }

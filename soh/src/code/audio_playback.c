@@ -4,6 +4,13 @@
 
 extern bool gUseLegacySD;
 
+#if ENABLE_FLUIDSYNTH
+extern bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan,
+                                           float channelVolume, uint8_t fontId, int16_t instOrWave, uint8_t semitone,
+                                           bool isFinished, uint8_t channelIdx, float resampleRate);
+extern void SOH_MidiTranslator_NoteDisabled(int noteIndex);
+#endif
+
 void Audio_InitNoteSub(Note* note, NoteSubEu* sub, NoteSubAttributes* attrs) {
     f32 volRight, volLeft;
     s32 smallPanIndex;
@@ -164,6 +171,10 @@ void Audio_NoteDisable(Note* note) {
         aOPUSFree(note->synthesisState.opusFile);
         note->synthesisState.opusFile = NULL;
     }
+
+#if ENABLE_FLUIDSYNTH
+    SOH_MidiTranslator_NoteDisabled((int)(note - gAudioContext.notes));
+#endif
 }
 
 void Audio_ProcessNotes(void) {
@@ -302,6 +313,52 @@ void Audio_ProcessNotes(void) {
 
             subAttrs.velocity *= scale;
             Audio_InitNoteSub(note, noteSubEu2, &subAttrs);
+
+#if ENABLE_FLUIDSYNTH
+            {
+                SequenceLayer* layer = playbackState->parentLayer;
+                int16_t instOrWave = 0;
+                uint8_t semitone = 0;
+                uint8_t chanIdx = 0;
+                float channelVolume = 1.0f;
+                if (layer != NO_LAYER && layer->channel != NULL) {
+                    instOrWave = (layer->instOrWave == (int16_t)0xFF) ? layer->channel->instOrWave : layer->instOrWave;
+                    semitone = layer->semitone;
+                    channelVolume = layer->channel->volume;
+                    SequenceChannel** channels = layer->channel->seqPlayer->channels;
+
+                    size_t channelCount =
+                        sizeof(layer->channel->seqPlayer->channels) / sizeof(layer->channel->seqPlayer->channels[0]);
+
+                    for (size_t i = 0; i < channelCount; ++i) {
+                        if (channels[i] == layer->channel) {
+                            chanIdx = (uint8_t)i;
+                            break;
+                        }
+                    }
+                }
+                // Pass the pre-ADSR velocity rather than subAttrs.velocity which has
+                // already been multiplied by the ADSR scale. The envelope ramps from
+                // near-zero on attack, so subAttrs.velocity is often tiny (vel=4-12)
+                // at the moment ProcessNote fires — nearly inaudible in FluidSynth.
+                // FluidSynth handles its own volume envelope; we want the raw "how
+                // hard was the key struck" value here.
+                float noteVelocity = 1.0f;
+                if (layer != NO_LAYER) {
+                    noteVelocity = layer->noteVelocity;
+                }
+                bool handledByFluidSynth = SOH_MidiTranslator_ProcessNote(
+                    i, subAttrs.frequency, noteVelocity, subAttrs.pan, channelVolume, playbackState->fontId,
+                    instOrWave, semitone, (bool)noteSubEu->bitField0.finished, chanIdx,
+                    gAudioContext.audioBufferParameters.resampleRate);
+                if (handledByFluidSynth) {
+                    // FluidSynth owns this note — silence the native side so the
+                    // two synthesis paths don't sum into a doubled signal.
+                    noteSubEu->bitField0.enabled = false;
+                }
+            }
+#endif
+
             noteSubEu->bitField1.bookOffset = bookOffset;
         skip:;
         }

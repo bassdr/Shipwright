@@ -76,6 +76,12 @@ class OTRGlobals {
     bool hasOriginal;
     ImFont* CreateFontWithSize(float size, std::string fontPath, bool isJapaneseFont = false);
 };
+
+// Set by AudioEditor when FluidSynth is enabled/disabled. OTRAudio_Thread
+// reads it each iteration and dispatches to either the s16 legacy producer
+// path or the float HD producer path. C++-only — only AudioEditor flips it.
+void OTRAudio_SetFloatPipeline(bool enabled);
+bool OTRAudio_GetFloatPipeline();
 #endif
 
 #ifndef __cplusplus
@@ -103,6 +109,7 @@ uint32_t OTRGetGameRenderWidth();
 uint32_t OTRGetGameRenderHeight();
 int AudioPlayer_GetDesiredBuffered(void);
 void AudioPlayer_Play(const uint8_t* buf, uint32_t len);
+void AudioPlayer_PlayF32(const float* buf, uint32_t frames);
 void AudioMgr_CreateNextAudioBuffer(s16* samples, u32 num_samples);
 int Controller_ShouldRumble(size_t slot);
 size_t GetEquipNowMessage(char* buffer, char* src, const size_t maxBufferSize);

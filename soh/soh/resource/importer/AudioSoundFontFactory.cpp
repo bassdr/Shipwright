@@ -1,11 +1,13 @@
 #include "soh/resource/importer/AudioSoundFontFactory.h"
 #include "soh/resource/type/AudioSoundFont.h"
+#include "soh/Enhancements/audio/InstrumentNames.h"
 #include <tinyxml2.h>
 #include <z64.h>
 #include "z64audio.h"
 #include <ship/Context.h>
 #include <ship/resource/archive/Archive.h>
 #include <ship/resource/ResourceManager.h>
+#include <spdlog/spdlog.h>
 
 namespace SOH {
 std::shared_ptr<Ship::IResource>
@@ -105,6 +107,17 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             instrument->envelope[j].arg = BE16SWAP(arg);
         }
 
+        // Capture all three range sample filenames so the bypass UI can
+        // show the actual per-slot instrument label. The InstrumentNames
+        // registry stores all three; the UI prefers normal, falling back
+        // to low or high when an instrument has gaps in its pitch ranges.
+        // The verbose log dump that follows is gated on TRACE; flip the
+        // spdlog level to debug the empty-name case if music slots come
+        // up blank after a fresh .o2r regen.
+        const uint8_t fntIdx = static_cast<uint8_t>(audioSoundFont->soundFont.fntIndex);
+        const int16_t slot = static_cast<int16_t>(i);
+        std::string lowName, normalName, highName;
+
         bool hasLowNoteSoundFontEntry = reader->ReadInt8();
         if (hasLowNoteSoundFontEntry) {
             bool hasSampleRef = reader->ReadInt8();
@@ -113,6 +126,8 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             auto res =
                 Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             instrument->lowNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
+            lowName = sampleFileName;
+            SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::Low, std::move(sampleFileName));
         } else {
             instrument->lowNotesSound.sample = nullptr;
             instrument->lowNotesSound.tuning = 0;
@@ -127,6 +142,8 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             auto res =
                 Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             instrument->normalNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
+            normalName = sampleFileName;
+            SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::Normal, std::move(sampleFileName));
         } else {
             instrument->normalNotesSound.sample = nullptr;
             instrument->normalNotesSound.tuning = 0;
@@ -140,10 +157,23 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             auto res =
                 Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             instrument->highNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
+            highName = sampleFileName;
+            SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::High, std::move(sampleFileName));
         } else {
             instrument->highNotesSound.sample = nullptr;
             instrument->highNotesSound.tuning = 0;
         }
+
+        // Diagnostic: dump the per-instrument sample triple. Use INFO so
+        // the user sees it without flipping log level. Empty quoted strings
+        // make the "no name in the binary" case unambiguously visible.
+        SPDLOG_INFO("[SoundFont] font {} bank1={} slot {:3}: low='{}' normal='{}' high='{}'",
+                    fntIdx,
+                    audioSoundFont->soundFont.sampleBankId1,
+                    i,
+                    lowName.empty() ? "" : lowName.c_str(),
+                    normalName.empty() ? "" : normalName.c_str(),
+                    highName.empty() ? "" : highName.c_str());
 
         if (isValidEntry) {
             audioSoundFont->instrumentAddresses.push_back(instrument);

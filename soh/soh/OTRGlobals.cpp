@@ -49,7 +49,6 @@
 #include "util.h"
 
 #include <fast/Fast3dGui.h>
-#include <fast/debug/GfxDebugger.h>
 
 #if not defined(__SWITCH__) && not defined(__WIIU__)
 #include "Extractor/Extract.h"
@@ -107,6 +106,7 @@
 #include "soh/resource/type/SkeletonLimb.h"
 #include "soh/resource/type/Text.h"
 #include <ship/resource/factory/BlobFactory.h>
+#include <ship/audio/MidiSynthManager.h>
 #include <fast/resource/factory/DisplayListFactory.h>
 #include <fast/resource/factory/MatrixFactory.h>
 #include <fast/resource/factory/TextureFactory.h>
@@ -835,7 +835,14 @@ void OTRGlobals::Initialize() {
                                               CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
     context->GetWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
 
-    context->InitAudio({ .SampleRate = 32000, .SampleLength = 1024, .DesiredBuffered = 1680 });
+    context->InitAudio({ .SampleRate = 48000,
+                         .SourceSampleRate = 32000,
+                         .SampleLength = 1024,
+                         // 4096 frames at 32 kHz (~128 ms) gives enough reservoir for frame
+                         // jitter and slow-frame spikes without perceptible audio latency.
+                         // Matches banteg's fix in Shipwright#6594. GetDesiredBuffered() scales
+                         // this to the output rate (6144 frames at 48 kHz) automatically.
+                         .DesiredBuffered = 4096 });
 
     SPDLOG_INFO("Starting Ship of Harkinian version {} (Branch: {} | Commit: {})", (char*)gBuildVersion,
                 (char*)gGitBranch, (char*)gGitCommitHash);
@@ -1015,11 +1022,64 @@ uint32_t OTRGlobals::GetInterpolationFPS() {
 extern "C" void OTRMessage_Init();
 extern "C" void AudioMgr_CreateNextAudioBuffer(s16* samples, u32 num_samples);
 extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len);
+extern "C" void AudioPlayer_PlayF32(const float* buf, uint32_t frames);
 int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
 std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 
+// Pipeline mode tracking. The audio thread reads this once per produced
+// buffer; AudioEditor flips it on FluidSynth enable/disable (and matches
+// the player's float-pipeline mode). Plain atomic is enough — mode flips
+// are rare and a one-buffer staleness is harmless.
+static std::atomic<bool> sFloatAudioPipeline{false};
+bool OTRAudio_GetFloatPipeline() { return sFloatAudioPipeline.load(std::memory_order_acquire); }
+void OTRAudio_SetFloatPipeline(bool enabled) { sFloatAudioPipeline.store(enabled, std::memory_order_release); }
+
 void OTRAudio_Thread() {
+#define SAMPLES_HIGH 560
+#define SAMPLES_LOW 528
+#define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
+#define NUM_AUDIO_CHANNELS 2
+
+    // The audio thread runs one of two paths per produced buffer, switched
+    // by sFloatAudioPipeline (typically flipped when FluidSynth is enabled
+    // or disabled):
+    //
+    // S16 LEGACY PATH (no synth, or synth disabled):
+    //   Native engine writes s16 directly into audio_buffer; AudioPlayer
+    //   takes the byte buffer untouched. No mix step. Byte-exact with the
+    //   pre-PR behaviour libultraship consumers always had.
+    //
+    // FLOAT HD PATH (FluidSynth enabled):
+    //   Native s16 → float (conversion only, no per-sample mix here). The
+    //   AudioPlayer resamples, calls its MixSource hook (FluidSynth render
+    //   at the device's output rate, bypassing the resampler), soft-clips
+    //   the sum, surround-decodes, and hands the result to the backend.
+
+    auto produce_and_play = [&](u32 num_audio_samples) {
+        const u32 total_frames = num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
+        const u32 total_samples = total_frames * NUM_AUDIO_CHANNELS;
+
+        // 3 is the maximum authentic frame divisor.
+        static thread_local s16   native_s16[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
+        static thread_local float native_f32[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
+
+        for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
+            AudioMgr_CreateNextAudioBuffer(native_s16 + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
+                                           num_audio_samples);
+        }
+
+        if (sFloatAudioPipeline.load(std::memory_order_acquire)) {
+            for (u32 s = 0; s < total_samples; s++) {
+                native_f32[s] = static_cast<float>(native_s16[s]) * (1.0f / 32767.0f);
+            }
+            AudioPlayer_PlayF32(native_f32, total_frames);
+        } else {
+            AudioPlayer_Play(reinterpret_cast<u8*>(native_s16),
+                             total_samples * sizeof(int16_t));
+        }
+    };
+
     while (audio.running) {
         {
             std::unique_lock<std::mutex> Lock(audio.mutex);
@@ -1031,29 +1091,11 @@ void OTRAudio_Thread() {
                 break;
             }
         }
+
         std::unique_lock<std::mutex> Lock(audio.mutex);
-// AudioMgr_ThreadEntry(&gAudioMgr);
-//  528 and 544 relate to 60 fps at 32 kHz 32000/60 = 533.333..
-//  in an ideal world, one third of the calls should use num_samples=544 and two thirds num_samples=528
-#define SAMPLES_HIGH 560
-#define SAMPLES_LOW 528
-
-#define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
-#define NUM_AUDIO_CHANNELS 2
-
         int samples_left = AudioPlayer_Buffered();
         u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
-
-        // 3 is the maximum authentic frame divisor.
-        s16 audio_buffer[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
-        for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
-            AudioMgr_CreateNextAudioBuffer(audio_buffer + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
-                                           num_audio_samples);
-        }
-
-        AudioPlayer_Play((u8*)audio_buffer,
-                         num_audio_samples * (sizeof(int16_t) * NUM_AUDIO_CHANNELS * AUDIO_FRAMES_PER_UPDATE));
-
+        produce_and_play(num_audio_samples);
         audio.processing = false;
         audio.cv_from_thread.notify_one();
     }
@@ -2201,6 +2243,10 @@ extern "C" int AudioPlayer_GetDesiredBuffered(void) {
 
 extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
     AudioPlayerPlayFrame(buf, len);
+}
+
+extern "C" void AudioPlayer_PlayF32(const float* buf, uint32_t frames) {
+    AudioPlayerPlayFrameF32(buf, frames);
 }
 
 extern "C" int Controller_ShouldRumble(size_t slot) {
