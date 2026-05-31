@@ -16,6 +16,6 @@ class ActorViewerWindow final : public Ship::GuiWindow {
 
   private:
     Actor* display = nullptr;
-    int category = ACTORCAT_SWITCH;
+    uint8_t category = ACTORCAT_SWITCH;
     std::vector<Actor*> list;
 };

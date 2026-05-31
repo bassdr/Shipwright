@@ -351,7 +351,7 @@ ResourceFactoryXMLAudioSequenceV0::ReadResource(std::shared_ptr<Ship::File> file
     } else {
         // setting numFonts to -1 tells the game's audio engine the sound font to used is CRC64 encoded in the font
         // indicies.
-        sequence->sequence.numFonts = -1;
+        sequence->sequence.numFonts = UINT32_MAX;
         if (path != nullptr) {
             sequence->sequence.seqDataSize = static_cast<uint32_t>(seqFile->Buffer.get()->size());
             sequence->sequence.seqData = new char[seqFile->Buffer.get()->size()];

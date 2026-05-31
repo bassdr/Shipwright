@@ -121,7 +121,8 @@ extern "C" void CustomLogoTitle_Draw(TitleContext* titleContext, uint8_t logoToD
 #define CVAR_BOOTSEQUENCE_DEFAULT BOOTSEQUENCE_DEFAULT
 #define CVAR_BOOTSEQUENCE_VALUE CVarGetInteger(CVAR_BOOTSEQUENCE_NAME, CVAR_BOOTSEQUENCE_DEFAULT)
 
-extern "C" void CustomLogoTitle_Main(TitleContext* titleContext) {
+extern "C" void CustomLogoTitle_Main(GameState* gameState) {
+    TitleContext* titleContext = (TitleContext*)gameState;
     static uint8_t logosSeen = 0;
     uint8_t logoToDraw;
 
@@ -175,7 +176,7 @@ extern "C" void CustomLogoTitle_Main(TitleContext* titleContext) {
 
 void OnZTitleInitReplaceTitleMainWithCustom(void* gameState) {
     TitleContext* titleContext = (TitleContext*)gameState;
-    titleContext->state.main = (GameStateFunc)CustomLogoTitle_Main;
+    titleContext->state.main = CustomLogoTitle_Main;
 }
 
 // Allows pressing A to skip the boot logo and go to the next state (opening or file select)

@@ -994,7 +994,7 @@ void PlandomizerDrawOptions() {
                                                     ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
                     ImGui::PopStyleVar();
                     if (upRet) {
-                        if (hash + 1 >= gSeedTextures.size()) {
+                        if (hash + 1 < 0 || static_cast<size_t>(hash + 1) >= gSeedTextures.size()) {
                             hash = 0;
                         } else {
                             hash++;
@@ -1016,7 +1016,7 @@ void PlandomizerDrawOptions() {
                             hash--;
                         }
                     }
-                    if (index != spoilerHash.size() - 1) {
+                    if (index != static_cast<int32_t>(spoilerHash.size()) - 1) {
                         ImGui::TableNextColumn();
                     }
                     ImGui::PopID();

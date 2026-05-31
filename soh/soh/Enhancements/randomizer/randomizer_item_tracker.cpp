@@ -1472,15 +1472,15 @@ void EndFloatingWindows() {
  * DrawItemsInRows
  * Takes in a vector of ItemTrackerItem and draws them in rows of N items
  */
-void DrawItemsInRows(std::vector<ItemTrackerItem> items, int columns = 6) {
+void DrawItemsInRows(std::vector<ItemTrackerItem> items, uint8_t columns = 6) {
     float iconSize = static_cast<float>(CVarGetInteger(CVAR_TRACKER_ITEM("IconSize"), 36));
     int iconSpacing = CVarGetInteger(CVAR_TRACKER_ITEM("IconSpacing"), 12);
     int topPadding =
         (CVarGetInteger(CVAR_TRACKER_ITEM("WindowType"), TRACKER_WINDOW_FLOATING) == TRACKER_WINDOW_WINDOW) ? 20 : 0;
 
-    for (int i = 0; i < items.size(); i++) {
-        int row = i / columns;
-        int column = i % columns;
+    for (size_t i = 0; i < items.size(); i++) {
+        const size_t row = i / columns;
+        const size_t column = i % columns;
         ImGui::SetCursorPos(
             ImVec2((column * (iconSize + iconSpacing) + 8.0f), (row * (iconSize + iconSpacing)) + 8.0f + topPadding));
         items[i].drawFunc(items[i]);

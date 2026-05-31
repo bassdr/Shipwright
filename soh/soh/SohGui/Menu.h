@@ -42,11 +42,9 @@ class Menu : public GuiWindow {
     ImGuiTextFilter menuSearch;
     uint8_t searchSidebarIndex;
     UIWidgets::Colors defaultThemeIndex;
-    std::shared_ptr<std::vector<int32_t>> availableWindowBackends;
-    std::map<Fast::WindowBackend, const char*> availableWindowBackendsMap;
+    std::map<Fast::WindowBackend, const char*> availableWindowBackends;
     Fast::WindowBackend configWindowBackend;
-    std::shared_ptr<std::vector<Ship::AudioBackend>> availableAudioBackends;
-    std::map<Ship::AudioBackend, const char*> availableAudioBackendsMap;
+    std::map<Ship::AudioBackend, const char*> availableAudioBackends;
 
     std::unordered_map<uint32_t, disabledInfo> disabledMap;
     std::vector<disabledInfo> disabledVector;

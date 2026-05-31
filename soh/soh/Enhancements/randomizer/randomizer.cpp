@@ -107,9 +107,10 @@ std::unordered_map<std::string, SceneID> spoilerFileDungeonToScene = {
 
 #ifdef _MSC_VER
 #pragma optimize("", off)
+#elif defined(__clang__)
+#pragma clang optimize off
 #else
-#pragma GCC push_options
-#pragma GCC optimize("O0")
+__attribute__((optimize(0)))
 #endif
 bool Randomizer::SpoilerFileExists(const char* spoilerFileName) {
     static std::unordered_map<std::string, bool> existsCache;
@@ -183,8 +184,8 @@ bool Randomizer::SpoilerFileExists(const char* spoilerFileName) {
 }
 #ifdef _MSC_VER
 #pragma optimize("", on)
-#else
-#pragma GCC pop_options
+#elif defined(__clang__)
+#pragma clang optimize on
 #endif
 
 // Reference soh/src/overlays/actors/ovl_En_GirlA/z_en_girla.h
@@ -965,9 +966,12 @@ class ExtendedVanillaTableInvalidItemIdException : public std::exception {
   public:
     ExtendedVanillaTableInvalidItemIdException(s16 itemID) : itemID(itemID) {
     }
-    std::string what() {
-        return itemID + " is not a valid ItemID for the extendedVanillaGetItemTable. If you are adding a new"
+
+    virtual const char* what() const noexcept override {
+        static std::string staticString;
+        staticString = std::to_string(itemID) + " is not a valid ItemID for the extendedVanillaGetItemTable. If you are adding a new"
                         "item, try adding it to randoGetItemTable instead.";
+        return staticString.c_str();
     }
 };
 

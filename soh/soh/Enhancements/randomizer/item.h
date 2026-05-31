@@ -81,7 +81,6 @@ class Item {
     GetItemCategory category;
     Text article;
     std::string color;
-    bool progressive;
     uint16_t price;
     bool playthrough = false;
     std::shared_ptr<GetItemEntry> giEntry;

@@ -100,30 +100,24 @@ void Menu::RemoveSidebarSearch() {
 }
 
 void Menu::UpdateAudioBackendObjects() {
-    availableAudioBackends = Ship::Context::GetRawInstance()->GetAudio()->GetAvailableAudioBackends();
-    for (auto& backend : *availableAudioBackends) {
-        if (auto it = audioBackendsMap.find(backend); it != audioBackendsMap.end()) {
-            availableAudioBackendsMap[backend] = it->second;
-        }
+    auto backends = Ship::Context::GetRawInstance()->GetAudio()->GetAvailableAudioBackends();
+    for (auto& backend : *backends) {
+        availableAudioBackends[backend] = audioBackendsMap.at(backend);
     }
 }
 
 void Menu::UpdateWindowBackendObjects() {
-    Fast::WindowBackend runningWindowBackend =
-        (Fast::WindowBackend)Ship::Context::GetRawInstance()->GetWindow()->GetWindowBackend();
-    int32_t configWindowBackendId = Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Backend.Id", -1);
+    auto runningWindowBackend = Ship::Context::GetRawInstance()->GetWindow()->GetWindowBackend();
+    auto configWindowBackendId = Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Backend.Id", -1);
     if (Ship::Context::GetRawInstance()->GetWindow()->IsAvailableWindowBackend(configWindowBackendId)) {
         configWindowBackend = static_cast<Fast::WindowBackend>(configWindowBackendId);
     } else {
-        configWindowBackend = runningWindowBackend;
+        configWindowBackend = static_cast<Fast::WindowBackend>(runningWindowBackend);
     }
 
-    availableWindowBackends = Ship::Context::GetRawInstance()->GetWindow()->GetAvailableWindowBackends();
-    for (auto& backend : *availableWindowBackends) {
-        auto windowBackend = (Fast::WindowBackend)backend;
-        if (auto it = windowBackendsMap.find(windowBackend); it != windowBackendsMap.end()) {
-            availableWindowBackendsMap[windowBackend] = it->second;
-        }
+    auto backends = Ship::Context::GetRawInstance()->GetWindow()->GetAvailableWindowBackends();
+    for (auto& backend : *backends) {
+        availableWindowBackends[static_cast<Fast::WindowBackend>(backend)] = windowBackendsMap.at(static_cast<Fast::WindowBackend>(backend));
     }
 }
 
@@ -354,9 +348,9 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
                 UIWidgets::ComboboxOptions options = {};
                 options.color = menuThemeIndex;
                 options.tooltip = "Sets the audio API used by the game. Requires a relaunch to take effect.";
-                options.disabled = availableAudioBackends->size() <= 1;
+                options.disabled = availableAudioBackends.size() <= 1;
                 options.disabledTooltip = "Only one audio API is available on this platform.";
-                if (UIWidgets::Combobox("Audio API", &currentAudioBackend, availableAudioBackendsMap, options)) {
+                if (UIWidgets::Combobox("Audio API", &currentAudioBackend, availableAudioBackends, options)) {
                     Ship::Context::GetRawInstance()->GetAudio()->SetCurrentAudioBackend(currentAudioBackend);
                 }
             } break;
@@ -364,9 +358,9 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
                 UIWidgets::ComboboxOptions options = {};
                 options.color = menuThemeIndex;
                 options.tooltip = "Sets the renderer API used by the game.";
-                options.disabled = availableWindowBackends->size() <= 1;
+                options.disabled = availableWindowBackends.size() <= 1;
                 options.disabledTooltip = "Only one renderer API is available on this platform.";
-                if (UIWidgets::Combobox("Renderer API (Needs reload)", &configWindowBackend, availableWindowBackendsMap,
+                if (UIWidgets::Combobox("Renderer API (Needs reload)", &configWindowBackend, availableWindowBackends,
                                         options)) {
                     Ship::Context::GetRawInstance()->GetConfig()->SetInt("Window.Backend.Id",
                                                                          (int32_t)(configWindowBackend));
