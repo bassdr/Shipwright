@@ -134,16 +134,16 @@ const float imguiScaleOptionToValue[4] = { 0.75f, 1.0f, 1.5f, 2.0f };
 
 bool SoH_HandleConfigDrop(char* filePath);
 
-OTRGlobals* OTRGlobals::Instance;
-SaveManager* SaveManager::Instance;
-CustomMessageManager* CustomMessageManager::Instance;
-ItemTableManager* ItemTableManager::Instance;
-GameInteractor* GameInteractor::Instance;
-AudioCollection* AudioCollection::Instance;
-SpeechSynthesizer* SpeechSynthesizer::Instance;
-CrowdControl* CrowdControl::Instance;
-Sail* Sail::Instance;
-Anchor* Anchor::Instance;
+OTRGlobals* OTRGlobals::Instance = nullptr;
+SaveManager* SaveManager::Instance = nullptr;
+CustomMessageManager* CustomMessageManager::Instance = nullptr;
+ItemTableManager* ItemTableManager::Instance = nullptr;
+GameInteractor* GameInteractor::Instance = nullptr;
+AudioCollection* AudioCollection::Instance = nullptr;
+SpeechSynthesizer* SpeechSynthesizer::Instance = nullptr;
+CrowdControl* CrowdControl::Instance = nullptr;
+Sail* Sail::Instance = nullptr;
+Anchor* Anchor::Instance = nullptr;
 
 extern "C" char** cameraStrings;
 
@@ -1697,7 +1697,16 @@ extern "C" void DeinitOTR() {
     SohGui::Destroy();
     sohFast3dWindow = nullptr;
 
-    OTRGlobals::Instance->context = nullptr;
+    delete SaveManager::Instance;
+    SaveManager::Instance = nullptr;
+    delete GameInteractor::Instance;
+    GameInteractor::Instance = nullptr;
+    delete ItemTableManager::Instance;
+    ItemTableManager::Instance = nullptr;
+    delete CustomMessageManager::Instance;
+    CustomMessageManager::Instance = nullptr;
+    delete OTRGlobals::Instance;
+    OTRGlobals::Instance = nullptr;
 }
 
 #ifdef _WIN32
@@ -2236,11 +2245,15 @@ extern "C" void OTRControllerCallback(uint8_t rumble) {
     Ship::Context::GetRawInstance()->GetControlDeck()->GetControllerByPort(0)->GetLED()->SetLEDColor(
         GetColorForControllerLED());
 
-    static std::shared_ptr<SohInputEditorWindow> controllerConfigWindow = nullptr;
+    static std::weak_ptr<SohInputEditorWindow> sControllerConfigWindow{};
+    auto controllerConfigWindow = sControllerConfigWindow.lock();
     if (controllerConfigWindow == nullptr) {
-        controllerConfigWindow = std::dynamic_pointer_cast<SohInputEditorWindow>(
-            std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                ->GetGuiWindow("Controller Configuration"));
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        if (gui != nullptr)
+            controllerConfigWindow =
+                std::dynamic_pointer_cast<SohInputEditorWindow>(gui->GetGuiWindow("Controller Configuration"));
+
+        sControllerConfigWindow = controllerConfigWindow;
     } else if (controllerConfigWindow->TestingRumble()) {
         return;
     }
