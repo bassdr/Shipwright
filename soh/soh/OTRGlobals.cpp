@@ -1056,6 +1056,8 @@ void OTRAudio_Thread() {
     //   at the device's output rate, bypassing the resampler), soft-clips
     //   the sum, surround-decodes, and hands the result to the backend.
 
+    // Single producer routine used by both the wake-driven and pre-buffer
+    // loops. Captures the per-iteration sample count from the caller.
     auto produce_and_play = [&](u32 num_audio_samples) {
         const u32 total_frames = num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
         const u32 total_samples = total_frames * NUM_AUDIO_CHANNELS;
@@ -1092,12 +1094,37 @@ void OTRAudio_Thread() {
             }
         }
 
-        std::unique_lock<std::mutex> Lock(audio.mutex);
-        int samples_left = AudioPlayer_Buffered();
-        u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
-        produce_and_play(num_audio_samples);
-        audio.processing = false;
-        audio.cv_from_thread.notify_one();
+        {
+            std::unique_lock<std::mutex> Lock(audio.mutex);
+            int samples_left = AudioPlayer_Buffered();
+            u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
+
+            // Producer guard (banteg/Shipwright#6594): skip advancing the audio
+            // engine if the backend ring cannot accept the smallest next burst.
+            // Generating PCM that DoPlay() would refuse creates a discontinuity
+            // audible as a click. The pre-buffer loop below will catch up once
+            // the backend drains enough.
+            if (AudioPlayer_Buffered() + SAMPLES_LOW * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
+                audio.processing = false;
+            } else {
+                produce_and_play(num_audio_samples);
+                audio.processing = false;
+            }
+        }
+
+        // Pre-buffer: fill the reservoir while the backend can accept more,
+        // without waiting for the next frame signal. This absorbs load spikes.
+        // Safe for BGM — the N64 sequencer advances independently of gameplay.
+        // The producer guard (same as above) prevents advancing the audio engine
+        // when the backend ring is already at capacity.
+        while (audio.running && AudioPlayer_Buffered() < AudioPlayer_GetDesiredBuffered()) {
+            if (AudioPlayer_Buffered() + SAMPLES_LOW * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
+                break;
+            }
+            int samples_left = AudioPlayer_Buffered();
+            u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
+            produce_and_play(num_audio_samples);
+        }
     }
 }
 

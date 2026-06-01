@@ -33,20 +33,12 @@ enum class SampleRange : uint8_t { Low = 0, Normal = 1, High = 2 };
 void SetInstrumentSampleName(uint8_t fontId, int16_t instId, SampleRange range,
                              std::string name);
 
-// Returns the best available sample name for the slot:
-//   1. Normal range if registered
-//   2. otherwise Low if registered
-//   3. otherwise High if registered
-//   4. otherwise empty string
-// This matches the UI's "show me what plays for typical notes" intent.
-const std::string& GetInstrumentSampleName(uint8_t fontId, int16_t instId);
-
 // Snapshot of all three range names for an instrument slot. Empty
 // strings mean "no sample registered for that range." The bypass UI
 // uses this to disambiguate slots where the engine plays different
 // samples per pitch (e.g. low note = horse sample, normal note = ocarina
-// sample) — without it the user only sees the normal-range name and gets
-// confused by audible mismatches.
+// sample) — without it the user only sees one and gets confused by
+// audible mismatches.
 struct InstrumentSampleSet {
     std::string low;
     std::string normal;

@@ -1,13 +1,13 @@
 #include "InstrumentNames.h"
+#include <map>
 #include <mutex>
-#include <unordered_map>
+#include <utility>
 
 namespace SOH {
 
 namespace {
 // One slot may carry up to three sample variants (low / normal / high).
-// Storing them together keeps lookups single-keyed and the data
-// cache-friendly.
+// Storing them together keeps lookups single-keyed.
 struct SlotSamples {
     std::string low;
     std::string normal;
@@ -16,20 +16,16 @@ struct SlotSamples {
 
 struct State {
     std::mutex mutex;
-    // Key layout: (fontId << 16) | (instId & 0xFFFF). instId is int16_t in
-    // the public API; we cast through uint16_t to keep negative sentinels
-    // distinguishable (though Set/Get reject instId < 0 up front).
-    std::unordered_map<uint32_t, SlotSamples> entries;
+    // Keyed by (fontId, instId) directly. The map is small (~38 fonts ×
+    // ≤16 instruments × a few short strings — well under 10 KB), so
+    // ordered map's O(log n) cost is invisible and we skip writing a hash
+    // specialisation for std::pair.
+    std::map<std::pair<uint8_t, int16_t>, SlotSamples> entries;
 };
 
 State& GetState() {
     static State s;
     return s;
-}
-
-inline uint32_t MakeKey(uint8_t fontId, int16_t instId) {
-    return (static_cast<uint32_t>(fontId) << 16) |
-           static_cast<uint32_t>(static_cast<uint16_t>(instId));
 }
 } // namespace
 
@@ -40,32 +36,12 @@ void SetInstrumentSampleName(uint8_t fontId, int16_t instId, SampleRange range,
     }
     auto& s = GetState();
     std::lock_guard<std::mutex> lock(s.mutex);
-    auto& slot = s.entries[MakeKey(fontId, instId)];
+    auto& slot = s.entries[std::make_pair(fontId, instId)];
     switch (range) {
         case SampleRange::Low:    slot.low    = std::move(name); break;
         case SampleRange::Normal: slot.normal = std::move(name); break;
         case SampleRange::High:   slot.high   = std::move(name); break;
     }
-}
-
-const std::string& GetInstrumentSampleName(uint8_t fontId, int16_t instId) {
-    static const std::string kEmpty;
-    if (instId < 0) {
-        return kEmpty;
-    }
-    auto& s = GetState();
-    std::lock_guard<std::mutex> lock(s.mutex);
-    auto it = s.entries.find(MakeKey(fontId, instId));
-    if (it == s.entries.end()) {
-        return kEmpty;
-    }
-    // Prefer normal — the typical middle-pitch sample — then fall back to
-    // whichever range was populated. Plays nicely with instruments that
-    // only define low+high or only normal.
-    const SlotSamples& slot = it->second;
-    if (!slot.normal.empty()) return slot.normal;
-    if (!slot.low.empty())    return slot.low;
-    return slot.high; // may be empty too — that's fine
 }
 
 InstrumentSampleSet GetInstrumentSampleNames(uint8_t fontId, int16_t instId) {
@@ -75,7 +51,7 @@ InstrumentSampleSet GetInstrumentSampleNames(uint8_t fontId, int16_t instId) {
     }
     auto& s = GetState();
     std::lock_guard<std::mutex> lock(s.mutex);
-    auto it = s.entries.find(MakeKey(fontId, instId));
+    auto it = s.entries.find(std::make_pair(fontId, instId));
     if (it == s.entries.end()) {
         return out;
     }

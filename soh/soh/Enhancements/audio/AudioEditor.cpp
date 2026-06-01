@@ -278,6 +278,35 @@ std::vector<SynthPackEntry> EnabledPacksInOrder() {
     return out;
 }
 
+// Push the current SF2 stack + pack load order into the translator and
+// recompute every entry's runtime sfontId. Called after every change
+// that affects entry resolution: pack load/unload, file load, user pick.
+//
+// We forward sLoadedPresets through as the validator (an entry's
+// (bank, program) tuple must exist in the matched SF2 for sfontId to be
+// non-negative) and the packs vector as the load order tiebreak (last
+// in the list wins when multiple enabled entries cover the same pair).
+void RefreshEntryResolution(const std::vector<SynthPackEntry>& packs) {
+    auto& tr = SOH::MidiTranslator::Instance();
+    std::vector<std::string> order;
+    order.reserve(packs.size());
+    std::set<std::string> loaded;
+    for (const auto& p : packs) {
+        order.push_back(p.name);
+        loaded.insert(p.name);
+    }
+    tr.SetPackLoadOrder(order);
+    tr.RemoveModEntriesNotIn(loaded);
+
+    std::vector<SOH::MidiTranslator::LoadedPresetRef> refs;
+    refs.reserve(sLoadedPresets.size());
+    for (const auto& lp : sLoadedPresets) {
+        refs.push_back({ lp.sfontId, lp.packName, lp.bank, lp.program });
+    }
+    tr.RefreshEntrySfontIds(refs);
+    tr.RecomputeAllActive();
+}
+
 // Common prefix used by ReapplyOverrideChain and ResetToPackBaseline:
 // wipe in-memory state, then layer built-in defaults followed by each
 // enabled pack's mapping.json (in the same order as the SF2 load).
@@ -306,6 +335,10 @@ void ReapplyOverrideChain(const std::vector<SynthPackEntry>& packs) {
     ApplyBaselineOnly(packs);
     SOH::MidiTranslator::Instance().ApplyOverridesFromFile(
         Ship::Context::GetPathRelativeToAppDirectory("fluidsynth_overrides.json", appShortName));
+    // Entry storage and the pack load order just changed — re-derive
+    // sfontIds and the active-entry cache so the audio thread sees a
+    // consistent state on the next note.
+    RefreshEntryResolution(packs);
 }
 
 void ReapplyOverrideChain() {
@@ -317,7 +350,13 @@ void ReapplyOverrideChain() {
 // mapping.json). User's on-disk fluidsynth_overrides.json is not touched
 // — the user has to click Save afterward to persist the cleared state.
 void ResetToPackBaseline() {
-    ApplyBaselineOnly(EnabledPacksInOrder());
+    auto packs = EnabledPacksInOrder();
+    ApplyBaselineOnly(packs);
+    // ApplyBaselineOnly only touches the entry storage; we still need to
+    // refresh sfontIds and the active-entry cache, otherwise the
+    // freshly-loaded mod entries have sfontId=-1 and resolution finds
+    // nothing.
+    RefreshEntryResolution(packs);
 }
 
 // Status line surfaced by the FluidSynth tab so the user sees what's
@@ -490,67 +529,9 @@ bool ApplyFluidSynthFromCVars() {
                     sLoadedPresets.size(), sBankSelectors.size());
     }
 
-    // Ship 1: refresh pack-pinning state on the translator. Walk every
-    // pair that has preset metadata and resolve
-    //   metadata.packName + override (bank, program) → loaded sfontId.
-    // Live entries get a non-negative sfontId; dead entries (pack not
-    // loaded, OR the loaded SF2 doesn't have that (bank, program)) get
-    // -1 so ProcessNote skips the override and native plays through.
-    //
-    // We compute a reverse pack-name → sfontId map from idToPackName and
-    // use sLoadedPresets to validate the (sfontId, bank, program) tuple
-    // actually exists — that's the second clause of the resolution model.
-    {
-        std::unordered_map<std::string, int> packNameToId;
-        for (const auto& kv : idToPackName) packNameToId[kv.second] = kv.first;
-
-        auto presetExists = [](int sfontId, int bank, int program) {
-            for (const auto& lp : sLoadedPresets) {
-                if (lp.sfontId == sfontId && lp.bank == bank && lp.program == program)
-                    return true;
-            }
-            return false;
-        };
-
-        auto& tr = SOH::MidiTranslator::Instance();
-        // Clear pinning for every pair first — anything that used to
-        // resolve might be dead now under a new pack stack.
-        for (int f = 0; f < SOH::MidiTranslator::kMaxFontId; f++) {
-            for (int i = 0; i < SOH::MidiTranslator::kMaxInstOrWave; i++) {
-                tr.SetPinnedSfontId(static_cast<uint8_t>(f),
-                                    static_cast<int16_t>(i), -1);
-            }
-        }
-        // Walk pairs with metadata and try to revive each.
-        int lived = 0, died = 0;
-        for (int f = 0; f < SOH::MidiTranslator::kMaxFontId; f++) {
-            for (int i = 0; i < SOH::MidiTranslator::kMaxInstOrWave; i++) {
-                if (!tr.HasPresetMetadata(static_cast<uint8_t>(f),
-                                          static_cast<int16_t>(i))) continue;
-                std::string pack = tr.GetPresetPackName(static_cast<uint8_t>(f),
-                                                       static_cast<int16_t>(i));
-                int prg  = tr.GetProgramOverride(static_cast<uint8_t>(f),
-                                                 static_cast<int16_t>(i));
-                int bank = tr.GetBankOverride(static_cast<uint8_t>(f),
-                                              static_cast<int16_t>(i));
-                if (prg < 0) { died++; continue; }
-                if (bank < 0) bank = 0; // metadata + program but no bank => GM bank 0
-
-                auto pit = packNameToId.find(pack);
-                if (pit == packNameToId.end()) { died++; continue; }
-                int sfontId = pit->second;
-                if (!presetExists(sfontId, bank, prg)) { died++; continue; }
-                tr.SetPinnedSfontId(static_cast<uint8_t>(f),
-                                    static_cast<int16_t>(i),
-                                    static_cast<int16_t>(sfontId));
-                lived++;
-            }
-        }
-        if (lived + died > 0) {
-            SPDLOG_INFO("[AudioEditor] FluidSynth: pack-bound overrides — {} live, {} dead",
-                        lived, died);
-        }
-    }
+    // Refresh entry resolution against the new SF2 stack. Both inputs
+    // (entry sfontIds and the pack load order) changed here.
+    RefreshEntryResolution(packs);
 
     SetStatus(std::to_string(loadedPacks) + " pack" + (loadedPacks == 1 ? "" : "s") +
               " loaded (" + std::to_string(totalBytes / (1024 * 1024)) + " MiB total, " +
@@ -855,6 +836,15 @@ void DrawPreviewButton(uint16_t sequenceId, std::string sfxKey, SeqType sequence
                                                       .Tooltip("Stop Preview")
                                                       .Color(THEME_COLOR))) {
             func_800F5C2C();
+            // Abrupt stop: the engine swaps the sequence pointer without
+            // tracing each active note through Audio_NoteDisable, so
+            // FluidSynth voices for whatever was sounding become orphans
+            // in their release tail. They eventually free on their own,
+            // but cycling through many previews accumulates them faster
+            // than they drain, exhausts the voice pool, and triggers
+            // voice stealing on the next busy song. Resetting forces an
+            // immediate All Notes Off on every channel.
+            SOH_MidiTranslator_Reset();
             CVarSetInteger(CVAR_AUDIO("Playing"), 0);
         }
     } else {
@@ -865,6 +855,8 @@ void DrawPreviewButton(uint16_t sequenceId, std::string sfxKey, SeqType sequence
                                                          .Color(THEME_COLOR))) {
             if (CVarGetInteger(CVAR_AUDIO("Playing"), 0) != 0) {
                 func_800F5C2C();
+                // Same orphan-voice flush as the stop button above.
+                SOH_MidiTranslator_Reset();
                 CVarSetInteger(CVAR_AUDIO("Playing"), 0);
             } else {
                 if (sequenceType == SEQ_SFX || sequenceType == SEQ_VOICE) {
@@ -1573,10 +1565,7 @@ void AudioEditor::DrawElement() {
                                 int n = SOH::MidiTranslator::Instance().DiscoveredSnapshot(
                                     tmp, SOH::MidiTranslator::kMaxDiscovered);
                                 for (int i = 0; i < n; i++) {
-                                    SOH::MidiTranslator::Instance().SetBypass(
-                                        tmp[i].fontId, tmp[i].instOrWave,
-                                        SOH::BypassMode::ForceNative);
-                                    SOH::MidiTranslator::Instance().MarkPairAsUserModified(
+                                    SOH::MidiTranslator::Instance().ClickNative(
                                         tmp[i].fontId, tmp[i].instOrWave);
                                 }
                                 AutoSaveOverrides();
@@ -1653,14 +1642,19 @@ void AudioEditor::DrawElement() {
                                 }
 
                                 // Hoisted from below: needed by the Override column too.
-                                SOH::BypassMode currentBypass =
-                                    SOH::MidiTranslator::Instance().GetBypass(p.fontId, p.instOrWave);
+                                // The Mode/Native vs Synth state comes straight from the
+                                // entry resolution — active entry == nullptr means there's
+                                // no enabled+resolvable entry for this pair, so native
+                                // plays. The "Default:" hint label still references
+                                // GetGmPreset since it's the only place to source a
+                                // human-readable GM name for the "no override" preset
+                                // placeholder.
                                 SOH::GmPreset defaultGmForMode = SOH::GetGmPreset(p.fontId, p.instOrWave);
-                                bool defaultIsNative = (defaultGmForMode.program == SOH::kUnmapped);
-                                bool effectiveIsNative;
-                                if (currentBypass == SOH::BypassMode::ForceNative)      effectiveIsNative = true;
-                                else if (currentBypass == SOH::BypassMode::ForceSynth) effectiveIsNative = false;
-                                else                                                  effectiveIsNative = defaultIsNative;
+                                const SOH::ConfigEntry* activeEntry =
+                                    SOH::MidiTranslator::Instance().GetActiveEntry(p.fontId, p.instOrWave);
+                                int activeIdx =
+                                    SOH::MidiTranslator::Instance().GetActiveEntryIdx(p.fontId, p.instOrWave);
+                                bool effectiveIsNative = (activeEntry == nullptr);
 
                                 // ── Override column (session-only) ─────────
                                 // Sits first to signal it's special. Holds the Solo button
@@ -1842,20 +1836,23 @@ void AudioEditor::DrawElement() {
                                     if (ImGui::InputTextWithHint("##displayName", hint, buf, sizeof(buf))) {
                                         SOH::MidiTranslator::Instance().SetDisplayName(
                                             p.fontId, p.instOrWave, std::string(buf));
-                                        SOH::MidiTranslator::Instance().MarkPairAsUserModified(
-                                            p.fontId, p.instOrWave);
                                     }
                                     if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
                                     if (ImGui::IsItemHovered()) {
+                                        // Always show the engine's three per-range samples,
+                                        // whether or not a custom label is set. The custom
+                                        // label hides what the engine actually plays per
+                                        // pitch range; the tooltip is where the user reads
+                                        // back the raw mapping.
+                                        auto names = SOH::GetInstrumentSampleNames(p.fontId, p.instOrWave);
+                                        const char* lowName    = SOH::StripSamplePathPrefix(names.low);
+                                        const char* normalName = SOH::StripSamplePathPrefix(names.normal);
+                                        const char* highName   = SOH::StripSamplePathPrefix(names.high);
                                         ImGui::SetTooltip(
-                                            "Optional friendly label for this engine slot.\n"
-                                            "Keyed by (Song, Sample id) = (fontId, instOrWave),\n"
-                                            "so the same instOrWave on a different font keeps\n"
-                                            "its own name. Saved to fluidsynth_overrides.json;\n"
-                                            "modders can ship labels in their mapping.json so\n"
-                                            "the table reads coherently after loading their\n"
-                                            "mod. Hint shows the auto-detected SF2 sample\n"
-                                            "name when nothing has been typed.");
+                                            "Hi:  %s\nMid: %s\nLow: %s",
+                                            (highName   && *highName)   ? highName   : "(empty)",
+                                            (normalName && *normalName) ? normalName : "(empty)",
+                                            (lowName    && *lowName)    ? lowName    : "(empty)");
                                     }
                                 }
 
@@ -1866,55 +1863,56 @@ void AudioEditor::DrawElement() {
                                 ImGui::Text("%d (0x%02X)", (int)p.instOrWave, (unsigned)(uint8_t)p.instOrWave);
 
                                 ImGui::TableSetColumnIndex(modeCol);
+                                // Native click disables every enabled entry for this pair
+                                // (keeps their selected flag so ClickSynth can restore).
+                                // Synth click re-enables: most-recently-enabled selected
+                                // entry wins, falls back to any disabled-but-resolvable
+                                // entry (mod-only-row case), last resort is a muted
+                                // "None" placeholder. See MidiTranslator::ClickSynth.
                                 if (ImGui::RadioButton("Native##bypass", effectiveIsNative)) {
-                                    SOH::MidiTranslator::Instance().SetBypass(
-                                        p.fontId, p.instOrWave,
-                                        defaultIsNative ? SOH::BypassMode::Auto
-                                                        : SOH::BypassMode::ForceNative);
-                                    SOH::MidiTranslator::Instance().MarkPairAsUserModified(
+                                    SOH::MidiTranslator::Instance().ClickNative(
                                         p.fontId, p.instOrWave);
                                     AutoSaveOverrides();
                                 }
                                 ImGui::SameLine();
                                 if (ImGui::RadioButton("Synth##bypass", !effectiveIsNative)) {
-                                    SOH::MidiTranslator::Instance().SetBypass(
-                                        p.fontId, p.instOrWave,
-                                        defaultIsNative ? SOH::BypassMode::ForceSynth
-                                                        : SOH::BypassMode::Auto);
-                                    SOH::MidiTranslator::Instance().MarkPairAsUserModified(
+                                    SOH::MidiTranslator::Instance().ClickSynth(
                                         p.fontId, p.instOrWave);
                                     AutoSaveOverrides();
                                 }
 
+                                // The per-entry editors (Gain, Shift, effect CCs) operate
+                                // on the active entry; when there is none, nothing to
+                                // edit so we grey them out. The Preset combo stays live
+                                // so the user can pick a preset to leave Native mode.
                                 ImGui::BeginDisabled(effectiveIsNative);
                                 auto disabledTooltipIfNative = [&]() {
                                     if (effectiveIsNative &&
                                         ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                                         ImGui::SetTooltip(
-                                            "Synth-only option. This pair is in Native mode\n"
-                                            "so the engine plays it directly - Gain, Shift\n"
-                                            "and GM Program have no effect. Switch Mode to\n"
-                                            "Synth to use these fields.");
+                                            "No active entry on this row. Gain / Shift /\n"
+                                            "effects edit the resolved entry's fields, so\n"
+                                            "they have nothing to operate on. Pick a preset\n"
+                                            "below or click Synth to restore the most\n"
+                                            "recent pick.");
                                     }
                                 };
 
                                 ImGui::TableSetColumnIndex(gainCol);
-                                float gainStored =
-                                    SOH::MidiTranslator::Instance().GetPerInstrumentGain(p.fontId, p.instOrWave);
+                                float gainStored = activeEntry ? activeEntry->gain : 0.0f;
                                 float gainShown = (gainStored == 0.0f) ? 1.0f : gainStored;
                                 ImGui::SetNextItemWidth(120.0f);
                                 if (ImGui::SliderFloat("##gain", &gainShown, 0.0f, 4.0f, "%.2f")) {
-                                    SOH::MidiTranslator::Instance().SetPerInstrumentGain(
-                                        p.fontId, p.instOrWave, gainShown);
-                                    SOH::MidiTranslator::Instance().MarkPairAsUserModified(
-                                        p.fontId, p.instOrWave);
+                                    if (activeIdx >= 0) {
+                                        SOH::MidiTranslator::Instance().SetEntryGain(
+                                            activeIdx, gainShown);
+                                    }
                                 }
                                 if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
                                 disabledTooltipIfNative();
 
                                 ImGui::TableSetColumnIndex(shiftCol);
-                                int transStored =
-                                    SOH::MidiTranslator::Instance().GetTransposeOverride(p.fontId, p.instOrWave);
+                                int transStored = activeEntry ? activeEntry->transpose : 0;
 
                                 // Decompose the stored semitone offset into a coarse octave
                                 // count + a leftover remainder in [-11..+11]. Using truncate-
@@ -1975,10 +1973,10 @@ void AudioEditor::DrawElement() {
                                         newSemis = transStored + deltaOctaves * 12;
                                     }
                                     newSemis = std::clamp(newSemis, -127, 127);
-                                    SOH::MidiTranslator::Instance().SetTransposeOverride(
-                                        p.fontId, p.instOrWave, static_cast<int8_t>(newSemis));
-                                    SOH::MidiTranslator::Instance().MarkPairAsUserModified(
-                                        p.fontId, p.instOrWave);
+                                    if (activeIdx >= 0) {
+                                        SOH::MidiTranslator::Instance().SetEntryTranspose(
+                                            activeIdx, static_cast<int8_t>(newSemis));
+                                    }
                                 }
                                 if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
                                 if (ImGui::IsItemHovered()) {
@@ -2006,122 +2004,104 @@ void AudioEditor::DrawElement() {
                                 }
                                 disabledTooltipIfNative();
 
-                                // ── Preset combo (column 7) ────────────────
-                                // Single combo per row. Items render grouped by pack with
-                                // disabled section headers; users scroll through the loaded
-                                // SF2 stack. With pack pinning in place the displayed pack
-                                // matches what FluidSynth will route to — no shadowing.
-                                int prgStored =
-                                    SOH::MidiTranslator::Instance().GetProgramOverride(p.fontId, p.instOrWave);
-                                int bankStored =
-                                    SOH::MidiTranslator::Instance().GetBankOverride(p.fontId, p.instOrWave);
-                                int16_t pinSfontId =
-                                    SOH::MidiTranslator::Instance().GetPinnedSfontId(p.fontId, p.instOrWave);
-
-                                // Resolve the preset the synth will actually play. Pack
-                                // pinning (Ship 1) makes this deterministic: if pinSfontId
-                                // is set, match by (sfontId, bank, program). For legacy
-                                // pack-agnostic entries (no pin), fall back to the
-                                // reverse-load-order walk that mirrors FluidSynth.
-                                const LoadedPresetEntry* resolvedPreset = nullptr;
-                                if (prgStored >= 0) {
-                                    int effectiveBank = (bankStored >= 0) ? bankStored : 0;
-                                    if (pinSfontId >= 0) {
-                                        for (const auto& lp : sLoadedPresets) {
-                                            if (lp.sfontId == pinSfontId &&
-                                                lp.bank == effectiveBank &&
-                                                lp.program == prgStored) {
-                                                resolvedPreset = &lp;
-                                                break;
-                                            }
-                                        }
-                                    } else {
-                                        for (auto it = sLoadedPresets.rbegin();
-                                             it != sLoadedPresets.rend(); ++it) {
-                                            if (it->bank == effectiveBank && it->program == prgStored) {
-                                                resolvedPreset = &*it;
-                                                break;
-                                            }
+                                // ── Source column ─────────────────────────
+                                // Reflects the current resolution winner. When there's no
+                                // active entry but there are selected entries (user picks
+                                // whose source pack isn't loaded), surface the most
+                                // recently enabled one as "[missing] [Pack]" so the user
+                                // sees WHY the row went native.
+                                ImGui::TableSetColumnIndex(sourceCol);
+                                const SOH::ConfigEntry* fallbackSaved = nullptr;
+                                if (!activeEntry) {
+                                    std::vector<int> idxs;
+                                    SOH::MidiTranslator::Instance().GetEntriesForPair(
+                                        p.fontId, p.instOrWave, idxs);
+                                    uint32_t bestSeq = 0;
+                                    for (int i2 : idxs) {
+                                        const SOH::ConfigEntry& e =
+                                            SOH::MidiTranslator::Instance().GetEntry(i2);
+                                        if (!e.selected) continue;
+                                        if (!fallbackSaved || e.lastEnabledSeq >= bestSeq) {
+                                            fallbackSaved = &e;
+                                            bestSeq = e.lastEnabledSeq;
                                         }
                                     }
                                 }
-
-                                // Saved metadata (pack + preset name the user authored against).
-                                const std::string savedPack =
-                                    SOH::MidiTranslator::Instance().GetPresetPackName(p.fontId, p.instOrWave);
-                                const std::string savedName =
-                                    SOH::MidiTranslator::Instance().GetPresetName(p.fontId, p.instOrWave);
-                                auto formatSaved = [&]() -> std::string {
-                                    if (!savedPack.empty() && !savedName.empty())
-                                        return "[" + savedPack + "] " + savedName;
-                                    if (!savedName.empty()) return savedName;
-                                    if (!savedPack.empty()) return "[" + savedPack + "]";
-                                    return std::string{};
-                                };
-
-                                // ── Source column ─────────────────────────
-                                // Read-only label that signals the pin state. Three states:
-                                //   - "—"          : no override on this pair (Preset = Default)
-                                //   - "[Pack] B#"  : pinned and live (green tint via TextColored)
-                                //   - "[missing] [Pack]" : pinned-but-dead (red tint)
-                                ImGui::TableSetColumnIndex(sourceCol);
-                                if (prgStored < 0) {
-                                    ImGui::TextDisabled("-");
-                                } else if (resolvedPreset) {
-                                    bool drift = !savedName.empty() &&
-                                                 (savedName != resolvedPreset->name ||
-                                                  (!savedPack.empty() && savedPack != resolvedPreset->packName));
+                                if (activeEntry) {
                                     const ImVec4 kLive(0.55f, 0.90f, 0.55f, 1.0f);
-                                    const ImVec4 kDrift(0.95f, 0.75f, 0.30f, 1.0f);
-                                    ImGui::TextColored(drift ? kDrift : kLive,
-                                                       "[%s] B%d", resolvedPreset->packName.c_str(),
-                                                       resolvedPreset->bank);
-                                    if (ImGui::IsItemHovered()) {
-                                        if (drift) {
+                                    if (activeEntry->packName.empty()) {
+                                        ImGui::TextDisabled("[None]");
+                                        if (ImGui::IsItemHovered()) {
                                             ImGui::SetTooltip(
-                                                "Resolves to [%s] B%d P%d: %s.\n"
-                                                "Authored against %s — different now because the\n"
-                                                "loaded SF2 stack changed. Pick the preset again\n"
-                                                "from the Preset combo to re-pin against the\n"
-                                                "intended pack, or accept the current resolution.",
-                                                resolvedPreset->packName.c_str(),
-                                                resolvedPreset->bank,
-                                                resolvedPreset->program,
-                                                resolvedPreset->name.c_str(),
-                                                formatSaved().c_str());
-                                        } else {
+                                                "Placeholder entry: synth path is muted, native\n"
+                                                "is suppressed too. Created by clicking Synth\n"
+                                                "with no prior pick available.");
+                                        }
+                                    } else {
+                                        ImGui::TextColored(kLive, "[%s] B%d",
+                                                           activeEntry->packName.c_str(),
+                                                           activeEntry->bank);
+                                        if (ImGui::IsItemHovered()) {
                                             ImGui::SetTooltip(
-                                                "Pinned to [%s] B%d P%d.\n"
-                                                "The pin survives across pack toggles as long as\n"
-                                                "the pack stays loaded; if the pack is disabled\n"
-                                                "this row plays native until you re-enable it.",
-                                                resolvedPreset->packName.c_str(),
-                                                resolvedPreset->bank,
-                                                resolvedPreset->program);
+                                                "Active entry: [%s] B%d P%d: %s.\n"
+                                                "Resolution picks the enabled candidate whose\n"
+                                                "pack is last in the load order; later packs\n"
+                                                "win on (font, inst) collisions.",
+                                                activeEntry->packName.c_str(),
+                                                activeEntry->bank, activeEntry->program,
+                                                activeEntry->presetName.c_str());
+                                        }
+                                    }
+                                } else if (fallbackSaved) {
+                                    // Two flavours of "row is Native":
+                                    //   sfontId >= 0 → user clicked Native (pack still loaded,
+                                    //                  entry just disabled). Show the pack
+                                    //                  greyed out so the user knows what
+                                    //                  Synth-click would restore.
+                                    //   sfontId <  0 → source pack isn't loaded right now.
+                                    //                  Red [missing] to call it out.
+                                    if (fallbackSaved->sfontId >= 0) {
+                                        ImGui::TextDisabled("[%s] B%d (off)",
+                                                            fallbackSaved->packName.empty()
+                                                                ? "?"
+                                                                : fallbackSaved->packName.c_str(),
+                                                            fallbackSaved->bank);
+                                        if (ImGui::IsItemHovered()) {
+                                            ImGui::SetTooltip(
+                                                "Disabled: [%s] B%d P%d: %s.\n"
+                                                "Saved as your most recent pick for this row.\n"
+                                                "Click Synth to re-enable it.",
+                                                fallbackSaved->packName.c_str(),
+                                                fallbackSaved->bank, fallbackSaved->program,
+                                                fallbackSaved->presetName.c_str());
+                                        }
+                                    } else {
+                                        const ImVec4 kDead(0.95f, 0.50f, 0.50f, 1.0f);
+                                        ImGui::TextColored(kDead, "[missing] %s",
+                                                           fallbackSaved->packName.empty()
+                                                               ? "?"
+                                                               : fallbackSaved->packName.c_str());
+                                        if (ImGui::IsItemHovered()) {
+                                            ImGui::SetTooltip(
+                                                "Most recent pick: [%s] B%d P%d: %s.\n"
+                                                "Source pack isn't loaded right now, so the row\n"
+                                                "plays native. Re-enable the pack or pick a new\n"
+                                                "preset to bring synth back.",
+                                                fallbackSaved->packName.c_str(),
+                                                fallbackSaved->bank, fallbackSaved->program,
+                                                fallbackSaved->presetName.c_str());
                                         }
                                     }
                                 } else {
-                                    // Pinned but dead — no loaded SF2 has the (bank, program).
-                                    const ImVec4 kDead(0.95f, 0.50f, 0.50f, 1.0f);
-                                    std::string saved = formatSaved();
-                                    if (!saved.empty()) {
-                                        ImGui::TextColored(kDead, "[missing] %s",
-                                                           savedPack.empty() ? "?" : savedPack.c_str());
-                                    } else {
-                                        ImGui::TextColored(kDead, "[no preset]");
-                                    }
-                                    if (ImGui::IsItemHovered()) {
-                                        int effectiveBank = (bankStored >= 0) ? bankStored : 0;
-                                        ImGui::SetTooltip(
-                                            "Dead override: B%d P%d not found in any currently\n"
-                                            "loaded SF2.%s%s%s Row plays native until the\n"
-                                            "source pack is re-enabled or you pick a new preset.",
-                                            effectiveBank, prgStored,
-                                            saved.empty() ? "" : "\nAuthored against: ",
-                                            saved.empty() ? "" : saved.c_str(),
-                                            saved.empty() ? "" : ".");
-                                    }
+                                    ImGui::TextDisabled("-");
                                 }
+
+                                // Preset combo stays live even when the row is in Native
+                                // mode — picking a preset is the user's path back to
+                                // Synth (PickPreset disables every other entry for this
+                                // pair, finds/creates the picked entry, enables+selects
+                                // it). The Default item maps to ClickNative semantics.
+                                ImGui::EndDisabled();
 
                                 ImGui::TableSetColumnIndex(presetCol);
                                 char defaultLabel[160];
@@ -2139,56 +2119,82 @@ void AudioEditor::DrawElement() {
                                                   SOH::kGmProgramNames[defaultGmForMode.program]);
                                 }
 
-                                // Preset combo's closed label drops the [Pack] B# prefix
-                                // (now carried by the Source column) so the preset name
-                                // has room.
                                 char prgPreview[200];
-                                if (prgStored < 0) {
-                                    std::strcpy(prgPreview, defaultLabel);
-                                } else if (resolvedPreset) {
+                                if (activeEntry) {
+                                    if (activeEntry->packName.empty()) {
+                                        std::strcpy(prgPreview, "(None)");
+                                    } else {
+                                        std::snprintf(prgPreview, sizeof(prgPreview),
+                                                      "P%d: %s",
+                                                      activeEntry->program,
+                                                      activeEntry->presetName.c_str());
+                                    }
+                                } else if (fallbackSaved && fallbackSaved->sfontId >= 0) {
+                                    // Pack still loaded; user just clicked Native. Show
+                                    // the saved preset name so the user remembers what
+                                    // Synth-click would restore.
                                     std::snprintf(prgPreview, sizeof(prgPreview),
-                                                  "P%d: %s",
-                                                  resolvedPreset->program,
-                                                  resolvedPreset->name.c_str());
-                                } else {
-                                    int effectiveBank = (bankStored >= 0) ? bankStored : 0;
+                                                  "(off) P%d: %s",
+                                                  fallbackSaved->program,
+                                                  fallbackSaved->presetName.c_str());
+                                } else if (fallbackSaved) {
                                     std::snprintf(prgPreview, sizeof(prgPreview),
                                                   "(B%d P%d not loaded)",
-                                                  effectiveBank, prgStored);
+                                                  fallbackSaved->bank,
+                                                  fallbackSaved->program);
+                                } else {
+                                    std::strcpy(prgPreview, defaultLabel);
                                 }
                                 ImGui::SetNextItemWidth(-FLT_MIN);
                                 if (ImGui::BeginCombo("##prgCombo", prgPreview,
                                                       ImGuiComboFlags_HeightLargest)) {
-                                    if (ImGui::Selectable(defaultLabel, prgStored < 0)) {
-                                        // Per the pack-bound resolution model in the plan:
-                                        // "Default" clears the entire entry. The mapping is
-                                        // the primary thing; without it, the fine-tuning has
-                                        // nothing to apply to, so we drop it all.
-                                        auto& tr = SOH::MidiTranslator::Instance();
-                                        tr.SetProgramOverride(p.fontId, p.instOrWave, -1);
-                                        tr.SetBankOverride(p.fontId, p.instOrWave, -1);
-                                        tr.ClearPresetMetadata(p.fontId, p.instOrWave);
-                                        tr.SetPinnedSfontId(p.fontId, p.instOrWave, -1);
-                                        tr.SetBypass(p.fontId, p.instOrWave, SOH::BypassMode::Auto);
-                                        tr.SetPerInstrumentGain(p.fontId, p.instOrWave, 0.0f);
-                                        tr.SetTransposeOverride(p.fontId, p.instOrWave, 0);
-                                        tr.SetReverbSend(p.fontId, p.instOrWave, -1);
-                                        tr.SetChorusSend(p.fontId, p.instOrWave, -1);
-                                        tr.SetFilterCutoff(p.fontId, p.instOrWave, -1);
-                                        tr.SetFilterResonance(p.fontId, p.instOrWave, -1);
-                                        // Drop this pair from the user-modified set so the
-                                        // next auto-save no longer writes an entry for it,
-                                        // letting pack mappings re-take effect on next
-                                        // reapply.
-                                        tr.UnmarkPairAsUserModified(p.fontId, p.instOrWave);
+                                    static char prgFilter[64] = "";
+                                    if (ImGui::IsWindowAppearing()) {
+                                        prgFilter[0] = '\0';
+                                        ImGui::SetKeyboardFocusHere();
+                                    }
+                                    ImGui::SetNextItemWidth(-FLT_MIN);
+                                    ImGui::InputTextWithHint(
+                                        "##prgFilter", "Filter (preset or pack name)",
+                                        prgFilter, sizeof(prgFilter));
+                                    ImGui::Separator();
+
+                                    const bool filterActive = prgFilter[0] != '\0';
+                                    auto containsCi = [](const std::string& hay,
+                                                         const char* needle) -> bool {
+                                        if (!needle || !*needle) return true;
+                                        const size_t nlen = std::strlen(needle);
+                                        if (nlen > hay.size()) return false;
+                                        auto it = std::search(
+                                            hay.begin(), hay.end(),
+                                            needle, needle + nlen,
+                                            [](char a, char b) {
+                                                return std::tolower(static_cast<unsigned char>(a)) ==
+                                                       std::tolower(static_cast<unsigned char>(b));
+                                            });
+                                        return it != hay.end();
+                                    };
+
+                                    if (!filterActive &&
+                                        ImGui::Selectable(defaultLabel, activeEntry == nullptr)) {
+                                        // "Default" in the new model = disable every enabled
+                                        // entry for this pair (ClickNative). selected flags
+                                        // are preserved so the user can click Synth to
+                                        // restore. Picking a real preset below promotes it
+                                        // to selected; the user has to explicitly switch.
+                                        SOH::MidiTranslator::Instance().ClickNative(
+                                            p.fontId, p.instOrWave);
                                         AutoSaveOverrides();
                                     }
-                                    // Iterate sLoadedPresets in load order. Section headers
-                                    // per pack keep the list readable for large SF2s. (Ship 2
-                                    // dropped the Bank/Pack filter combo — grouping by pack
-                                    // here is enough.)
+
                                     int lastSfont = -2;
+                                    int shown = 0;
                                     for (const auto& lp : sLoadedPresets) {
+                                        if (filterActive &&
+                                            !containsCi(lp.name, prgFilter) &&
+                                            !containsCi(lp.packName, prgFilter)) {
+                                            continue;
+                                        }
                                         if (lp.sfontId != lastSfont) {
                                             ImGui::Separator();
                                             ImGui::TextDisabled("%s", lp.packName.c_str());
@@ -2198,71 +2204,57 @@ void AudioEditor::DrawElement() {
                                         std::snprintf(item, sizeof(item), "B%d P%d: %s##%d:%d:%d",
                                                       lp.bank, lp.program, lp.name.c_str(),
                                                       lp.sfontId, lp.bank, lp.program);
-                                        bool sel = (resolvedPreset && resolvedPreset->sfontId == lp.sfontId &&
-                                                    resolvedPreset->bank == lp.bank &&
-                                                    resolvedPreset->program == lp.program);
+                                        bool sel = activeEntry &&
+                                                   activeEntry->packName == lp.packName &&
+                                                   activeEntry->bank == lp.bank &&
+                                                   activeEntry->program == lp.program;
                                         if (ImGui::Selectable(item, sel)) {
-                                            auto& tr = SOH::MidiTranslator::Instance();
-                                            tr.SetProgramOverride(
-                                                p.fontId, p.instOrWave, static_cast<int16_t>(lp.program));
-                                            tr.SetBankOverride(
-                                                p.fontId, p.instOrWave, static_cast<int16_t>(lp.bank));
-                                            // Record pack + preset name so Save persists the
-                                            // user's authoring intent. Audible routing comes
-                                            // from the pin below; metadata is what lets us
-                                            // re-resolve on next apply and what the UI shows.
-                                            tr.SetPresetMetadata(
-                                                p.fontId, p.instOrWave, lp.packName, lp.name);
-                                            // Ship 1: pin the pair to this exact sfontId so
-                                            // FluidSynth's preset lookup can't shadow with
-                                            // another loaded SF2 sharing (bank, program).
-                                            tr.SetPinnedSfontId(
-                                                p.fontId, p.instOrWave, static_cast<int16_t>(lp.sfontId));
-                                            tr.MarkPairAsUserModified(p.fontId, p.instOrWave);
+                                            SOH::MidiTranslator::Instance().PickPreset(
+                                                p.fontId, p.instOrWave,
+                                                lp.packName,
+                                                static_cast<int16_t>(lp.program),
+                                                static_cast<int16_t>(lp.bank),
+                                                lp.name);
                                             AutoSaveOverrides();
-                                            // ChannelState cache compares against
-                                            // (lastPreset, lastPinSfont) so the next
-                                            // ProcessNote naturally re-emits when either
-                                            // changes — nothing to invalidate explicitly.
                                         }
+                                        shown++;
                                     }
                                     if (sLoadedPresets.empty()) {
                                         ImGui::Separator();
                                         ImGui::TextDisabled("(no SF2 presets loaded)");
+                                    } else if (filterActive && shown == 0) {
+                                        ImGui::Separator();
+                                        ImGui::TextDisabled("(no matches for \"%s\")", prgFilter);
                                     }
                                     ImGui::EndCombo();
                                 }
                                 if (ImGui::IsItemHovered()) {
-                                    // Compose the tooltip dynamically so recovery info
-                                    // surfaces when there's saved metadata.
                                     std::string tip =
-                                        "Pick a preset from any loaded SF2. Selecting writes\n"
-                                        "both bank and program overrides for this pair AND\n"
-                                        "records the pack + preset name to the saved JSON, so\n"
-                                        "you can recover the choice if the SF2 stack changes.\n"
-                                        "[pack] prefix = which SF2 currently resolves the\n"
-                                        "(bank, program) pair (last-loaded wins on collisions).";
-                                    if (!savedPack.empty() || !savedName.empty()) {
-                                        tip += "\n\nSaved metadata for this pair:\n  pack: ";
-                                        tip += savedPack.empty() ? "(none)" : savedPack;
-                                        tip += "\n  preset: ";
-                                        tip += savedName.empty() ? "(none)" : savedName;
-                                        if (!resolvedPreset) {
-                                            tip += "\n(not in any currently loaded SF2 - re-enable\n"
-                                                   "the source pack or pick a new preset.)";
-                                        }
+                                        "Pick a preset from any loaded SF2. Selecting creates\n"
+                                        "or reuses an entry for (font, inst, pack, program),\n"
+                                        "marks it selected, and disables any other enabled\n"
+                                        "entries for this pair. The pack + preset name are\n"
+                                        "persisted so the choice survives an SF2 stack change.\n"
+                                        "Default = disable enabled entries (row goes native).";
+                                    if (fallbackSaved) {
+                                        tip += "\n\nMost recent pick (not currently loaded):\n  ";
+                                        tip += fallbackSaved->packName;
+                                        tip += " / ";
+                                        tip += fallbackSaved->presetName;
                                     }
                                     ImGui::SetTooltip("%s", tip.c_str());
                                 }
-                                disabledTooltipIfNative();
 
-                                // ── PR 7 effect sends + filter ────────────
-                                // Compact DragInt per effect. -1 sentinel = no override; the
-                                // synth uses its channel default (0 for sends, 64 for filter).
-                                // Drag below 0 to clear the override.
+                                // Re-enter the disabled-when-native scope for the effect
+                                // cells below.
+                                ImGui::BeginDisabled(effectiveIsNative);
+
+                                // Effect cells operate on the active entry. Each is a
+                                // compact DragInt with -1 sentinel = "no override" (synth
+                                // uses its channel default).
                                 auto drawEffectCell = [&](int colIdx, const char* widgetId,
                                                           int8_t current,
-                                                          void (SOH::MidiTranslator::*setter)(uint8_t, int16_t, int8_t),
+                                                          void (SOH::MidiTranslator::*setter)(int, int8_t),
                                                           const char* tip) {
                                     ImGui::TableSetColumnIndex(colIdx);
                                     int display = current;
@@ -2271,10 +2263,10 @@ void AudioEditor::DrawElement() {
                                                        current < 0 ? "off" : "%d")) {
                                         if (display < -1)  display = -1;
                                         if (display > 127) display = 127;
-                                        (SOH::MidiTranslator::Instance().*setter)(
-                                            p.fontId, p.instOrWave, static_cast<int8_t>(display));
-                                        SOH::MidiTranslator::Instance().MarkPairAsUserModified(
-                                            p.fontId, p.instOrWave);
+                                        if (activeIdx >= 0) {
+                                            (SOH::MidiTranslator::Instance().*setter)(
+                                                activeIdx, static_cast<int8_t>(display));
+                                        }
                                     }
                                     if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
                                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
@@ -2283,30 +2275,30 @@ void AudioEditor::DrawElement() {
 
                                 drawEffectCell(
                                     reverbCol, "##reverb",
-                                    SOH::MidiTranslator::Instance().GetReverbSend(p.fontId, p.instOrWave),
-                                    &SOH::MidiTranslator::SetReverbSend,
+                                    activeEntry ? activeEntry->reverb : int8_t(-1),
+                                    &SOH::MidiTranslator::SetEntryReverb,
                                     "Reverb send (CC91). 0-127 sends increasing amounts of this\n"
                                     "pair's voice through the synth's reverb. Drag below 0 to\n"
                                     "clear the override and restore the channel default.");
                                 drawEffectCell(
                                     chorusCol, "##chorus",
-                                    SOH::MidiTranslator::Instance().GetChorusSend(p.fontId, p.instOrWave),
-                                    &SOH::MidiTranslator::SetChorusSend,
+                                    activeEntry ? activeEntry->chorus : int8_t(-1),
+                                    &SOH::MidiTranslator::SetEntryChorus,
                                     "Chorus send (CC93). 0-127 sends increasing amounts of this\n"
                                     "pair's voice through the synth's chorus. Drag below 0 to\n"
                                     "clear the override and restore the channel default.");
                                 drawEffectCell(
                                     cutoffCol, "##cutoff",
-                                    SOH::MidiTranslator::Instance().GetFilterCutoff(p.fontId, p.instOrWave),
-                                    &SOH::MidiTranslator::SetFilterCutoff,
+                                    activeEntry ? activeEntry->cutoff : int8_t(-1),
+                                    &SOH::MidiTranslator::SetEntryFilterCutoff,
                                     "Low-pass filter cutoff (CC74). 64 = no shift from the\n"
                                     "SF2 default; lower darkens, higher brightens. Behaviour\n"
                                     "depends on whether the SF2 author routed CC74 to the\n"
                                     "initial filter Fc generator. Drag below 0 to clear.");
                                 drawEffectCell(
                                     qCol, "##fq",
-                                    SOH::MidiTranslator::Instance().GetFilterResonance(p.fontId, p.instOrWave),
-                                    &SOH::MidiTranslator::SetFilterResonance,
+                                    activeEntry ? activeEntry->q : int8_t(-1),
+                                    &SOH::MidiTranslator::SetEntryFilterResonance,
                                     "Filter resonance / Q (CC71). 64 = no shift from the SF2\n"
                                     "default; higher emphasises the cutoff frequency. Routing\n"
                                     "depends on the SF2 author. Drag below 0 to clear.");
