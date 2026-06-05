@@ -276,6 +276,47 @@ Users drop the `.o2r` into `<SoH-config>/mods/`.
   hint when this happens — that's where `display_name` becomes
   especially useful for walking the table; They can be included in mods.
 
+#### Engine quirks the substitution model can't paper over
+
+These are limits of the SF2-substitution approach itself, not bugs.
+A pack author hits them as "this row refuses to behave"; rather than
+fight, mark the row Native and move on.
+
+- **Engine drum bank (`Inst 0`) and SFX bank (`Inst 1`) route to
+  native unconditionally.** For these channels, the `semitone` byte
+  the engine emits is a slot index into a per-font drum / SFX table,
+  not a chromatic pitch. FluidSynth has no way to interpret a slot
+  index meaningfully, so the translator falls back to the engine
+  renderer. Any preset you pick on these rows is preserved in the
+  JSON but does not play; the row in the bypass table is labelled
+  `Drum` / `SFX` in the Inst column with a tooltip explaining why.
+  Worth noting: most OoT songs barely touch the engine drum bank.
+  See the next caveat for where audible percussion actually lives.
+
+- **Audible drums usually live on melodic-instrument rows, not
+  Inst 0.** OoT's music engine commonly authors percussion as a
+  regular `Instrument` whose L / M / H sample slots hold drum hits,
+  with the sequence picking specific engine semitones to select each
+  drum. Example: the Goron Drum heard in the potion-shop loop lives
+  on `(font 28, inst 3)`, not Inst 0. Two consequences:
+  - The engine pitch on the row has no relationship to the sample's
+    *actual* fundamental — what's labelled "semitone 39" might
+    sound like a snare somewhere around 200 Hz, not D#1.
+  - A melodic SF2 substitution on the row produces "right rhythm,
+    wrong sound at random pitches" because GM percussion expects a
+    fixed `pitch → drum` map (MIDI 36 = kick, 38 = snare, ...) the
+    engine never agreed to.
+  Today the only clean answer on these rows is Native.
+
+- **Single-NoteOn polyphonic samples cannot be substituted.** A few
+  OoT instruments bake a chord into a single sample — one engine
+  NoteOn fires what sounds like a 10-voice bell stack. The
+  substitution model fires *one* preset voice per engine event, so
+  reproducing this would need either a custom SF2 preset whose
+  single voice already contains the chord stack, or a sequence
+  rewrite that emits the chord as N parallel NoteOns. Neither is in
+  this tool's scope — leave the row Native.
+
 ---
 
 ## See also

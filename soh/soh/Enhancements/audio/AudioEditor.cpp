@@ -113,6 +113,13 @@ void AutoSaveOverrides() {
 static std::set<std::pair<uint8_t, int16_t>> sSoloedPairs;
 static std::set<std::pair<uint8_t, int16_t>> sExplicitMutedPairs;
 
+// Export-pack-mapping popup state. Buffers are session-scoped: the popup
+// prefills sExportPackName from the user's most common selected pack each
+// time it opens, and sExportStatus carries the last write result so the
+// user can re-open and re-confirm without losing the path.
+static char sExportPackName[128] = "";
+static char sExportStatus[512]   = "";
+
 // Returns every pack the user could enable: archive-supplied first (alpha
 // sorted), then loose-folder SF2s (alpha sorted). Packs are not filtered
 // by the disabled-set CVar here — callers decide whether to apply that
@@ -1437,6 +1444,46 @@ void AudioEditor::DrawElement() {
 
                         ImGui::Separator();
 
+                        // ── Voice budget readout ─────────────────────────
+                        // Snapshot the synth's voice state once per frame. When the
+                        // active count approaches the polyphony limit, new NoteOns
+                        // steal old voices — that's audible as "cuts" on dense
+                        // songs. Colour-tier the text so the eye reads "near cap"
+                        // without having to do the division.
+                        {
+                            auto activeSynth = Ship::MidiSynthManager::Instance().GetActiveSynth();
+                            uint32_t voiceActive = activeSynth ? activeSynth->GetActiveVoiceCount() : 0u;
+                            uint32_t voiceLimit  = activeSynth ? activeSynth->GetPolyphonyLimit()  : 0u;
+                            float ratio = voiceLimit > 0 ? float(voiceActive) / float(voiceLimit) : 0.0f;
+                            ImVec4 colour(0.70f, 0.70f, 0.70f, 1.0f); // disabled grey baseline
+                            if (ratio >= 0.80f)      colour = ImVec4(1.00f, 0.40f, 0.40f, 1.0f); // red
+                            else if (ratio >= 0.60f) colour = ImVec4(1.00f, 0.85f, 0.30f, 1.0f); // amber
+                            if (voiceLimit > 0) {
+                                ImGui::TextColored(colour, "FluidSynth voices: %u / %u",
+                                                   (unsigned)voiceActive, (unsigned)voiceLimit);
+                            } else {
+                                ImGui::TextDisabled("FluidSynth voices: -");
+                            }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::SetTooltip(
+                                    "Active voices held by FluidSynth out of its polyphony\n"
+                                    "limit (default 256). When this approaches the limit,\n"
+                                    "new NoteOns steal old voices and dense passages cut.\n"
+                                    "If 'cuts' line up with values well below the limit,\n"
+                                    "the bottleneck is audio-thread CPU, not voices.");
+                            }
+                            // Throttled log so we can correlate user-reported cuts
+                            // with the voice budget without spamming. Game-thread
+                            // tick; coarse-grained on purpose.
+                            static double sLastVoiceWarnTime = -10.0;
+                            const double now = ImGui::GetTime();
+                            if (voiceLimit > 0 && ratio >= 0.80f && (now - sLastVoiceWarnTime) > 1.0) {
+                                SPDLOG_WARN("[FluidSynth] high voice usage: {} / {} ({:.0f}%)",
+                                            voiceActive, voiceLimit, ratio * 100.0);
+                                sLastVoiceWarnTime = now;
+                            }
+                        }
+
                         // ── Per-instrument overrides ─────────────────────
                         SOH::DiscoveredPair pairs[SOH::MidiTranslator::kMaxDiscovered];
                         int nPairs = SOH::MidiTranslator::Instance().DiscoveredSnapshot(
@@ -1463,6 +1510,85 @@ void AudioEditor::DrawElement() {
                                 "defaults (Mode, Gain, Trans, Preset, effects). Discovered\n"
                                 "list is left alone. The change is persisted to disk\n"
                                 "automatically.");
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Export pack mapping...##bypassExport")) {
+                            // Prefill the pack-name input with the most common pack
+                            // among the user's currently selected entries — usually
+                            // exactly what they want to publish.
+                            std::map<std::string, int> tally;
+                            int nEntries = SOH::MidiTranslator::Instance().GetEntryCount();
+                            for (int i = 0; i < nEntries; ++i) {
+                                const auto& e = SOH::MidiTranslator::Instance().GetEntry(i);
+                                if (!e.enabled || !e.selected || e.program < 0 || e.packName.empty())
+                                    continue;
+                                tally[e.packName]++;
+                            }
+                            std::string best;
+                            int bestN = 0;
+                            for (const auto& kv : tally) {
+                                if (kv.second > bestN) { best = kv.first; bestN = kv.second; }
+                            }
+                            std::strncpy(sExportPackName, best.c_str(), sizeof(sExportPackName) - 1);
+                            sExportPackName[sizeof(sExportPackName) - 1] = '\0';
+                            sExportStatus[0] = '\0';
+                            ImGui::OpenPopup("Export pack mapping");
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip(
+                                "Write a mapping.json shaped for shipping inside a synth\n"
+                                "pack. Only entries that are currently enabled AND selected\n"
+                                "for the named pack get exported; runtime fields are\n"
+                                "stripped and a 'pack_name' header is added.\n\n"
+                                "Destination: synth-packs/<pack_name>/mapping.json under\n"
+                                "the SoH config directory.");
+                        }
+                        // Export popup: pack-name input + entry-count preview + Export.
+                        ImVec2 popupCenter = ImGui::GetMainViewport()->GetCenter();
+                        ImGui::SetNextWindowPos(popupCenter, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+                        if (ImGui::BeginPopupModal("Export pack mapping", nullptr,
+                                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::TextWrapped(
+                                "Publishes only entries that are currently enabled AND\n"
+                                "selected for the named pack. Writes to:\n"
+                                "  synth-packs/<pack_name>/mapping.json");
+                            ImGui::Separator();
+
+                            ImGui::SetNextItemWidth(280.0f);
+                            ImGui::InputText("Pack name##exportPackName",
+                                             sExportPackName, sizeof(sExportPackName));
+                            std::string filter = sExportPackName;
+                            int previewN =
+                                SOH::MidiTranslator::Instance().CountExportableEntries(filter);
+                            ImGui::Text("Entries to export: %d", previewN);
+
+                            bool canExport = previewN > 0 && !filter.empty();
+                            ImGui::BeginDisabled(!canExport);
+                            if (ImGui::Button("Export##exportPackGo", ImVec2(120, 0))) {
+                                std::string dest = Ship::Context::GetPathRelativeToAppDirectory(
+                                    (std::string(kLooseSynthPacksDirName) + "/" + filter + "/" +
+                                     kSynthPackJsonName).c_str(),
+                                    appShortName);
+                                int n = SOH::MidiTranslator::Instance().ExportPackMapping(dest, filter);
+                                if (n < 0) {
+                                    std::snprintf(sExportStatus, sizeof(sExportStatus),
+                                                  "Export FAILED. See log for details.");
+                                } else {
+                                    std::snprintf(sExportStatus, sizeof(sExportStatus),
+                                                  "Wrote %d entries to:\n%s", n, dest.c_str());
+                                }
+                            }
+                            ImGui::EndDisabled();
+                            ImGui::SameLine();
+                            if (ImGui::Button("Close##exportPackClose", ImVec2(120, 0))) {
+                                ImGui::CloseCurrentPopup();
+                            }
+
+                            if (sExportStatus[0]) {
+                                ImGui::Separator();
+                                ImGui::TextWrapped("%s", sExportStatus);
+                            }
+                            ImGui::EndPopup();
                         }
                         ImGui::TextDisabled("Mode picks Native (engine plays this) or Synth (FluidSynth plays this). "
                                             "Gain is a per-instrument CC11 multiplier; Trans shifts pitch by semitones. "
@@ -1492,6 +1618,7 @@ void AudioEditor::DrawElement() {
                         const uint8_t chorusCol   = col++;
                         const uint8_t cutoffCol   = col++;
                         const uint8_t qCol        = col++;
+                        const uint8_t bendCol     = col++;
                         const uint8_t kColCount   = col;
 
                         if (ImGui::BeginTable("##bypassTable", kColCount,
@@ -1531,6 +1658,7 @@ void AudioEditor::DrawElement() {
                             ImGui::TableSetupColumn("Chorus",   ImGuiTableColumnFlags_WidthFixed, 60.0f);
                             ImGui::TableSetupColumn("Cutoff",   ImGuiTableColumnFlags_WidthFixed, 60.0f);
                             ImGui::TableSetupColumn("Q",        ImGuiTableColumnFlags_WidthFixed, 60.0f);
+                            ImGui::TableSetupColumn("Bend",     ImGuiTableColumnFlags_WidthFixed, 60.0f);
                             ImGui::TableSetupScrollFreeze(0, 2);
 
                             ImGui::TableNextRow();
@@ -1860,7 +1988,24 @@ void AudioEditor::DrawElement() {
                                 ImGui::Text("%u", (unsigned)p.fontId);
 
                                 ImGui::TableSetColumnIndex(instCol);
-                                ImGui::Text("%d (0x%02X)", (int)p.instOrWave, (unsigned)(uint8_t)p.instOrWave);
+                                if (p.instOrWave == 0) {
+                                    ImGui::Text("0 (Drum)");
+                                } else if (p.instOrWave == 1) {
+                                    ImGui::Text("1 (SFX)");
+                                } else {
+                                    ImGui::Text("%d (0x%02X)", (int)p.instOrWave, (unsigned)(uint8_t)p.instOrWave);
+                                }
+                                if (ImGui::IsItemHovered() && (p.instOrWave == 0 || p.instOrWave == 1)) {
+                                    ImGui::SetTooltip(
+                                        p.instOrWave == 0
+                                            ? "Engine drum channel. The 'semitone' byte coming\n"
+                                              "from the sequence is a drum-slot index, not a\n"
+                                              "pitch, so FluidSynth substitutions are forced to\n"
+                                              "native. See the modder doc for the longer story."
+                                            : "Engine SFX channel. The 'semitone' byte is an\n"
+                                              "SFX-slot index, not a pitch. Routed to native\n"
+                                              "for the same reason as the drum channel.");
+                                }
 
                                 ImGui::TableSetColumnIndex(modeCol);
                                 // Native click disables every enabled entry for this pair
@@ -2123,6 +2268,14 @@ void AudioEditor::DrawElement() {
                                 if (activeEntry) {
                                     if (activeEntry->packName.empty()) {
                                         std::strcpy(prgPreview, "(None)");
+                                    } else if (activeEntry->bank == 128) {
+                                        // GM percussion currently falls back to native;
+                                        // the picked entry is preserved so a future
+                                        // per-slot routing path can use it.
+                                        std::snprintf(prgPreview, sizeof(prgPreview),
+                                                      "(drums -> native) P%d: %s",
+                                                      activeEntry->program,
+                                                      activeEntry->presetName.c_str());
                                     } else {
                                         std::snprintf(prgPreview, sizeof(prgPreview),
                                                       "P%d: %s",
@@ -2236,6 +2389,13 @@ void AudioEditor::DrawElement() {
                                         "entries for this pair. The pack + preset name are\n"
                                         "persisted so the choice survives an SF2 stack change.\n"
                                         "Default = disable enabled entries (row goes native).";
+                                    if (activeEntry && activeEntry->bank == 128) {
+                                        tip +=
+                                            "\n\nGM percussion (bank 128) currently falls back\n"
+                                            "to native at play time. The picked preset is kept\n"
+                                            "in the JSON so a future per-drum-slot routing\n"
+                                            "path can use it.";
+                                    }
                                     if (fallbackSaved) {
                                         tip += "\n\nMost recent pick (not currently loaded):\n  ";
                                         tip += fallbackSaved->packName;
@@ -2302,6 +2462,31 @@ void AudioEditor::DrawElement() {
                                     "Filter resonance / Q (CC71). 64 = no shift from the SF2\n"
                                     "default; higher emphasises the cutoff frequency. Routing\n"
                                     "depends on the SF2 author. Drag below 0 to clear.");
+
+                                // Per-pair pitch-bend multiplier. 1.0 = native curve.
+                                // Useful when an SF2 sample's tuning + interpolation makes
+                                // engine freqScale changes pitch more than they should.
+                                ImGui::TableSetColumnIndex(bendCol);
+                                {
+                                    float bendDisplay = activeEntry ? activeEntry->bend_scale : 1.0f;
+                                    ImGui::SetNextItemWidth(58.0f);
+                                    if (ImGui::DragFloat("##bend", &bendDisplay, 0.01f, 0.0f, 4.0f, "%.2fx")) {
+                                        if (bendDisplay < 0.0f) bendDisplay = 0.0f;
+                                        if (bendDisplay > 4.0f) bendDisplay = 4.0f;
+                                        if (activeIdx >= 0) {
+                                            SOH::MidiTranslator::Instance().SetEntryBendScale(
+                                                activeIdx, bendDisplay);
+                                        }
+                                    }
+                                    if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
+                                    if (ImGui::IsItemHovered())
+                                        ImGui::SetTooltip(
+                                            "Pitch-bend multiplier. 1.0 = native curve. Lower to\n"
+                                            "tame an SF2 sample whose interpolation makes engine\n"
+                                            "freqScale changes pitch more than they should; 0.0\n"
+                                            "disables bend entirely.");
+                                    disabledTooltipIfNative();
+                                }
 
                                 ImGui::EndDisabled();
                                 ImGui::PopID();

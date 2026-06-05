@@ -90,6 +90,7 @@ struct ConfigEntry {
     int8_t      chorus        = -1;  // CC 93; -1 = no override (default 0)
     int8_t      cutoff        = -1;  // CC 74; -1 = no override (default 64)
     int8_t      q             = -1;  // CC 71; -1 = no override (default 64)
+    float       bend_scale    = 1.0f;// pitch-bend multiplier applied before clamp
     bool        enabled       = false;
     bool        selected      = false;
     uint32_t    lastEnabledSeq = 0;  // process-lifetime; not persisted
@@ -194,6 +195,7 @@ class MidiTranslator {
     void SetEntryChorus(int idx, int8_t cc);
     void SetEntryFilterCutoff(int idx, int8_t cc);
     void SetEntryFilterResonance(int idx, int8_t cc);
+    void SetEntryBendScale(int idx, float scale);
 
     // ── Per-pair display name (row label, sparse) ────────────────────────
     std::string GetDisplayName(uint8_t fontId, int16_t instOrWave) const;
@@ -217,6 +219,19 @@ class MidiTranslator {
     // source=UserPicked. enabled / selected come from the file; missing
     // fields default to true.
     bool ApplyOverridesFromFile(const std::string& path);
+
+    // Publish-as-pack-mapping. Writes a mapping.json shaped for distribution
+    // inside a synth pack: only enabled+selected entries belonging to
+    // `packNameFilter` are emitted, runtime fields are stripped, and the
+    // file carries a top-level "pack_name" field. Returns the number of
+    // entries written (or -1 on I/O failure). When packNameFilter is empty,
+    // every selected entry is emitted regardless of its source pack.
+    int ExportPackMapping(const std::string& path, const std::string& packNameFilter) const;
+
+    // Helper: how many entries `ExportPackMapping` would emit for a given
+    // pack filter. Same predicate as the writer; lets the UI show a preview
+    // count before the user clicks Export.
+    int CountExportableEntries(const std::string& packNameFilter) const;
 
     void      SetSynthMode(SynthMode mode) { mSynthMode = mode; }
     SynthMode GetSynthMode() const         { return mSynthMode; }

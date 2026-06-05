@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 
 #ifdef DEBUG_FONT_MAP
@@ -468,6 +469,15 @@ void MidiTranslator::SetEntryFilterResonance(int idx, int8_t cc) {
         return;
     mEntries[idx].q = ClampCcOrSentinel(cc);
 }
+void MidiTranslator::SetEntryBendScale(int idx, float scale) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    if (scale < 0.0f)
+        scale = 0.0f;
+    if (scale > 4.0f)
+        scale = 4.0f;
+    mEntries[idx].bend_scale = scale;
+}
 
 // ── Per-pair display name (row label) ─────────────────────────────────────
 
@@ -614,6 +624,8 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
             entry["filter_cutoff"] = e.cutoff;
         if (e.q >= 0)
             entry["filter_q"] = e.q;
+        if (e.bend_scale != 1.0f)
+            entry["bend_scale"] = e.bend_scale;
         entry["enabled"] = e.enabled;
         entry["selected"] = e.selected;
         if (hasDisplayName)
@@ -651,6 +663,89 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
     }
     out << j.dump(2);
     return out.good();
+}
+
+// Shared predicate for "ship this entry inside a pack mapping?". Same gate
+// used by ExportPackMapping and CountExportableEntries so the previewed
+// count always matches what gets written.
+static bool ExportEntryMatches(const ConfigEntry& e, const std::string& packNameFilter) {
+    if (!e.enabled || !e.selected) return false;
+    if (e.program < 0) return false;          // None placeholder — not shippable
+    if (e.packName.empty()) return false;
+    if (!packNameFilter.empty() && e.packName != packNameFilter) return false;
+    return true;
+}
+
+int MidiTranslator::CountExportableEntries(const std::string& packNameFilter) const {
+    int n = 0;
+    for (const auto& e : mEntries)
+        if (ExportEntryMatches(e, packNameFilter))
+            ++n;
+    return n;
+}
+
+int MidiTranslator::ExportPackMapping(const std::string& path, const std::string& packNameFilter) const {
+    nlohmann::json j;
+    j["version"] = 2;
+    if (!packNameFilter.empty())
+        j["pack_name"] = packNameFilter;
+    j["entries"] = nlohmann::json::array();
+
+    int written = 0;
+    for (const auto& e : mEntries) {
+        if (!ExportEntryMatches(e, packNameFilter))
+            continue;
+
+        nlohmann::json entry;
+        entry["fontId"] = e.fontId;
+        entry["instOrWave"] = e.instOrWave;
+        entry["pack"] = e.packName;
+        entry["program"] = e.program;
+        entry["bank"] = e.bank;
+        if (!e.presetName.empty())
+            entry["preset_name"] = e.presetName;
+        if (e.gain != 0.0f)
+            entry["gain"] = e.gain;
+        if (e.transpose != 0)
+            entry["transpose"] = e.transpose;
+        if (e.reverb >= 0)
+            entry["reverb"] = e.reverb;
+        if (e.chorus >= 0)
+            entry["chorus"] = e.chorus;
+        if (e.cutoff >= 0)
+            entry["filter_cutoff"] = e.cutoff;
+        if (e.q >= 0)
+            entry["filter_q"] = e.q;
+        if (e.bend_scale != 1.0f)
+            entry["bend_scale"] = e.bend_scale;
+        // Pack mapping consumers default enabled=true, selected=false at load
+        // time (ApplyOverridesFromString), so we omit both flags here — the
+        // file represents "this is the pack's recommended preset for the
+        // pair", not "this is currently picked by the user".
+        auto dispIt = mDisplayName.find({ e.fontId, e.instOrWave });
+        if (dispIt != mDisplayName.end() && !dispIt->second.empty())
+            entry["display_name"] = dispIt->second;
+        j["entries"].push_back(std::move(entry));
+        ++written;
+    }
+
+    std::error_code ec;
+    auto parent = std::filesystem::path(path).parent_path();
+    if (!parent.empty())
+        std::filesystem::create_directories(parent, ec);
+
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        SPDLOG_WARN("[MidiTranslator] ExportPackMapping: cannot open {}", path);
+        return -1;
+    }
+    out << j.dump(2);
+    if (!out.good()) {
+        SPDLOG_WARN("[MidiTranslator] ExportPackMapping: write failed for {}", path);
+        return -1;
+    }
+    SPDLOG_INFO("[MidiTranslator] ExportPackMapping: wrote {} entries to {}", written, path);
+    return written;
 }
 
 bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
@@ -711,6 +806,12 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
             e.cutoff = ClampCcOrSentinel(entry.value("filter_cutoff", -1));
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
+        if (entry.contains("bend_scale")) {
+            float bs = entry.value("bend_scale", 1.0f);
+            if (bs < 0.0f) bs = 0.0f;
+            if (bs > 4.0f) bs = 4.0f;
+            e.bend_scale = bs;
+        }
         // Pack mapping.json: enabled by default (mods publish active
         // presets), selected stays false (user hasn't picked).
         e.enabled = entry.value("enabled", true);
@@ -784,6 +885,12 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
             e.cutoff = ClampCcOrSentinel(entry.value("filter_cutoff", -1));
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
+        if (entry.contains("bend_scale")) {
+            float bs = entry.value("bend_scale", 1.0f);
+            if (bs < 0.0f) bs = 0.0f;
+            if (bs > 4.0f) bs = 4.0f;
+            e.bend_scale = bs;
+        }
         // File overlay = user file. Defaults align with "this is a user
         // pick" — enabled+selected unless the file says otherwise. Old
         // (v1) files don't carry these keys, so the defaults give the
@@ -860,6 +967,21 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         return true;
     }
 
+    // Engine drum (instOrWave==0) and SFX (instOrWave==1) channels: the
+    // byte we receive as `semitone` is a slot index into the channel's
+    // drum / SFX table (Audio_GetDrum / Audio_GetSfx in audio_seqplayer.c),
+    // not a chromatic pitch. Any synth substitution misinterprets the
+    // slot ID as a note and produces "ghost notes", so route these to
+    // native unconditionally until per-slot note-range splits land and
+    // give each slot its own addressable entry.
+    if (instOrWave == 0 || instOrWave == 1) {
+        if (isFinished || velocity <= 0.0f)
+            retireSlot();
+        else
+            adoptNative();
+        return false;
+    }
+
     // ── Resolution: look up the active entry ────────────────────────────
     if (!BypassIndexValid(fontId, instOrWave)) {
         if (isFinished || velocity <= 0.0f)
@@ -890,26 +1012,27 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     const uint8_t gmBank = static_cast<uint8_t>(e.bank);
     const uint8_t gmProgram = static_cast<uint8_t>(e.program);
     const int16_t pinSfont = e.sfontId;
-    const bool isDrum = (gmBank == 128);
+
+    // GM percussion (bank 128) needs note-range splits to map each engine
+    // drum slot to its intended GM percussion note; until that lands the
+    // engine-semitone-to-GM-note heuristic produced nothing usable. Route
+    // to native and keep the authored entry around for the split-aware path.
+    if (gmBank == 128) {
+        if (isFinished || velocity <= 0.0f)
+            retireSlot();
+        else
+            adoptNative();
+        return false;
+    }
 
     // Per-pair channel allocation — same channel for the life of a pair
     // so per-pair effect CCs survive across notes.
     uint8_t targetChannel = AllocateChannelForPair(fontId, instOrWave);
 
     // Integer MIDI note from the engine semitone, with optional transpose.
-    uint8_t midiNote;
-    if (isDrum) {
-        // Drum bank: we don't have gm.drumNote in the entry model; spread
-        // the engine semitone across the GM percussion range as a sane
-        // fallback. Packs that want specific drum routing can ship a
-        // mapping.json that maps each drum slot to its own (bank, program).
-        int n = static_cast<int>(semitone) + 35;
-        midiNote = static_cast<uint8_t>(std::clamp(n, 35, 81));
-    } else {
-        int transpose = static_cast<int>(e.transpose);
-        int midiRaw = static_cast<int>(semitone) + kEngineSemitoneToMidiOffset + transpose;
-        midiNote = static_cast<uint8_t>(std::clamp(midiRaw, 0, 127));
-    }
+    int transpose = static_cast<int>(e.transpose);
+    int midiRaw = static_cast<int>(semitone) + kEngineSemitoneToMidiOffset + transpose;
+    uint8_t midiNote = static_cast<uint8_t>(std::clamp(midiRaw, 0, 127));
 
     uint16_t preset = (static_cast<uint16_t>(gmBank) << 8) | gmProgram;
     ChannelState& chState = mChannelState[targetChannel];
@@ -1006,11 +1129,11 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         return true;
     }
 
-    if (!isDrum && fabsf(freqScale - state.lastFreqScale) > 1e-6f) {
+    if (fabsf(freqScale - state.lastFreqScale) > 1e-6f) {
         float ratio = (state.baseFreqScale > 0.0f) ? (freqScale / state.baseFreqScale) : 1.0f;
         if (ratio <= 0.0f)
             ratio = 1e-6f;
-        float bend = 12.0f * log2f(ratio);
+        float bend = 12.0f * log2f(ratio) * e.bend_scale;
         bend = std::clamp(bend, -kMaxPitchBendSemitones, kMaxPitchBendSemitones);
         synth->PitchBend(state.channel, bend);
         state.lastFreqScale = freqScale;
