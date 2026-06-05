@@ -41,7 +41,6 @@ struct NoteTranslatorState {
     uint8_t  midiNote      = 0;
     uint8_t  pairFontId    = 0;
     int16_t  pairInstOrWave = -1;
-    float    baseFreqScale = 1.0f;
     float    lastFreqScale = 0.0f;
 };
 
@@ -90,7 +89,6 @@ struct ConfigEntry {
     int8_t      chorus        = -1;  // CC 93; -1 = no override (default 0)
     int8_t      cutoff        = -1;  // CC 74; -1 = no override (default 64)
     int8_t      q             = -1;  // CC 71; -1 = no override (default 64)
-    float       bend_scale    = 1.0f;// pitch-bend multiplier applied before clamp
     bool        enabled       = false;
     bool        selected      = false;
     uint32_t    lastEnabledSeq = 0;  // process-lifetime; not persisted
@@ -108,7 +106,7 @@ class MidiTranslator {
     // Audio-thread entry point (see audio_playback.c hook).
     bool ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan, float channelVolume,
                      uint8_t fontId, int16_t instOrWave, uint8_t semitone, bool isFinished, uint8_t channelIdx,
-                     float resampleRate);
+                     float resampleRate, float pitchBend);
     void NoteDisabled(int noteIndex);
     void Reset();
 
@@ -128,6 +126,27 @@ class MidiTranslator {
     void ClearDiscovered();
     uint8_t GetSynthActiveCount(uint8_t fontId, int16_t instOrWave) const;
     uint8_t GetNativeActiveCount(uint8_t fontId, int16_t instOrWave) const;
+
+    // DEBUG: per-pair running stats accumulated by ProcessNote. Used by the
+    // AudioEditor's per-row "[DBG]" popup to investigate octave-shift,
+    // bend magnitude, and missing-note questions. Counters are atomic;
+    // float min/max are written by the audio thread and read by the UI
+    // without locking — best-effort, a torn read is harmless cosmetic.
+    struct DebugPairStats {
+        uint32_t noteOns          = 0;
+        uint32_t routedSynth      = 0;
+        uint32_t routedNative     = 0;
+        uint32_t routedMute       = 0;  // bank == 128 / engine drum-SFX / placeholder
+        uint32_t bendUpdates      = 0;  // freqScale changes after NoteOn
+        float    baseFreqScaleMin = 0.0f;
+        float    baseFreqScaleMax = 0.0f;
+        float    bendRatioMin     = 1.0f;
+        float    bendRatioMax     = 1.0f;
+        uint8_t  lastSemitone     = 0;
+    };
+    DebugPairStats GetDebugStats(uint8_t fontId, int16_t instOrWave) const;
+    void           ResetDebugStats();
+    void           ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave);
 
     // ── Pack stack + entry sfontId refresh ───────────────────────────────
     // Set by AudioEditor after every SF2 stack change. Used as the
@@ -195,7 +214,6 @@ class MidiTranslator {
     void SetEntryChorus(int idx, int8_t cc);
     void SetEntryFilterCutoff(int idx, int8_t cc);
     void SetEntryFilterResonance(int idx, int8_t cc);
-    void SetEntryBendScale(int idx, float scale);
 
     // ── Per-pair display name (row label, sparse) ────────────────────────
     std::string GetDisplayName(uint8_t fontId, int16_t instOrWave) const;
@@ -281,6 +299,23 @@ class MidiTranslator {
     std::set<std::pair<uint8_t, int16_t>>        mTemporaryMute;
     std::map<std::pair<uint8_t, int16_t>, float> mTemporaryVolume;
     std::map<std::pair<uint8_t, int16_t>, std::string> mDisplayName;
+
+    // DEBUG: per-pair stats backing storage. Counters use relaxed atomics;
+    // float min/max are written from the audio thread and read from the UI
+    // without synchronisation (best-effort diagnostic).
+    struct DebugSlot {
+        std::atomic<uint32_t> noteOns{0};
+        std::atomic<uint32_t> routedSynth{0};
+        std::atomic<uint32_t> routedNative{0};
+        std::atomic<uint32_t> routedMute{0};
+        std::atomic<uint32_t> bendUpdates{0};
+        float baseFreqScaleMin = 0.0f;
+        float baseFreqScaleMax = 0.0f;
+        float bendRatioMin     = 1.0f;
+        float bendRatioMax     = 1.0f;
+        uint8_t lastSemitone   = 0;
+    };
+    DebugSlot mDebugStats[kMaxFontId][kMaxInstOrWave];
 
     // ── Ship 11: entry-based config storage ──────────────────────────────
     std::vector<ConfigEntry> mEntries;

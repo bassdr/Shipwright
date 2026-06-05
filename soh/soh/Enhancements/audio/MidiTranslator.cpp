@@ -49,10 +49,6 @@ static constexpr int kEngineSemitoneToMidiOffset = 21;
 // mode) or NoteOn velocity (Enhanced mode).
 static constexpr uint8_t kFixedNoteOnVelocity = 100;
 
-// FluidSynth::kPitchBendRangeSemitones is +/-12. We stay slightly below
-// to keep headroom for integer rounding on the FluidSynth side.
-static constexpr float kMaxPitchBendSemitones = 12.0f;
-
 MidiTranslator::MidiTranslator() {
     // Reserve mEntries capacity so push_back never reallocates. The audio
     // thread reads entry fields by index without locking; a reallocation
@@ -125,6 +121,48 @@ uint8_t MidiTranslator::GetNativeActiveCount(uint8_t fontId, int16_t instOrWave)
     if (!BypassIndexValid(fontId, instOrWave))
         return 0;
     return mNativeActiveByPair[fontId][instOrWave];
+}
+
+// ── DEBUG: per-pair stats accessors ──────────────────────────────────────
+
+MidiTranslator::DebugPairStats MidiTranslator::GetDebugStats(uint8_t fontId, int16_t instOrWave) const {
+    DebugPairStats out{};
+    if (!BypassIndexValid(fontId, instOrWave))
+        return out;
+    const auto& s = mDebugStats[fontId][instOrWave];
+    out.noteOns          = s.noteOns.load(std::memory_order_relaxed);
+    out.routedSynth      = s.routedSynth.load(std::memory_order_relaxed);
+    out.routedNative     = s.routedNative.load(std::memory_order_relaxed);
+    out.routedMute       = s.routedMute.load(std::memory_order_relaxed);
+    out.bendUpdates      = s.bendUpdates.load(std::memory_order_relaxed);
+    out.baseFreqScaleMin = s.baseFreqScaleMin;
+    out.baseFreqScaleMax = s.baseFreqScaleMax;
+    out.bendRatioMin     = s.bendRatioMin;
+    out.bendRatioMax     = s.bendRatioMax;
+    out.lastSemitone     = s.lastSemitone;
+    return out;
+}
+
+void MidiTranslator::ResetDebugStats() {
+    for (int f = 0; f < kMaxFontId; ++f)
+        for (int i = 0; i < kMaxInstOrWave; ++i)
+            ResetDebugStatsForPair(static_cast<uint8_t>(f), static_cast<int16_t>(i));
+}
+
+void MidiTranslator::ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    auto& s = mDebugStats[fontId][instOrWave];
+    s.noteOns.store(0, std::memory_order_relaxed);
+    s.routedSynth.store(0, std::memory_order_relaxed);
+    s.routedNative.store(0, std::memory_order_relaxed);
+    s.routedMute.store(0, std::memory_order_relaxed);
+    s.bendUpdates.store(0, std::memory_order_relaxed);
+    s.baseFreqScaleMin = 0.0f;
+    s.baseFreqScaleMax = 0.0f;
+    s.bendRatioMin     = 1.0f;
+    s.bendRatioMax     = 1.0f;
+    s.lastSemitone     = 0;
 }
 
 // ── Pack stack + sfontId resolution ───────────────────────────────────────
@@ -469,16 +507,6 @@ void MidiTranslator::SetEntryFilterResonance(int idx, int8_t cc) {
         return;
     mEntries[idx].q = ClampCcOrSentinel(cc);
 }
-void MidiTranslator::SetEntryBendScale(int idx, float scale) {
-    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
-        return;
-    if (scale < 0.0f)
-        scale = 0.0f;
-    if (scale > 4.0f)
-        scale = 4.0f;
-    mEntries[idx].bend_scale = scale;
-}
-
 // ── Per-pair display name (row label) ─────────────────────────────────────
 
 std::string MidiTranslator::GetDisplayName(uint8_t fontId, int16_t instOrWave) const {
@@ -624,8 +652,6 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
             entry["filter_cutoff"] = e.cutoff;
         if (e.q >= 0)
             entry["filter_q"] = e.q;
-        if (e.bend_scale != 1.0f)
-            entry["bend_scale"] = e.bend_scale;
         entry["enabled"] = e.enabled;
         entry["selected"] = e.selected;
         if (hasDisplayName)
@@ -716,8 +742,6 @@ int MidiTranslator::ExportPackMapping(const std::string& path, const std::string
             entry["filter_cutoff"] = e.cutoff;
         if (e.q >= 0)
             entry["filter_q"] = e.q;
-        if (e.bend_scale != 1.0f)
-            entry["bend_scale"] = e.bend_scale;
         // Pack mapping consumers default enabled=true, selected=false at load
         // time (ApplyOverridesFromString), so we omit both flags here — the
         // file represents "this is the pack's recommended preset for the
@@ -806,12 +830,6 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
             e.cutoff = ClampCcOrSentinel(entry.value("filter_cutoff", -1));
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
-        if (entry.contains("bend_scale")) {
-            float bs = entry.value("bend_scale", 1.0f);
-            if (bs < 0.0f) bs = 0.0f;
-            if (bs > 4.0f) bs = 4.0f;
-            e.bend_scale = bs;
-        }
         // Pack mapping.json: enabled by default (mods publish active
         // presets), selected stays false (user hasn't picked).
         e.enabled = entry.value("enabled", true);
@@ -885,12 +903,6 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
             e.cutoff = ClampCcOrSentinel(entry.value("filter_cutoff", -1));
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
-        if (entry.contains("bend_scale")) {
-            float bs = entry.value("bend_scale", 1.0f);
-            if (bs < 0.0f) bs = 0.0f;
-            if (bs > 4.0f) bs = 4.0f;
-            e.bend_scale = bs;
-        }
         // File overlay = user file. Defaults align with "this is a user
         // pick" — enabled+selected unless the file says otherwise. Old
         // (v1) files don't carry these keys, so the defaults give the
@@ -912,7 +924,7 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
 
 bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan, float channelVolume,
                                  uint8_t fontId, int16_t instOrWave, uint8_t semitone, bool isFinished,
-                                 uint8_t channelIdx, float resampleRate) {
+                                 uint8_t channelIdx, float resampleRate, float pitchBend) {
     (void)resampleRate;
     (void)channelIdx;
 
@@ -930,6 +942,29 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     // itself runs off mActiveEntryIdx now.
     GmPreset legacyGm = GetGmPreset(fontId, instOrWave);
     RecordDiscovery(fontId, instOrWave, legacyGm.program != kUnmapped);
+
+    // DEBUG: per-pair stats. Detect a fresh NoteOn (Idle → playing transition);
+    // record baseFreqScale spread and the engine semitone. Route counters are
+    // incremented at the dispatch decision below — guarded by `wasIdleStart` so
+    // continuation frames of the same note don't double-count.
+    const bool wasIdleStart = BypassIndexValid(fontId, instOrWave) &&
+                              state.kind == SlotKind::Idle &&
+                              velocity > 0.0f && !isFinished;
+    if (wasIdleStart) {
+        auto& dbg = mDebugStats[fontId][instOrWave];
+        dbg.noteOns.fetch_add(1, std::memory_order_relaxed);
+        if (dbg.baseFreqScaleMin == 0.0f || freqScale < dbg.baseFreqScaleMin)
+            dbg.baseFreqScaleMin = freqScale;
+        if (freqScale > dbg.baseFreqScaleMax)
+            dbg.baseFreqScaleMax = freqScale;
+        dbg.lastSemitone = semitone;
+    }
+    // Helper for the route-decision counters below. Only counts on a fresh
+    // NoteOn so per-frame continuation calls don't inflate the totals.
+    auto bumpRoute = [&](std::atomic<uint32_t> DebugSlot::*counter) {
+        if (wasIdleStart && BypassIndexValid(fontId, instOrWave))
+            (mDebugStats[fontId][instOrWave].*counter).fetch_add(1, std::memory_order_relaxed);
+    };
     DBG_LOG(fontId, instOrWave, semitone, freqScale, legacyGm.program != kUnmapped, legacyGm.bank, legacyGm.program);
 
     auto retireSlot = [&]() {
@@ -979,6 +1014,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
             retireSlot();
         else
             adoptNative();
+        bumpRoute(&DebugSlot::routedNative);
         return false;
     }
 
@@ -988,6 +1024,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
             retireSlot();
         else
             adoptNative();
+        // bumpRoute is a no-op outside the bypass range — fine.
         return false;
     }
     int activeIdx = mActiveEntryIdx[fontId][instOrWave];
@@ -997,6 +1034,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
             retireSlot();
         else
             adoptNative();
+        bumpRoute(&DebugSlot::routedNative);
         return false;
     }
     const ConfigEntry& e = mEntries[activeIdx];
@@ -1006,6 +1044,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     // Solo-button mute — true tells the C hook to suppress the engine.
     if (e.program < 0) {
         retireSlot();
+        bumpRoute(&DebugSlot::routedMute);
         return true;
     }
 
@@ -1022,6 +1061,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
             retireSlot();
         else
             adoptNative();
+        bumpRoute(&DebugSlot::routedNative);
         return false;
     }
 
@@ -1049,6 +1089,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
             // Pin failed mid-session — fall back to native for this note.
             retireSlot();
             adoptNative();
+            bumpRoute(&DebugSlot::routedNative);
             return false;
         }
         chState.lastPreset = preset;
@@ -1111,32 +1152,41 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     }
     synth->ControlChange(targetChannel, 11, static_cast<uint16_t>(cc11val) << 7);
 
+    // `pitchBend` is the engine's per-note pitch deviation from the nominal
+    // note, expressed as a frequency ratio (1.0 = no bend). The engine adapter
+    // (audio_playback.c) already stripped the non-pitch factors -- sample
+    // tuning, global resampleRate, and the note itself, which FluidSynth
+    // reproduces by playing midiNote -- so we hand the ratio straight to the
+    // synth and let it own the semitone conversion and the wheel-range clamp.
+
     if (state.kind != SlotKind::Synth || state.pairFontId != fontId || state.pairInstOrWave != instOrWave ||
         midiNote != state.midiNote) {
         retireSlot();
-        synth->PitchBend(targetChannel, 0.0f);
-        synth->NoteOn(targetChannel, midiNote, noteOnVel);
+        synth->NoteOnPitchFactor(targetChannel, midiNote, noteOnVel, pitchBend);
         state.kind = SlotKind::Synth;
         state.channel = targetChannel;
         state.midiNote = midiNote;
         state.pairFontId = fontId;
         state.pairInstOrWave = instOrWave;
-        state.baseFreqScale = (freqScale > 0.0f) ? freqScale : 1.0f;
         state.lastFreqScale = freqScale;
         if (mSynthActiveByPair[fontId][instOrWave] < 255) {
             mSynthActiveByPair[fontId][instOrWave]++;
         }
+        bumpRoute(&DebugSlot::routedSynth);
         return true;
     }
 
     if (fabsf(freqScale - state.lastFreqScale) > 1e-6f) {
-        float ratio = (state.baseFreqScale > 0.0f) ? (freqScale / state.baseFreqScale) : 1.0f;
-        if (ratio <= 0.0f)
-            ratio = 1e-6f;
-        float bend = 12.0f * log2f(ratio) * e.bend_scale;
-        bend = std::clamp(bend, -kMaxPitchBendSemitones, kMaxPitchBendSemitones);
-        synth->PitchBend(state.channel, bend);
+        synth->PitchBendFactor(state.channel, pitchBend);
         state.lastFreqScale = freqScale;
+
+        // DEBUG: the bend ratio IS pitchBend, so the UI's 12*log2(ratio)
+        // readout shows the true swing the engine asks for (pre-clamp; the
+        // synth clamps the wheel itself).
+        auto& dbg = mDebugStats[fontId][instOrWave];
+        dbg.bendUpdates.fetch_add(1, std::memory_order_relaxed);
+        if (pitchBend < dbg.bendRatioMin) dbg.bendRatioMin = pitchBend;
+        if (pitchBend > dbg.bendRatioMax) dbg.bendRatioMax = pitchBend;
     }
     return true;
 }
@@ -1171,9 +1221,10 @@ extern "C" {
 
 bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan, float channelVolume,
                                     uint8_t fontId, int16_t instOrWave, uint8_t semitone, bool isFinished,
-                                    uint8_t channelIdx, float resampleRate) {
+                                    uint8_t channelIdx, float resampleRate, float pitchBend) {
     return SOH::MidiTranslator::Instance().ProcessNote(noteIndex, freqScale, velocity, pan, channelVolume, fontId,
-                                                       instOrWave, semitone, isFinished, channelIdx, resampleRate);
+                                                       instOrWave, semitone, isFinished, channelIdx, resampleRate,
+                                                       pitchBend);
 }
 
 void SOH_MidiTranslator_NoteDisabled(int noteIndex) {

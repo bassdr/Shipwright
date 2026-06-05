@@ -1630,9 +1630,63 @@ void AudioEditor::DrawElement() {
                             }
                             ImGui::EndPopup();
                         }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("[DBG] Reset stats##dbgReset")) {
+                            SOH::MidiTranslator::Instance().ResetDebugStats();
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip(
+                                "Clear the per-pair debug counters (NoteOn / route /\n"
+                                "baseFreqScale / bend ratio). Used to start a fresh\n"
+                                "measurement before a specific song or scene.");
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("[DBG] Dump stats to log##dbgDump")) {
+                            // Emit a SPDLOG_INFO line per pair that has at least one
+                            // recorded NoteOn. Stable plain-ASCII format so the user
+                            // can grep / copy / paste regardless of UI font glitches.
+                            int dumped = 0;
+                            for (int f = 0; f < SOH::MidiTranslator::kMaxFontId; ++f) {
+                                for (int i = 0; i < SOH::MidiTranslator::kMaxInstOrWave; ++i) {
+                                    auto st = SOH::MidiTranslator::Instance().GetDebugStats(
+                                        static_cast<uint8_t>(f), static_cast<int16_t>(i));
+                                    if (st.noteOns == 0) continue;
+                                    float minSemi = st.bendRatioMin > 0.0f
+                                        ? 12.0f * std::log2(st.bendRatioMin) : 0.0f;
+                                    float maxSemi = st.bendRatioMax > 0.0f
+                                        ? 12.0f * std::log2(st.bendRatioMax) : 0.0f;
+                                    SPDLOG_INFO(
+                                        "[FluidSynth][DBG] pair(font={}, inst={}) "
+                                        "noteOns={} routedSynth={} routedNative={} routedMute={} "
+                                        "lastSemi={} (MIDI={}) "
+                                        "baseFreqScale=[{:.5f},{:.5f}] "
+                                        "bendUpdates={} bendRatio=[{:.4f},{:.4f}] "
+                                        "bendSemitones=[{:+.2f},{:+.2f}]",
+                                        f, i,
+                                        st.noteOns, st.routedSynth, st.routedNative, st.routedMute,
+                                        (unsigned)st.lastSemitone,
+                                        (unsigned)(st.lastSemitone + 21u),
+                                        st.baseFreqScaleMin, st.baseFreqScaleMax,
+                                        st.bendUpdates,
+                                        st.bendRatioMin, st.bendRatioMax,
+                                        minSemi, maxSemi);
+                                    dumped++;
+                                }
+                            }
+                            SPDLOG_INFO("[FluidSynth][DBG] dump complete: {} pair(s) emitted", dumped);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip(
+                                "Walk every pair with at least one recorded NoteOn and\n"
+                                "emit one SPDLOG_INFO line per pair to the log file.\n"
+                                "Use this when the in-game popup is hard to read.\n"
+                                "Search for '[FluidSynth][DBG]' in the log.");
+                        }
+                        ImGui::PushTextWrapPos(0.0f);
                         ImGui::TextDisabled("Mode picks Native (engine plays this) or Synth (FluidSynth plays this). "
                                             "Gain is a per-instrument CC11 multiplier; Trans shifts pitch by semitones. "
-                                            "Edits auto-save to fluidsynth_overrides.json — no Save button needed.");
+                                            "Edits auto-save to fluidsynth_overrides.json - no Save button needed.");
+                        ImGui::PopTextWrapPos();
 
                         const float viewportH = ImGui::GetMainViewport()->Size.y;
                         float bypassTableHeight = viewportH * 0.65f;
@@ -1658,7 +1712,6 @@ void AudioEditor::DrawElement() {
                         const uint8_t chorusCol   = col++;
                         const uint8_t cutoffCol   = col++;
                         const uint8_t qCol        = col++;
-                        const uint8_t bendCol     = col++;
                         const uint8_t kColCount   = col;
 
                         if (ImGui::BeginTable("##bypassTable", kColCount,
@@ -1698,7 +1751,6 @@ void AudioEditor::DrawElement() {
                             ImGui::TableSetupColumn("Chorus",   ImGuiTableColumnFlags_WidthFixed, 60.0f);
                             ImGui::TableSetupColumn("Cutoff",   ImGuiTableColumnFlags_WidthFixed, 60.0f);
                             ImGui::TableSetupColumn("Q",        ImGuiTableColumnFlags_WidthFixed, 60.0f);
-                            ImGui::TableSetupColumn("Bend",     ImGuiTableColumnFlags_WidthFixed, 60.0f);
                             ImGui::TableSetupScrollFreeze(0, 2);
 
                             ImGui::TableNextRow();
@@ -2034,6 +2086,55 @@ void AudioEditor::DrawElement() {
                                     ImGui::Text("1 (SFX)");
                                 } else {
                                     ImGui::Text("%d (0x%02X)", (int)p.instOrWave, (unsigned)(uint8_t)p.instOrWave);
+                                }
+                                ImGui::SameLine();
+                                {
+                                    char dbgBtn[32];
+                                    std::snprintf(dbgBtn, sizeof(dbgBtn), "[DBG]##dbg_%u_%d",
+                                                  (unsigned)p.fontId, (int)p.instOrWave);
+                                    if (ImGui::SmallButton(dbgBtn)) {
+                                        char popupId[40];
+                                        std::snprintf(popupId, sizeof(popupId), "dbgPopup_%u_%d",
+                                                      (unsigned)p.fontId, (int)p.instOrWave);
+                                        ImGui::OpenPopup(popupId);
+                                    }
+                                    char popupId[40];
+                                    std::snprintf(popupId, sizeof(popupId), "dbgPopup_%u_%d",
+                                                  (unsigned)p.fontId, (int)p.instOrWave);
+                                    if (ImGui::BeginPopup(popupId)) {
+                                        auto s = SOH::MidiTranslator::Instance().GetDebugStats(
+                                            p.fontId, p.instOrWave);
+                                        ImGui::Text("Pair (font %u, inst %d) debug stats",
+                                                    (unsigned)p.fontId, (int)p.instOrWave);
+                                        ImGui::Separator();
+                                        ImGui::Text("NoteOns      : %u", s.noteOns);
+                                        ImGui::Text("  routedSynth : %u", s.routedSynth);
+                                        ImGui::Text("  routedNative: %u", s.routedNative);
+                                        ImGui::Text("  routedMute  : %u", s.routedMute);
+                                        ImGui::Separator();
+                                        ImGui::Text("Last semitone: %u  (MIDI %u with +%d offset)",
+                                                    (unsigned)s.lastSemitone,
+                                                    (unsigned)(s.lastSemitone + 21u),
+                                                    21);
+                                        ImGui::Text("baseFreqScale: min %.5f  max %.5f",
+                                                    s.baseFreqScaleMin, s.baseFreqScaleMax);
+                                        ImGui::Separator();
+                                        ImGui::Text("Bend updates : %u", s.bendUpdates);
+                                        ImGui::Text("Bend ratio   : min %.4f  max %.4f",
+                                                    s.bendRatioMin, s.bendRatioMax);
+                                        float minSemi = s.bendRatioMin > 0.0f
+                                            ? 12.0f * std::log2(s.bendRatioMin) : 0.0f;
+                                        float maxSemi = s.bendRatioMax > 0.0f
+                                            ? 12.0f * std::log2(s.bendRatioMax) : 0.0f;
+                                        ImGui::Text("  in semitones: %+.2f .. %+.2f",
+                                                    minSemi, maxSemi);
+                                        ImGui::Separator();
+                                        if (ImGui::SmallButton("Reset this pair##dbgResetPair")) {
+                                            SOH::MidiTranslator::Instance().ResetDebugStatsForPair(
+                                                p.fontId, p.instOrWave);
+                                        }
+                                        ImGui::EndPopup();
+                                    }
                                 }
                                 if (ImGui::IsItemHovered() && (p.instOrWave == 0 || p.instOrWave == 1)) {
                                     ImGui::SetTooltip(
@@ -2502,31 +2603,6 @@ void AudioEditor::DrawElement() {
                                     "Filter resonance / Q (CC71). 64 = no shift from the SF2\n"
                                     "default; higher emphasises the cutoff frequency. Routing\n"
                                     "depends on the SF2 author. Drag below 0 to clear.");
-
-                                // Per-pair pitch-bend multiplier. 1.0 = native curve.
-                                // Useful when an SF2 sample's tuning + interpolation makes
-                                // engine freqScale changes pitch more than they should.
-                                ImGui::TableSetColumnIndex(bendCol);
-                                {
-                                    float bendDisplay = activeEntry ? activeEntry->bend_scale : 1.0f;
-                                    ImGui::SetNextItemWidth(58.0f);
-                                    if (ImGui::DragFloat("##bend", &bendDisplay, 0.01f, 0.0f, 4.0f, "%.2fx")) {
-                                        if (bendDisplay < 0.0f) bendDisplay = 0.0f;
-                                        if (bendDisplay > 4.0f) bendDisplay = 4.0f;
-                                        if (activeIdx >= 0) {
-                                            SOH::MidiTranslator::Instance().SetEntryBendScale(
-                                                activeIdx, bendDisplay);
-                                        }
-                                    }
-                                    if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
-                                    if (ImGui::IsItemHovered())
-                                        ImGui::SetTooltip(
-                                            "Pitch-bend multiplier. 1.0 = native curve. Lower to\n"
-                                            "tame an SF2 sample whose interpolation makes engine\n"
-                                            "freqScale changes pitch more than they should; 0.0\n"
-                                            "disables bend entirely.");
-                                    disabledTooltipIfNative();
-                                }
 
                                 ImGui::EndDisabled();
                                 ImGui::PopID();

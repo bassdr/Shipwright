@@ -7,7 +7,7 @@ extern bool gUseLegacySD;
 #if ENABLE_FLUIDSYNTH
 extern bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan,
                                            float channelVolume, uint8_t fontId, int16_t instOrWave, uint8_t semitone,
-                                           bool isFinished, uint8_t channelIdx, float resampleRate);
+                                           bool isFinished, uint8_t channelIdx, float resampleRate, float pitchBend);
 extern void SOH_MidiTranslator_NoteDisabled(int noteIndex);
 #endif
 
@@ -347,10 +347,26 @@ void Audio_ProcessNotes(void) {
                 if (layer != NO_LAYER) {
                     noteVelocity = layer->noteVelocity;
                 }
+                // Pitch bend = how far the final resampling ratio sits from the
+                // nominal pitch of the integer note FluidSynth will play
+                // (gNoteFrequencies[semitone] * sample tuning * resampleRate).
+                // The portamento glide and vibrato ride on noteFreqScale, NOT on
+                // the separate vibrato/portamento fields, so it has to come from
+                // the final frequency. Dividing by the nominal cancels the
+                // sample tuning and the global resampleRate -- the non-pitch
+                // factors that would otherwise detune every note -- leaving
+                // exactly the continuous pitch modulation to send as a wheel.
+                float pitchBend = 1.0f;
+                if (layer != NO_LAYER && layer->sound != NULL && semitone < 0x80 && subAttrs.frequency > 0.0f) {
+                    f32 nominal = gNoteFrequencies[semitone] * layer->sound->tuning * resampRate;
+                    if (nominal > 0.0f) {
+                        pitchBend = subAttrs.frequency / nominal;
+                    }
+                }
                 bool handledByFluidSynth = SOH_MidiTranslator_ProcessNote(
                     i, subAttrs.frequency, noteVelocity, subAttrs.pan, channelVolume, playbackState->fontId,
                     instOrWave, semitone, (bool)noteSubEu->bitField0.finished, chanIdx,
-                    gAudioContext.audioBufferParameters.resampleRate);
+                    gAudioContext.audioBufferParameters.resampleRate, pitchBend);
                 if (handledByFluidSynth) {
                     // FluidSynth owns this note — silence the native side so the
                     // two synthesis paths don't sum into a doubled signal.
