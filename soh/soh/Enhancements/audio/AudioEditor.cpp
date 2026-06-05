@@ -1482,6 +1482,46 @@ void AudioEditor::DrawElement() {
                                             voiceActive, voiceLimit, ratio * 100.0);
                                 sLastVoiceWarnTime = now;
                             }
+
+                            // DEBUG: render-time + mutex-wait stopwatch surfaced
+                            // here while we investigate audio glitches that
+                            // happen well below the voice budget. Reads peak
+                            // values seen since the previous frame and resets
+                            // them, so the numbers are always "worst case in the
+                            // last ~16 ms" rather than a smoothed average.
+                            if (activeSynth) {
+                                auto rs = activeSynth->ConsumeRenderStats();
+                                ImVec4 dbgColour(0.55f, 0.85f, 0.55f, 1.0f); // green baseline
+                                if (rs.worstRenderUs > 10000 || rs.worstLockWaitUs > 2000)
+                                    dbgColour = ImVec4(1.00f, 0.40f, 0.40f, 1.0f); // red — likely cut territory
+                                else if (rs.worstRenderUs > 5000 || rs.worstLockWaitUs > 500)
+                                    dbgColour = ImVec4(1.00f, 0.85f, 0.30f, 1.0f); // amber
+                                ImGui::TextColored(dbgColour,
+                                    "[DEBUG] Render last=%u us / worst=%u us  |  Lock wait last=%u us / worst=%u us",
+                                    rs.lastRenderUs, rs.worstRenderUs,
+                                    rs.lastLockWaitUs, rs.worstLockWaitUs);
+                                if (ImGui::IsItemHovered()) {
+                                    ImGui::SetTooltip(
+                                        "Temporary diagnostic for the audio-glitch hunt.\n"
+                                        "  Render us  - time spent inside fluid_synth_write_float.\n"
+                                        "  Lock wait  - time the audio thread waited on the synth\n"
+                                        "               mutex before that call (game-thread\n"
+                                        "               contention proxy).\n"
+                                        "'worst' resets on read and shows the peak between two\n"
+                                        "UI frames. Red ~= likely audible cut territory; if it\n"
+                                        "stays green during a glitch, the cause is elsewhere\n"
+                                        "(audio backend, output pipeline, OS scheduling).");
+                                }
+                                static double sLastRenderWarnTime = -10.0;
+                                if ((rs.worstRenderUs > 10000 || rs.worstLockWaitUs > 5000) &&
+                                    (now - sLastRenderWarnTime) > 1.0) {
+                                    SPDLOG_WARN(
+                                        "[FluidSynth][DEBUG] long audio frame: render worst={} us, "
+                                        "lock-wait worst={} us",
+                                        rs.worstRenderUs, rs.worstLockWaitUs);
+                                    sLastRenderWarnTime = now;
+                                }
+                            }
                         }
 
                         // ── Per-instrument overrides ─────────────────────
