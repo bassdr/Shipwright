@@ -67,6 +67,18 @@ enum class EntrySource : uint8_t {
                      // pack unload
 };
 
+// Where a resolved (split) entry sends its notes once it wins resolution.
+// Synth is the default — the entry references a (pack, program) FluidSynth
+// plays. Native makes the entry a first-class winner whose audible path is
+// the engine sample (a split range that should keep the native instrument).
+// Mute is the silent "None" placeholder scoped to the range. Native vs Mute
+// both lack a pack/program, so the route field is what distinguishes them.
+enum class EntryRoute : uint8_t {
+    Synth  = 0,
+    Native = 1,
+    Mute   = 2,
+};
+
 // One row in the configuration. Multiple entries can share
 // (fontId, instOrWave); each represents a distinct candidate keyed by
 // (pack, program). Resolution at play time picks the enabled+resolvable
@@ -93,10 +105,25 @@ struct ConfigEntry {
     bool        selected      = false;
     uint32_t    lastEnabledSeq = 0;  // process-lifetime; not persisted
     EntrySource source        = EntrySource::UserPicked;
+    // ── Note-range split (engine-semitone space; see plan 4.5) ───────────
+    // noteLow/noteHigh bound which engine `semitone` values this entry
+    // claims (inclusive). Default 0..127 = whole range = an unsplit entry,
+    // byte-equivalent to the pre-split schema. drumNote is the GM percussion
+    // note fired for a bank-128 entry (the slot index selects WHICH entry;
+    // drumNote selects WHAT it plays); 0 = none. route dispatches the winner.
+    uint8_t     noteLow       = 0;
+    uint8_t     noteHigh      = 127;
+    uint8_t     drumNote      = 0;
+    EntryRoute  route         = EntryRoute::Synth;
     // Runtime: resolved sfontId for ProgramSelect. -1 when the pack isn't
     // currently loaded OR the SF2 doesn't have (bank, program).
     // Refreshed by AudioEditor's pack-apply path; never persisted.
     int16_t     sfontId       = -1;
+    // Runtime: forward link of the active-split chain for this pair, sorted
+    // by noteLow (-1 = chain tail). Built by RecomputeActive; the audio
+    // thread walks it by index over the reserved mEntries vector. Acyclic by
+    // construction (each entry linked at most once). Never serialised.
+    int16_t     nextActiveSplit = -1;
 };
 
 class MidiTranslator {
@@ -201,7 +228,8 @@ class MidiTranslator {
     void                GetEntriesForPair(uint8_t fontId, int16_t instOrWave,
                                           std::vector<int>& outIdx) const;
     int                 FindEntry(uint8_t fontId, int16_t instOrWave,
-                                  const std::string& pack, int16_t program) const;
+                                  const std::string& pack, int16_t program,
+                                  uint8_t noteLow = 0) const;
     int                 CountSelectedEntries(uint8_t fontId, int16_t instOrWave) const;
 
     // ── Row UI actions ───────────────────────────────────────────────────
@@ -287,7 +315,7 @@ class MidiTranslator {
     int  FindOrCreateEntry(uint8_t fontId, int16_t instOrWave,
                            const std::string& pack, int16_t program,
                            int16_t bank, const std::string& presetName,
-                           EntrySource source);
+                           EntrySource source, uint8_t noteLow = 0);
 
     // Recompute mActiveEntryIdx[fontId][instOrWave]. Resolution: filter
     // mEntries by (fontId, instOrWave) && enabled && sfontId>=0; pick the

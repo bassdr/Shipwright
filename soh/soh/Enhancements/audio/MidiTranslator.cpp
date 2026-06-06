@@ -235,45 +235,77 @@ void MidiTranslator::RecomputeAllActive() {
     for (auto& row : mActiveEntryIdx)
         for (auto& cell : row)
             cell = -1;
-    // Walk entries once, candidate-by-pair. For each (f, i) we keep the
-    // candidate with the highest PackRank.
-    for (size_t idx = 0; idx < mEntries.size(); idx++) {
-        const ConfigEntry& e = mEntries[idx];
-        if (!e.enabled || e.sfontId < 0)
-            continue;
-        if (!BypassIndexValid(e.fontId, e.instOrWave))
-            continue;
-        int curIdx = mActiveEntryIdx[e.fontId][e.instOrWave];
-        if (curIdx < 0) {
-            mActiveEntryIdx[e.fontId][e.instOrWave] = static_cast<int16_t>(idx);
-        } else {
-            int newRank = PackRank(e.packName);
-            int curRank = PackRank(mEntries[curIdx].packName);
-            if (newRank >= curRank) {
-                mActiveEntryIdx[e.fontId][e.instOrWave] = static_cast<int16_t>(idx);
-            }
-        }
-    }
+    // Recompute only pairs that actually have entries — RecomputeActive is
+    // O(128 * entries-for-pair), so scanning all 64*256 cells would be
+    // wasteful. The distinct-pair set is small (a few hundred at most).
+    std::set<std::pair<uint8_t, int16_t>> pairs;
+    for (const auto& e : mEntries)
+        if (BypassIndexValid(e.fontId, e.instOrWave))
+            pairs.insert({ e.fontId, e.instOrWave });
+    for (const auto& p : pairs)
+        RecomputeActive(p.first, p.second);
 }
 
 void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
-    int winnerIdx = -1;
-    int winnerRank = -2;
-    for (size_t idx = 0; idx < mEntries.size(); idx++) {
-        const ConfigEntry& e = mEntries[idx];
-        if (e.fontId != fontId || e.instOrWave != instOrWave)
-            continue;
-        if (!e.enabled || e.sfontId < 0)
-            continue;
-        int rank = PackRank(e.packName);
-        if (rank > winnerRank || winnerIdx < 0) {
-            winnerIdx = static_cast<int>(idx);
-            winnerRank = rank;
+
+    // Per-semitone winner: the highest-pack-rank enabled+resolvable entry
+    // whose [noteLow,noteHigh] covers that engine slot. For the common
+    // unsplit pair every semitone resolves to the same single entry (or
+    // none), so the chain below collapses to length 1 / head=-1 — bit-
+    // identical to the pre-split single-winner behaviour. Disjoint splits
+    // (the UI enforces non-overlap) yield one distinct winner per range.
+    int winnerAt[128];
+    for (int s = 0; s < 128; ++s) {
+        int best = -1;
+        int bestRank = -2;
+        for (size_t idx = 0; idx < mEntries.size(); idx++) {
+            const ConfigEntry& e = mEntries[idx];
+            if (e.fontId != fontId || e.instOrWave != instOrWave)
+                continue;
+            if (!e.enabled || e.sfontId < 0)
+                continue;
+            if (s < e.noteLow || s > e.noteHigh)
+                continue;
+            int rank = PackRank(e.packName);
+            // Strict '>' keeps the first-seen entry on a rank tie, matching
+            // the pre-split single-winner resolver bit-for-bit. (Equal rank
+            // == same pack == an overlap, which the UI disallows, so this
+            // tiebreak only ever fires on the unsplit multi-enabled corner.)
+            if (best < 0 || rank > bestRank) {
+                best = static_cast<int>(idx);
+                bestRank = rank;
+            }
         }
+        winnerAt[s] = best;
     }
-    mActiveEntryIdx[fontId][instOrWave] = static_cast<int16_t>(winnerIdx);
+
+    // Distinct winners in ascending-noteLow order, deduped so each entry is
+    // linked at most once (this is what guarantees the chain is acyclic —
+    // a cycle would hang the audio-thread walk).
+    std::vector<int> winners;
+    for (int s = 0; s < 128; ++s) {
+        int w = winnerAt[s];
+        if (w < 0)
+            continue;
+        if (std::find(winners.begin(), winners.end(), w) == winners.end())
+            winners.push_back(w);
+    }
+    std::sort(winners.begin(), winners.end(),
+              [&](int a, int b) { return mEntries[a].noteLow < mEntries[b].noteLow; });
+
+    // Reset this pair's links, relink the winners, then publish the head
+    // LAST so a concurrent audio-thread walk sees either the intact old
+    // chain or the fully-built new one (single int16_t store is the publish
+    // point; the brief reset->relink window can at worst play one note
+    // native, the same benign-transient class as the old single-index flip).
+    for (auto& e : mEntries)
+        if (e.fontId == fontId && e.instOrWave == instOrWave)
+            e.nextActiveSplit = -1;
+    for (size_t k = 0; k + 1 < winners.size(); ++k)
+        mEntries[winners[k]].nextActiveSplit = static_cast<int16_t>(winners[k + 1]);
+    mActiveEntryIdx[fontId][instOrWave] = winners.empty() ? -1 : static_cast<int16_t>(winners[0]);
 }
 
 // ── Entry queries ─────────────────────────────────────────────────────────
@@ -302,10 +334,12 @@ void MidiTranslator::GetEntriesForPair(uint8_t fontId, int16_t instOrWave, std::
     }
 }
 
-int MidiTranslator::FindEntry(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program) const {
+int MidiTranslator::FindEntry(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program,
+                              uint8_t noteLow) const {
     for (size_t idx = 0; idx < mEntries.size(); idx++) {
         const ConfigEntry& e = mEntries[idx];
-        if (e.fontId == fontId && e.instOrWave == instOrWave && e.packName == pack && e.program == program) {
+        if (e.fontId == fontId && e.instOrWave == instOrWave && e.packName == pack && e.program == program &&
+            e.noteLow == noteLow) {
             return static_cast<int>(idx);
         }
     }
@@ -322,8 +356,9 @@ int MidiTranslator::CountSelectedEntries(uint8_t fontId, int16_t instOrWave) con
 }
 
 int MidiTranslator::FindOrCreateEntry(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program,
-                                      int16_t bank, const std::string& presetName, EntrySource source) {
-    int idx = FindEntry(fontId, instOrWave, pack, program);
+                                      int16_t bank, const std::string& presetName, EntrySource source,
+                                      uint8_t noteLow) {
+    int idx = FindEntry(fontId, instOrWave, pack, program, noteLow);
     if (idx >= 0)
         return idx;
     if (mEntries.size() >= kMaxEntries) {
@@ -340,6 +375,7 @@ int MidiTranslator::FindOrCreateEntry(uint8_t fontId, int16_t instOrWave, const 
     e.bank = bank;
     e.presetName = presetName;
     e.source = source;
+    e.noteLow = noteLow; // noteHigh stays 127 (full range) until a split sets it
     // Resolve sfontId immediately so the entry is eligible for
     // resolution on the next note — without this, a fresh PickPreset
     // creates an entry with sfontId=-1 and the resolution filter
@@ -1060,23 +1096,16 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         return true;
     }
 
-    // Engine drum (instOrWave==0) and SFX (instOrWave==1) channels: the
-    // byte we receive as `semitone` is a slot index into the channel's
-    // drum / SFX table (Audio_GetDrum / Audio_GetSfx in audio_seqplayer.c),
-    // not a chromatic pitch. Any synth substitution misinterprets the
-    // slot ID as a note and produces "ghost notes", so route these to
-    // native unconditionally until per-slot note-range splits land and
-    // give each slot its own addressable entry.
-    if (instOrWave == 0 || instOrWave == 1) {
-        if (isFinished || velocity <= 0.0f)
-            retireSlot();
-        else
-            adoptNative();
-        bumpRoute(&DebugSlot::routedNative);
-        return false;
-    }
+    // Engine drum (instOrWave==0) and SFX (instOrWave==1): the `semitone`
+    // byte is a slot index (Audio_GetDrum / Audio_GetSfx), not a chromatic
+    // pitch. These flow through the same split resolution as melodic pairs:
+    // with no active entry the chain resolves to native exactly as before,
+    // but an authored per-slot split can claim a slot. The bank-128 guard
+    // below still routes percussion entries to native until the drum-split
+    // playback path (plan 4.5 phase 3) replaces it, so behaviour for current
+    // mappings is unchanged.
 
-    // ── Resolution: look up the active entry ────────────────────────────
+    // ── Resolution: walk the active-split chain ─────────────────────────
     if (!BypassIndexValid(fontId, instOrWave)) {
         if (isFinished || velocity <= 0.0f)
             retireSlot();
@@ -1085,9 +1114,19 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         // bumpRoute is a no-op outside the bypass range — fine.
         return false;
     }
+    // Find the entry whose engine-semitone range covers this note. The chain
+    // is sorted by noteLow and acyclic (RecomputeActive links each entry at
+    // most once); an unsplit pair has a length-1 chain so this is the same
+    // single lookup as before.
     int activeIdx = mActiveEntryIdx[fontId][instOrWave];
+    while (activeIdx >= 0 && activeIdx < static_cast<int>(mEntries.size())) {
+        const ConfigEntry& cand = mEntries[activeIdx];
+        if (semitone >= cand.noteLow && semitone <= cand.noteHigh)
+            break;
+        activeIdx = cand.nextActiveSplit;
+    }
     if (activeIdx < 0 || activeIdx >= static_cast<int>(mEntries.size())) {
-        // No enabled entry for this pair → native plays.
+        // No enabled entry covers this slot → native plays.
         if (isFinished || velocity <= 0.0f)
             retireSlot();
         else
@@ -1097,10 +1136,23 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     }
     const ConfigEntry& e = mEntries[activeIdx];
 
-    // Placeholder ("None") entry: explicit user intent to mute the synth
-    // path while not letting native sneak in. Same return value as the
+    // Native-route split: this entry won its range but the audible path is
+    // the engine sample (a range the author wants to keep native while a
+    // sibling range synths). First-class winner, not the "no entry" fall-
+    // through, so a wider synth split can't shadow it.
+    if (e.route == EntryRoute::Native) {
+        if (isFinished || velocity <= 0.0f)
+            retireSlot();
+        else
+            adoptNative();
+        bumpRoute(&DebugSlot::routedNative);
+        return false;
+    }
+
+    // Placeholder ("None") / Mute entry: explicit user intent to mute the
+    // synth path while not letting native sneak in. Same return value as the
     // Solo-button mute — true tells the C hook to suppress the engine.
-    if (e.program < 0) {
+    if (e.route == EntryRoute::Mute || e.program < 0) {
         retireSlot();
         bumpRoute(&DebugSlot::routedMute);
         return true;
