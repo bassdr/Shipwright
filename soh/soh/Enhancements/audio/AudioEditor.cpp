@@ -1472,6 +1472,28 @@ void AudioEditor::DrawElement() {
                                     "If 'cuts' line up with values well below the limit,\n"
                                     "the bottleneck is audio-thread CPU, not voices.");
                             }
+
+                            // ── Channel pool readout ─────────────────────────
+                            // Distinct (fontId, instOrWave) pairs each claim one
+                            // MIDI channel out of 64. The pool recycles idle pairs'
+                            // channels on exhaustion, so sitting at 64 is normal;
+                            // "reclaims" just counts how often a quiet pair handed
+                            // its channel to a new one.
+                            {
+                                uint32_t chUsed     = SOH::MidiTranslator::Instance().GetChannelsInUse();
+                                uint32_t chMax      = SOH::MidiTranslator::kMaxMidiChannels;
+                                uint32_t chReclaims = SOH::MidiTranslator::Instance().GetChannelReclaims();
+                                ImGui::TextDisabled("Synth channels: %u / %u  (reclaims: %u)",
+                                                    (unsigned)chUsed, (unsigned)chMax, (unsigned)chReclaims);
+                                if (ImGui::IsItemHovered()) {
+                                    ImGui::SetTooltip(
+                                        "MIDI channels held by synth-routed instrument pairs\n"
+                                        "out of the 64-channel pool. At the cap, the pool\n"
+                                        "recycles the channel of a pair that has gone quiet\n"
+                                        "for the new pair; 'reclaims' counts how often that\n"
+                                        "happened. Sitting at 64 is normal on a long session.");
+                                }
+                            }
                             // Throttled log so we can correlate user-reported cuts
                             // with the voice budget without spamming. Game-thread
                             // tick; coarse-grained on purpose.
@@ -1481,46 +1503,6 @@ void AudioEditor::DrawElement() {
                                 SPDLOG_WARN("[FluidSynth] high voice usage: {} / {} ({:.0f}%)",
                                             voiceActive, voiceLimit, ratio * 100.0);
                                 sLastVoiceWarnTime = now;
-                            }
-
-                            // DEBUG: render-time + mutex-wait stopwatch surfaced
-                            // here while we investigate audio glitches that
-                            // happen well below the voice budget. Reads peak
-                            // values seen since the previous frame and resets
-                            // them, so the numbers are always "worst case in the
-                            // last ~16 ms" rather than a smoothed average.
-                            if (activeSynth) {
-                                auto rs = activeSynth->ConsumeRenderStats();
-                                ImVec4 dbgColour(0.55f, 0.85f, 0.55f, 1.0f); // green baseline
-                                if (rs.worstRenderUs > 10000 || rs.worstLockWaitUs > 2000)
-                                    dbgColour = ImVec4(1.00f, 0.40f, 0.40f, 1.0f); // red — likely cut territory
-                                else if (rs.worstRenderUs > 5000 || rs.worstLockWaitUs > 500)
-                                    dbgColour = ImVec4(1.00f, 0.85f, 0.30f, 1.0f); // amber
-                                ImGui::TextColored(dbgColour,
-                                    "[DEBUG] Render last=%u us / worst=%u us  |  Lock wait last=%u us / worst=%u us",
-                                    rs.lastRenderUs, rs.worstRenderUs,
-                                    rs.lastLockWaitUs, rs.worstLockWaitUs);
-                                if (ImGui::IsItemHovered()) {
-                                    ImGui::SetTooltip(
-                                        "Temporary diagnostic for the audio-glitch hunt.\n"
-                                        "  Render us  - time spent inside fluid_synth_write_float.\n"
-                                        "  Lock wait  - time the audio thread waited on the synth\n"
-                                        "               mutex before that call (game-thread\n"
-                                        "               contention proxy).\n"
-                                        "'worst' resets on read and shows the peak between two\n"
-                                        "UI frames. Red ~= likely audible cut territory; if it\n"
-                                        "stays green during a glitch, the cause is elsewhere\n"
-                                        "(audio backend, output pipeline, OS scheduling).");
-                                }
-                                static double sLastRenderWarnTime = -10.0;
-                                if ((rs.worstRenderUs > 10000 || rs.worstLockWaitUs > 5000) &&
-                                    (now - sLastRenderWarnTime) > 1.0) {
-                                    SPDLOG_WARN(
-                                        "[FluidSynth][DEBUG] long audio frame: render worst={} us, "
-                                        "lock-wait worst={} us",
-                                        rs.worstRenderUs, rs.worstLockWaitUs);
-                                    sLastRenderWarnTime = now;
-                                }
                             }
                         }
 
@@ -1637,8 +1619,8 @@ void AudioEditor::DrawElement() {
                         if (ImGui::IsItemHovered()) {
                             ImGui::SetTooltip(
                                 "Clear the per-pair debug counters (NoteOn / route /\n"
-                                "baseFreqScale / bend ratio). Used to start a fresh\n"
-                                "measurement before a specific song or scene.");
+                                "last semitone). Used to start a fresh measurement\n"
+                                "before a specific song or scene.");
                         }
                         ImGui::SameLine();
                         if (ImGui::SmallButton("[DBG] Dump stats to log##dbgDump")) {
@@ -1651,25 +1633,14 @@ void AudioEditor::DrawElement() {
                                     auto st = SOH::MidiTranslator::Instance().GetDebugStats(
                                         static_cast<uint8_t>(f), static_cast<int16_t>(i));
                                     if (st.noteOns == 0) continue;
-                                    float minSemi = st.bendRatioMin > 0.0f
-                                        ? 12.0f * std::log2(st.bendRatioMin) : 0.0f;
-                                    float maxSemi = st.bendRatioMax > 0.0f
-                                        ? 12.0f * std::log2(st.bendRatioMax) : 0.0f;
                                     SPDLOG_INFO(
                                         "[FluidSynth][DBG] pair(font={}, inst={}) "
                                         "noteOns={} routedSynth={} routedNative={} routedMute={} "
-                                        "lastSemi={} (MIDI={}) "
-                                        "baseFreqScale=[{:.5f},{:.5f}] "
-                                        "bendUpdates={} bendRatio=[{:.4f},{:.4f}] "
-                                        "bendSemitones=[{:+.2f},{:+.2f}]",
+                                        "lastSemi={} (MIDI={})",
                                         f, i,
                                         st.noteOns, st.routedSynth, st.routedNative, st.routedMute,
                                         (unsigned)st.lastSemitone,
-                                        (unsigned)(st.lastSemitone + 21u),
-                                        st.baseFreqScaleMin, st.baseFreqScaleMax,
-                                        st.bendUpdates,
-                                        st.bendRatioMin, st.bendRatioMax,
-                                        minSemi, maxSemi);
+                                        (unsigned)(st.lastSemitone + 21u));
                                     dumped++;
                                 }
                             }
@@ -2116,18 +2087,6 @@ void AudioEditor::DrawElement() {
                                                     (unsigned)s.lastSemitone,
                                                     (unsigned)(s.lastSemitone + 21u),
                                                     21);
-                                        ImGui::Text("baseFreqScale: min %.5f  max %.5f",
-                                                    s.baseFreqScaleMin, s.baseFreqScaleMax);
-                                        ImGui::Separator();
-                                        ImGui::Text("Bend updates : %u", s.bendUpdates);
-                                        ImGui::Text("Bend ratio   : min %.4f  max %.4f",
-                                                    s.bendRatioMin, s.bendRatioMax);
-                                        float minSemi = s.bendRatioMin > 0.0f
-                                            ? 12.0f * std::log2(s.bendRatioMin) : 0.0f;
-                                        float maxSemi = s.bendRatioMax > 0.0f
-                                            ? 12.0f * std::log2(s.bendRatioMax) : 0.0f;
-                                        ImGui::Text("  in semitones: %+.2f .. %+.2f",
-                                                    minSemi, maxSemi);
                                         ImGui::Separator();
                                         if (ImGui::SmallButton("Reset this pair##dbgResetPair")) {
                                             SOH::MidiTranslator::Instance().ResetDebugStatsForPair(

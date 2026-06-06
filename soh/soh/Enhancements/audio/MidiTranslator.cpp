@@ -134,11 +134,6 @@ MidiTranslator::DebugPairStats MidiTranslator::GetDebugStats(uint8_t fontId, int
     out.routedSynth      = s.routedSynth.load(std::memory_order_relaxed);
     out.routedNative     = s.routedNative.load(std::memory_order_relaxed);
     out.routedMute       = s.routedMute.load(std::memory_order_relaxed);
-    out.bendUpdates      = s.bendUpdates.load(std::memory_order_relaxed);
-    out.baseFreqScaleMin = s.baseFreqScaleMin;
-    out.baseFreqScaleMax = s.baseFreqScaleMax;
-    out.bendRatioMin     = s.bendRatioMin;
-    out.bendRatioMax     = s.bendRatioMax;
     out.lastSemitone     = s.lastSemitone;
     return out;
 }
@@ -157,11 +152,6 @@ void MidiTranslator::ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave) 
     s.routedSynth.store(0, std::memory_order_relaxed);
     s.routedNative.store(0, std::memory_order_relaxed);
     s.routedMute.store(0, std::memory_order_relaxed);
-    s.bendUpdates.store(0, std::memory_order_relaxed);
-    s.baseFreqScaleMin = 0.0f;
-    s.baseFreqScaleMax = 0.0f;
-    s.bendRatioMin     = 1.0f;
-    s.bendRatioMax     = 1.0f;
     s.lastSemitone     = 0;
 }
 
@@ -562,25 +552,73 @@ void MidiTranslator::ClearAllTemporaryVolumes() {
 
 // ── MIDI channel pool ─────────────────────────────────────────────────────
 
+uint8_t MidiTranslator::GetChannelsInUse() const {
+    return mChannelsAllocated;
+}
+
+uint32_t MidiTranslator::GetChannelReclaims() const {
+    return mChannelReclaims;
+}
+
+uint8_t MidiTranslator::ReclaimIdleChannel(uint8_t exceptFontId, int16_t exceptInst) {
+    for (uint8_t ch = 0; ch < mChannelsAllocated; ++ch) {
+        ChannelOwner& o = mChannelOwner[ch];
+        if (o.instOrWave < 0)
+            continue; // unowned (shouldn't happen without eager release)
+        if (o.fontId == exceptFontId && o.instOrWave == exceptInst)
+            continue; // never evict the pair asking for a channel
+        if (mSynthActiveByPair[o.fontId][o.instOrWave] != 0)
+            continue; // still sounding -- leave it alone
+        // Idle pair: drop its claim. The physical channel keeps its program
+        // and CC state, and so does mChannelState[ch], so the new owner's
+        // ProcessNote re-issues only what differs. No explicit reset needed.
+        mPairChannel[o.fontId][o.instOrWave] = 0xFF;
+        o.instOrWave = -1;
+        return ch;
+    }
+    return 0xFF;
+}
+
+// 0xFF return = no channel available; caller routes the note to native.
 uint8_t MidiTranslator::AllocateChannelForPair(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
-        return 0;
+        return 0xFF;
     uint8_t& slot = mPairChannel[fontId][instOrWave];
     if (slot != 0xFF)
         return slot;
-    if (mChannelsAllocated >= kMaxMidiChannels) {
-        static bool sLoggedOverflow = false;
-        if (!sLoggedOverflow) {
-            SPDLOG_WARN("[MidiTranslator] Per-pair channel pool exhausted "
-                        "({} unique pairs allocated); new pairs share ch 0",
-                        (int)kMaxMidiChannels);
-            sLoggedOverflow = true;
-        }
-        slot = 0;
-    } else {
+
+    // Room to grow the pool: hand out the next channel.
+    if (mChannelsAllocated < kMaxMidiChannels) {
         slot = mChannelsAllocated++;
+        mChannelOwner[slot] = { fontId, instOrWave };
+        return slot;
     }
-    return slot;
+
+    // Pool full: reclaim a channel from a pair that has gone quiet (a prior
+    // song's instruments). Active pairs keep theirs, so nothing sounding is
+    // cut. This is what stops the long-session "instruments stop playing"
+    // collapse -- new pairs get a real channel instead of sharing ch 0.
+    uint8_t reclaimed = ReclaimIdleChannel(fontId, instOrWave);
+    if (reclaimed != 0xFF) {
+        mChannelOwner[reclaimed] = { fontId, instOrWave };
+        ++mChannelReclaims;
+        slot = reclaimed;
+        return slot;
+    }
+
+    // Genuinely exhausted: all 64 channels are sounding distinct pairs right
+    // now. Collapsing onto channel 0 would hijack whatever instrument owns it
+    // and play this note with the wrong program, so signal failure instead and
+    // let the caller fall back to native. mPairChannel stays unassigned, so a
+    // later note retries once any pair goes quiet.
+    static bool sLoggedOverflow = false;
+    if (!sLoggedOverflow) {
+        SPDLOG_WARN("[MidiTranslator] All {} channels sounding at once; "
+                    "routing overflow pair to native",
+                    (int)kMaxMidiChannels);
+        sLoggedOverflow = true;
+    }
+    return 0xFF;
 }
 
 void MidiTranslator::RecordDiscovery(uint8_t fontId, int16_t instOrWave, bool mapped) {
@@ -944,19 +982,15 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     RecordDiscovery(fontId, instOrWave, legacyGm.program != kUnmapped);
 
     // DEBUG: per-pair stats. Detect a fresh NoteOn (Idle → playing transition);
-    // record baseFreqScale spread and the engine semitone. Route counters are
-    // incremented at the dispatch decision below — guarded by `wasIdleStart` so
-    // continuation frames of the same note don't double-count.
+    // record the engine semitone. Route counters are incremented at the
+    // dispatch decision below — guarded by `wasIdleStart` so continuation
+    // frames of the same note don't double-count.
     const bool wasIdleStart = BypassIndexValid(fontId, instOrWave) &&
                               state.kind == SlotKind::Idle &&
                               velocity > 0.0f && !isFinished;
     if (wasIdleStart) {
         auto& dbg = mDebugStats[fontId][instOrWave];
         dbg.noteOns.fetch_add(1, std::memory_order_relaxed);
-        if (dbg.baseFreqScaleMin == 0.0f || freqScale < dbg.baseFreqScaleMin)
-            dbg.baseFreqScaleMin = freqScale;
-        if (freqScale > dbg.baseFreqScaleMax)
-            dbg.baseFreqScaleMax = freqScale;
         dbg.lastSemitone = semitone;
     }
     // Helper for the route-decision counters below. Only counts on a fresh
@@ -1068,6 +1102,16 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     // Per-pair channel allocation — same channel for the life of a pair
     // so per-pair effect CCs survive across notes.
     uint8_t targetChannel = AllocateChannelForPair(fontId, instOrWave);
+    if (targetChannel == 0xFF) {
+        // Channel pool momentarily exhausted (all 64 sounding) -> native, so
+        // the instrument still plays instead of corrupting another channel.
+        if (isFinished || velocity <= 0.0f)
+            retireSlot();
+        else
+            adoptNative();
+        bumpRoute(&DebugSlot::routedNative);
+        return false;
+    }
 
     // Integer MIDI note from the engine semitone, with optional transpose.
     int transpose = static_cast<int>(e.transpose);
@@ -1179,14 +1223,6 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     if (fabsf(freqScale - state.lastFreqScale) > 1e-6f) {
         synth->PitchBendFactor(state.channel, pitchBend);
         state.lastFreqScale = freqScale;
-
-        // DEBUG: the bend ratio IS pitchBend, so the UI's 12*log2(ratio)
-        // readout shows the true swing the engine asks for (pre-clamp; the
-        // synth clamps the wheel itself).
-        auto& dbg = mDebugStats[fontId][instOrWave];
-        dbg.bendUpdates.fetch_add(1, std::memory_order_relaxed);
-        if (pitchBend < dbg.bendRatioMin) dbg.bendRatioMin = pitchBend;
-        if (pitchBend > dbg.bendRatioMax) dbg.bendRatioMax = pitchBend;
     }
     return true;
 }

@@ -110,6 +110,18 @@ class MidiTranslator {
     void NoteDisabled(int noteIndex);
     void Reset();
 
+    // Number of MIDI channels currently held by synth-routed pairs, out of
+    // kMaxMidiChannels. Diagnostic for the channel pool: if this climbs to
+    // the cap over a long session, new pairs collapse onto channel 0 and
+    // some instruments go silent. Game-thread read of an audio-thread
+    // counter; intentionally unsynchronised (a stale value is fine for a UI
+    // gauge).
+    uint8_t GetChannelsInUse() const;
+    // Times the channel pool wrapped and recycled an idle pair's channel.
+    // Nonzero == the long-session path is active and healthy (no ch-0
+    // collapse). Companion to GetChannelsInUse() for the FluidSynth tab.
+    uint32_t GetChannelReclaims() const;
+
     static constexpr int kMaxNotes        = 64;
     static constexpr int kMaxFontId       = 64;
     static constexpr int kMaxInstOrWave   = 256;
@@ -137,11 +149,6 @@ class MidiTranslator {
         uint32_t routedSynth      = 0;
         uint32_t routedNative     = 0;
         uint32_t routedMute       = 0;  // bank == 128 / engine drum-SFX / placeholder
-        uint32_t bendUpdates      = 0;  // freqScale changes after NoteOn
-        float    baseFreqScaleMin = 0.0f;
-        float    baseFreqScaleMax = 0.0f;
-        float    bendRatioMin     = 1.0f;
-        float    bendRatioMax     = 1.0f;
         uint8_t  lastSemitone     = 0;
     };
     DebugPairStats GetDebugStats(uint8_t fontId, int16_t instOrWave) const;
@@ -259,6 +266,10 @@ class MidiTranslator {
 
     void    RecordDiscovery(uint8_t fontId, int16_t instOrWave, bool mapped);
     uint8_t AllocateChannelForPair(uint8_t fontId, int16_t instOrWave);
+    // Frees the channel of the first idle pair found (no active synth notes,
+    // and not the requesting pair) and returns it, or 0xFF if every channel
+    // is currently sounding. Caller assigns ownership of the returned slot.
+    uint8_t ReclaimIdleChannel(uint8_t exceptFontId, int16_t exceptInst);
 
     // Find an entry by primary key; create a new one if not present.
     // Caller fills bank/presetName even when creating, and decides
@@ -292,6 +303,19 @@ class MidiTranslator {
     uint8_t  mPairChannel[kMaxFontId][kMaxInstOrWave];
     uint8_t  mChannelsAllocated = 0;
 
+    // Reverse map for the reclaim-on-exhaustion path: which pair owns each
+    // allocated MIDI channel. instOrWave == -1 marks an unowned slot. Lets
+    // ReclaimIdleChannel scan 64 channels instead of the full pair grid.
+    struct ChannelOwner {
+        uint8_t fontId     = 0;
+        int16_t instOrWave = -1; // -1 = unowned
+    };
+    ChannelOwner mChannelOwner[kMaxMidiChannels] = {};
+    // Count of times an idle pair's channel was reclaimed for a new pair.
+    // Pure diagnostic: nonzero means the pool wrapped and recycling kicked
+    // in (the long-session path that used to silently collapse onto ch 0).
+    uint32_t mChannelReclaims = 0;
+
     std::array<uint64_t, (kMaxFontId * kMaxInstOrWave) / 64> mSeenBits{};
     DiscoveredPair       mDiscovered[kMaxDiscovered] = {};
     std::atomic<int>     mDiscoveredCount{0};
@@ -308,11 +332,6 @@ class MidiTranslator {
         std::atomic<uint32_t> routedSynth{0};
         std::atomic<uint32_t> routedNative{0};
         std::atomic<uint32_t> routedMute{0};
-        std::atomic<uint32_t> bendUpdates{0};
-        float baseFreqScaleMin = 0.0f;
-        float baseFreqScaleMax = 0.0f;
-        float bendRatioMin     = 1.0f;
-        float bendRatioMax     = 1.0f;
         uint8_t lastSemitone   = 0;
     };
     DebugSlot mDebugStats[kMaxFontId][kMaxInstOrWave];
