@@ -705,6 +705,54 @@ void MidiTranslator::ResetAllOverrides() {
     // intentionally survive — they're runtime state, not overrides.
 }
 
+// Route <-> JSON string. Synth is the default and is omitted on write.
+static const char* RouteToString(EntryRoute r) {
+    switch (r) {
+        case EntryRoute::Native: return "native";
+        case EntryRoute::Mute:   return "mute";
+        case EntryRoute::Synth:  break;
+    }
+    return "synth";
+}
+static EntryRoute RouteFromString(const std::string& s) {
+    if (s == "native") return EntryRoute::Native;
+    if (s == "mute")   return EntryRoute::Mute;
+    return EntryRoute::Synth;
+}
+
+// Append the note-range split fields to a serialised entry, each omitted at
+// its default so unsplit entries stay byte-equivalent to the pre-split schema
+// (v2 -> v2, additive). Shared by SaveOverridesToFile and ExportPackMapping
+// so the two writers can't drift. (noteLow is the only split field that is
+// part of the entry key; it is written unconditionally-when-nonzero here.)
+static void WriteSplitFields(nlohmann::json& entry, const ConfigEntry& e) {
+    if (e.noteLow != 0)
+        entry["note_low"] = e.noteLow;
+    if (e.noteHigh != 127)
+        entry["note_high"] = e.noteHigh;
+    if (e.fixedNote >= 0)
+        entry["fixed_note"] = e.fixedNote;
+    if (e.route != EntryRoute::Synth)
+        entry["route"] = RouteToString(e.route);
+}
+
+// Read the non-key split fields (noteHigh / fixedNote / route) onto an entry.
+// Missing keys keep the entry's current values, matching how gain/transpose/
+// effects overlay. noteLow is applied separately via the FindOrCreateEntry
+// key so distinct splits resolve to distinct entries.
+static void ReadSplitFields(const nlohmann::json& entry, ConfigEntry& e) {
+    if (entry.contains("note_high")) {
+        int nh = entry.value("note_high", 127);
+        e.noteHigh = static_cast<uint8_t>(std::clamp(nh, 0, 127));
+    }
+    if (entry.contains("fixed_note")) {
+        int fn = entry.value("fixed_note", -1);
+        e.fixedNote = static_cast<int16_t>(std::clamp(fn, -1, 127));
+    }
+    if (entry.contains("route"))
+        e.route = RouteFromString(entry.value("route", std::string("synth")));
+}
+
 bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
     nlohmann::json j;
     j["version"] = 2;
@@ -745,6 +793,7 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
             entry["filter_cutoff"] = e.cutoff;
         if (e.q >= 0)
             entry["filter_q"] = e.q;
+        WriteSplitFields(entry, e);
         entry["enabled"] = e.enabled;
         entry["selected"] = e.selected;
         if (hasDisplayName)
@@ -835,6 +884,7 @@ int MidiTranslator::ExportPackMapping(const std::string& path, const std::string
             entry["filter_cutoff"] = e.cutoff;
         if (e.q >= 0)
             entry["filter_q"] = e.q;
+        WriteSplitFields(entry, e);
         // Pack mapping consumers default enabled=true, selected=false at load
         // time (ApplyOverridesFromString), so we omit both flags here — the
         // file represents "this is the pack's recommended preset for the
@@ -897,10 +947,13 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
         if (bank > 255)
             bank = 255;
         std::string presetName = entry.value("preset_name", std::string{});
+        // note_low is part of the entry key, so it must be resolved before
+        // find-or-create or distinct splits collapse into one entry.
+        uint8_t noteLow = static_cast<uint8_t>(std::clamp(entry.value("note_low", 0), 0, 127));
 
         int idx = FindOrCreateEntry(static_cast<uint8_t>(fontId), static_cast<int16_t>(instOrWave), pack,
                                     static_cast<int16_t>(program), static_cast<int16_t>(bank), presetName,
-                                    EntrySource::ModSupplied);
+                                    EntrySource::ModSupplied, noteLow);
         if (idx < 0)
             continue;
         ConfigEntry& e = mEntries[idx];
@@ -923,6 +976,7 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
             e.cutoff = ClampCcOrSentinel(entry.value("filter_cutoff", -1));
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
+        ReadSplitFields(entry, e);
         // Pack mapping.json: enabled by default (mods publish active
         // presets), selected stays false (user hasn't picked).
         e.enabled = entry.value("enabled", true);
@@ -971,10 +1025,13 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
         if (bank > 255)
             bank = 255;
         std::string presetName = entry.value("preset_name", std::string{});
+        // note_low is part of the entry key, so it must be resolved before
+        // find-or-create or distinct splits collapse into one entry.
+        uint8_t noteLow = static_cast<uint8_t>(std::clamp(entry.value("note_low", 0), 0, 127));
 
         int idx = FindOrCreateEntry(static_cast<uint8_t>(fontId), static_cast<int16_t>(instOrWave), pack,
                                     static_cast<int16_t>(program), static_cast<int16_t>(bank), presetName,
-                                    EntrySource::UserPicked);
+                                    EntrySource::UserPicked, noteLow);
         if (idx < 0)
             continue;
         ConfigEntry& e = mEntries[idx];
@@ -996,6 +1053,7 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
             e.cutoff = ClampCcOrSentinel(entry.value("filter_cutoff", -1));
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
+        ReadSplitFields(entry, e);
         // File overlay = user file. Defaults align with "this is a user
         // pick" — enabled+selected unless the file says otherwise. Old
         // (v1) files don't carry these keys, so the defaults give the

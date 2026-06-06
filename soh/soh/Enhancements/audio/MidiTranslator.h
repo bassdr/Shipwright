@@ -108,12 +108,16 @@ struct ConfigEntry {
     // ── Note-range split (engine-semitone space; see plan 4.5) ───────────
     // noteLow/noteHigh bound which engine `semitone` values this entry
     // claims (inclusive). Default 0..127 = whole range = an unsplit entry,
-    // byte-equivalent to the pre-split schema. drumNote is the GM percussion
-    // note fired for a bank-128 entry (the slot index selects WHICH entry;
-    // drumNote selects WHAT it plays); 0 = none. route dispatches the winner.
+    // byte-equivalent to the pre-split schema. fixedNote pins the OUTPUT
+    // note: -1 = derive it from `semitone` (the normal melodic path); >= 0 =
+    // play this exact MIDI note regardless of the slot. The slot index
+    // selects WHICH entry wins; fixedNote selects WHAT it plays. It serves
+    // both a bank-128 GM percussion note and a tuned-percussion pitch — the
+    // preset's bank only decides how the UI labels it, not playback. route
+    // dispatches the winner (synth / engine sample / silent).
     uint8_t     noteLow       = 0;
     uint8_t     noteHigh      = 127;
-    uint8_t     drumNote      = 0;
+    int16_t     fixedNote     = -1;
     EntryRoute  route         = EntryRoute::Synth;
     // Runtime: resolved sfontId for ProgramSelect. -1 when the pack isn't
     // currently loaded OR the SF2 doesn't have (bank, program).
