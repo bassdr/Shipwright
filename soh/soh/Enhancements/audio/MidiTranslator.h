@@ -155,6 +155,16 @@ class MidiTranslator {
     void           ResetDebugStats();
     void           ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave);
 
+    // Per-slot NoteOn histogram for the engine drum (instOrWave 0) and SFX
+    // (instOrWave 1) channels. The `semitone` byte on these channels is a
+    // slot index (Audio_GetDrum / Audio_GetSfx), not a pitch, so this records
+    // how often each slot fired — the discovery input for the drum auto-split
+    // (note-range splits, drum phase). Fills out[0..127] with per-slot counts
+    // and returns the number of distinct slots that fired. Returns 0 for any
+    // pair that isn't drum/SFX. Lock-free read of audio-thread atomics;
+    // best-effort snapshot.
+    int GetDrumSlotHistogram(uint8_t fontId, int16_t instOrWave, uint32_t out[128]) const;
+
     // ── Pack stack + entry sfontId refresh ───────────────────────────────
     // Set by AudioEditor after every SF2 stack change. Used as the
     // multi-enabled tiebreak rank — last entry in this list wins.
@@ -335,6 +345,18 @@ class MidiTranslator {
         uint8_t lastSemitone   = 0;
     };
     DebugSlot mDebugStats[kMaxFontId][kMaxInstOrWave];
+
+    // Per-slot NoteOn counts for the drum (instOrWave 0) and SFX (1) channels
+    // only — scoped to 2 instOrWaves so the table stays ~32 KB rather than the
+    // full [kMaxInstOrWave][128]. Written by the audio thread on every fresh
+    // NoteOn; read lock-free by the UI / GetDrumSlotHistogram. Index is
+    // [fontId][instOrWave (0|1)][semitone 0..127]. Each element is value-
+    // initialised to 0 via the wrapper's member initialiser (same idiom as
+    // DebugSlot's atomics, since a raw atomic array can't be brace-zeroed).
+    static constexpr int kDrumHistInst  = 2;   // instOrWave 0 (drum) + 1 (SFX)
+    static constexpr int kDrumHistSlots = 128;
+    struct DrumSlotHit { std::atomic<uint16_t> count{ 0 }; };
+    DrumSlotHit mDrumSlotHits[kMaxFontId][kDrumHistInst][kDrumHistSlots];
 
     // ── Ship 11: entry-based config storage ──────────────────────────────
     std::vector<ConfigEntry> mEntries;

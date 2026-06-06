@@ -138,6 +138,21 @@ MidiTranslator::DebugPairStats MidiTranslator::GetDebugStats(uint8_t fontId, int
     return out;
 }
 
+int MidiTranslator::GetDrumSlotHistogram(uint8_t fontId, int16_t instOrWave, uint32_t out[128]) const {
+    for (int s = 0; s < kDrumHistSlots; ++s)
+        out[s] = 0;
+    if (fontId >= kMaxFontId || instOrWave < 0 || instOrWave >= kDrumHistInst)
+        return 0;
+    int distinct = 0;
+    for (int s = 0; s < kDrumHistSlots; ++s) {
+        uint32_t c = mDrumSlotHits[fontId][instOrWave][s].count.load(std::memory_order_relaxed);
+        out[s] = c;
+        if (c > 0)
+            ++distinct;
+    }
+    return distinct;
+}
+
 void MidiTranslator::ResetDebugStats() {
     for (int f = 0; f < kMaxFontId; ++f)
         for (int i = 0; i < kMaxInstOrWave; ++i)
@@ -153,6 +168,10 @@ void MidiTranslator::ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave) 
     s.routedNative.store(0, std::memory_order_relaxed);
     s.routedMute.store(0, std::memory_order_relaxed);
     s.lastSemitone     = 0;
+    if (instOrWave >= 0 && instOrWave < kDrumHistInst) {
+        for (int slot = 0; slot < kDrumHistSlots; ++slot)
+            mDrumSlotHits[fontId][instOrWave][slot].count.store(0, std::memory_order_relaxed);
+    }
 }
 
 // ── Pack stack + sfontId resolution ───────────────────────────────────────
@@ -992,6 +1011,11 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         auto& dbg = mDebugStats[fontId][instOrWave];
         dbg.noteOns.fetch_add(1, std::memory_order_relaxed);
         dbg.lastSemitone = semitone;
+        // Drum/SFX slot histogram: on these channels `semitone` is a slot
+        // index, so this is the per-slot fire count the drum auto-split reads.
+        if (instOrWave < kDrumHistInst && semitone < kDrumHistSlots) {
+            mDrumSlotHits[fontId][instOrWave][semitone].count.fetch_add(1, std::memory_order_relaxed);
+        }
     }
     // Helper for the route-decision counters below. Only counts on a fresh
     // NoteOn so per-frame continuation calls don't inflate the totals.

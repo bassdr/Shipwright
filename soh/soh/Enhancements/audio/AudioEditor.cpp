@@ -1641,6 +1641,23 @@ void AudioEditor::DrawElement() {
                                         st.noteOns, st.routedSynth, st.routedNative, st.routedMute,
                                         (unsigned)st.lastSemitone,
                                         (unsigned)(st.lastSemitone + 21u));
+                                    // Drum/SFX pairs: the semitone is a slot index, so also emit
+                                    // the per-slot fire histogram as a compact "slotxcount" line.
+                                    if (i == 0 || i == 1) {
+                                        uint32_t hist[128];
+                                        int distinct = SOH::MidiTranslator::Instance().GetDrumSlotHistogram(
+                                            static_cast<uint8_t>(f), static_cast<int16_t>(i), hist);
+                                        if (distinct > 0) {
+                                            std::string slots;
+                                            for (int slot = 0; slot < 128; ++slot) {
+                                                if (hist[slot] == 0) continue;
+                                                slots += " " + std::to_string(slot) + "x" +
+                                                         std::to_string(hist[slot]);
+                                            }
+                                            SPDLOG_INFO("[FluidSynth][DBG]   drum slots (font={}, inst={}):{}",
+                                                        f, i, slots);
+                                        }
+                                    }
                                     dumped++;
                                 }
                             }
@@ -2087,6 +2104,21 @@ void AudioEditor::DrawElement() {
                                                     (unsigned)s.lastSemitone,
                                                     (unsigned)(s.lastSemitone + 21u),
                                                     21);
+                                        // Drum/SFX channels: the 'semitone' is a slot index, so
+                                        // show the per-slot fire histogram. This is the discovery
+                                        // input the drum auto-split reads.
+                                        if (p.instOrWave == 0 || p.instOrWave == 1) {
+                                            ImGui::Separator();
+                                            uint32_t hist[128];
+                                            int distinct = SOH::MidiTranslator::Instance().GetDrumSlotHistogram(
+                                                p.fontId, p.instOrWave, hist);
+                                            ImGui::Text("Slots fired: %d distinct", distinct);
+                                            for (int slot = 0; slot < 128; ++slot) {
+                                                if (hist[slot] == 0) continue;
+                                                ImGui::Text("  slot %3d : %u hit%s", slot, hist[slot],
+                                                            hist[slot] == 1 ? "" : "s");
+                                            }
+                                        }
                                         ImGui::Separator();
                                         if (ImGui::SmallButton("Reset this pair##dbgResetPair")) {
                                             SOH::MidiTranslator::Instance().ResetDebugStatsForPair(
