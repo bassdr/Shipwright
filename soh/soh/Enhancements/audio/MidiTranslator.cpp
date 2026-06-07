@@ -152,6 +152,20 @@ uint8_t MidiTranslator::GetEntryNativeActive(int idx) const {
         return 0;
     return mEntryNativeActive[idx];
 }
+void MidiTranslator::GetPairEntryActivity(uint8_t fontId, int16_t instOrWave, bool& anySynth,
+                                          bool& anyNative) const {
+    anySynth = false;
+    anyNative = false;
+    for (size_t idx = 0; idx < mEntries.size(); idx++) {
+        const ConfigEntry& e = mEntries[idx];
+        if (e.fontId != fontId || e.instOrWave != instOrWave)
+            continue;
+        if (mEntrySynthActive[idx] > 0)
+            anySynth = true;
+        else if (mEntryNativeActive[idx] > 0)
+            anyNative = true;
+    }
+}
 
 // ── DEBUG: per-pair stats accessors ──────────────────────────────────────
 

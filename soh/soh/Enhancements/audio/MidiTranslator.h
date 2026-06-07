@@ -178,6 +178,15 @@ class MidiTranslator {
     // or melodic range lights up independently of the rest of its pair.
     uint8_t GetEntrySynthActive(int idx) const;
     uint8_t GetEntryNativeActive(int idx) const;
+    // Aggregate the per-entry activity over all of a pair's entries, for
+    // tinting a SPLIT parent row from its children: a split instrument shows
+    // green if ANY child slot/range is synth-active, blue if any is
+    // native-active and none is synth-active, and stays uncoloured when no
+    // child is active. (The per-pair counts above also count the constant
+    // control-slot fall-through that has no entry, so they would keep a drum
+    // parent permanently blue -- this only sees attributed children.)
+    void GetPairEntryActivity(uint8_t fontId, int16_t instOrWave, bool& anySynth,
+                              bool& anyNative) const;
 
     // DEBUG: per-pair running stats accumulated by ProcessNote. Used by the
     // AudioEditor's per-row "[DBG]" popup to investigate octave-shift,
