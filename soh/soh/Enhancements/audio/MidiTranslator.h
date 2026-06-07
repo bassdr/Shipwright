@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,9 @@ struct NoteTranslatorState {
     uint8_t  pairFontId    = 0;
     int16_t  pairInstOrWave = -1;
     float    lastFreqScale = 0.0f;
+    // Entry this note resolved to, so retire/NoteDisabled can decrement the
+    // right per-entry active counter. -1 = native fall-through (no entry).
+    int16_t  activeEntryIdx = -1;
 };
 
 // Overall translator behaviour, set from AudioEditor and read by ProcessNote.
@@ -169,6 +173,11 @@ class MidiTranslator {
     void ClearDiscovered();
     uint8_t GetSynthActiveCount(uint8_t fontId, int16_t instOrWave) const;
     uint8_t GetNativeActiveCount(uint8_t fontId, int16_t instOrWave) const;
+    // Per-entry (per split row) active counts, for the row activity tint.
+    // A note attributes to the entry it resolved to, so a single drum slot
+    // or melodic range lights up independently of the rest of its pair.
+    uint8_t GetEntrySynthActive(int idx) const;
+    uint8_t GetEntryNativeActive(int idx) const;
 
     // DEBUG: per-pair running stats accumulated by ProcessNote. Used by the
     // AudioEditor's per-row "[DBG]" popup to investigate octave-shift,
@@ -256,6 +265,29 @@ class MidiTranslator {
     //      (audible result: muted)
     void ClickSynth(uint8_t fontId, int16_t instOrWave);
 
+    // Drum auto-split: for each engine slot the drum/SFX channel actually
+    // fired (from the GetDrumSlotHistogram data), create a single-slot entry
+    // (noteLow==noteHigh==slot) pinned to a default bank-128 kit (the first
+    // loaded percussion preset) with a placeholder GM percussion note. The
+    // user then refines the kit / Drum Sound per slot. Re-running it re-enables
+    // existing slot entries rather than duplicating them. No-op outside the
+    // drum/SFX channels.
+    void AutoSplitDrums(uint8_t fontId, int16_t instOrWave);
+
+    // Drum channel Mode (master switch). Sets an explicit per-pair flag,
+    // separate from per-slot `enabled`, so toggling it never rewrites the
+    // per-slot state. Native (default) => every slot plays the engine drum
+    // regardless of per-slot enabled (and the UI grays the slot controls);
+    // Synth => per-slot enabled decides synth vs native. Switching to Synth
+    // with no slots yet auto-splits to populate the rows (created Native by
+    // default). IsDrumChannelSynth reads the flag (audio-thread safe).
+    void SetDrumChannelSynth(uint8_t fontId, int16_t instOrWave, bool synth);
+    bool IsDrumChannelSynth(uint8_t fontId, int16_t instOrWave) const;
+    // Set the kit (bank-128 pack/program) for every selected slot entry of a
+    // drum pair at once -- the GM percussion note stays per slot (fixedNote).
+    void SetDrumKit(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program,
+                    const std::string& presetName);
+
     // ── Per-entry mutators (UI Override widgets) ─────────────────────────
     void SetEntryGain(int idx, float gain);
     void SetEntryTranspose(int idx, int8_t semis);
@@ -263,6 +295,13 @@ class MidiTranslator {
     void SetEntryChorus(int idx, int8_t cc);
     void SetEntryFilterCutoff(int idx, int8_t cc);
     void SetEntryFilterResonance(int idx, int8_t cc);
+    // Split-row mutators. fixedNote pins the output note (-1 = derive from
+    // semitone); route switches a split between synth / engine-sample /
+    // silent; enabled drops a split out of resolution (its slot falls back to
+    // native) without deleting it. route/enabled recompute the pair's chain.
+    void SetEntryFixedNote(int idx, int16_t note);
+    void SetEntryRoute(int idx, EntryRoute route);
+    void SetEntryEnabled(int idx, bool enabled);
 
     // ── Per-pair display name (row label, sparse) ────────────────────────
     std::string GetDisplayName(uint8_t fontId, int16_t instOrWave) const;
@@ -272,6 +311,13 @@ class MidiTranslator {
     bool  IsTemporarilyMuted(uint8_t fontId, int16_t instOrWave) const;
     void  SetTemporaryMute(uint8_t fontId, int16_t instOrWave, bool muted);
     void  ClearAllTemporaryMutes();
+    // Per-split transient mute, keyed by (font, inst, noteLow) so it survives
+    // entry reordering. Lets a single drum slot / melodic range be isolated.
+    // Checked after resolution: a muted split silences both paths for notes
+    // whose covering entry starts at noteLow.
+    bool  IsTemporarilySlotMuted(uint8_t fontId, int16_t instOrWave, uint8_t noteLow) const;
+    void  SetTemporarySlotMute(uint8_t fontId, int16_t instOrWave, uint8_t noteLow, bool muted);
+    void  ClearAllTemporarySlotMutes();
     float GetTemporaryVolume(uint8_t fontId, int16_t instOrWave) const;
     void  SetTemporaryVolume(uint8_t fontId, int16_t instOrWave, float vol);
     void  ClearAllTemporaryVolumes();
@@ -307,6 +353,18 @@ class MidiTranslator {
     MidiTranslator();
 
     void    RecordDiscovery(uint8_t fontId, int16_t instOrWave, bool mapped);
+    // Balanced inc/dec of the per-entry active counters from ProcessNote's
+    // activation paths and retire/NoteDisabled. idx<0 (native fall-through) is
+    // a no-op so error/fallback paths can pass -1 freely.
+    void    IncEntryActive(bool synth, int idx);
+    void    DecEntryActive(bool synth, int idx);
+    // Current kit (pack/program) for a drum pair: an existing selected bank-128
+    // slot entry if any, else the first loaded bank-128 preset, else empty.
+    void    ResolveDrumKit(uint8_t fontId, int16_t instOrWave, std::string& outPack, int& outProgram) const;
+    // Index of a selected entry whose range starts at `slot` (its noteLow),
+    // enabled or not. Lets a native-routed drum note attribute its activity to
+    // the slot's row even when the entry is disabled. -1 if none.
+    int     FindSlotEntryIdx(uint8_t fontId, int16_t instOrWave, uint8_t slot) const;
     uint8_t AllocateChannelForPair(uint8_t fontId, int16_t instOrWave);
     // Frees the channel of the first idle pair found (no active synth notes,
     // and not the requesting pair) and returns it, or 0xFF if every channel
@@ -342,6 +400,13 @@ class MidiTranslator {
     uint8_t mSynthActiveByPair[kMaxFontId][kMaxInstOrWave]  = {};
     uint8_t mNativeActiveByPair[kMaxFontId][kMaxInstOrWave] = {};
 
+    // Per-entry active counts (indexed by entry index), for the per-split-row
+    // activity tint. Written by the audio thread on note activation/retire,
+    // read lock-free by the UI. Index shifts on entry erase leave these
+    // briefly stale until notes replay -- cosmetic only.
+    uint8_t mEntrySynthActive[kMaxEntries]  = {};
+    uint8_t mEntryNativeActive[kMaxEntries] = {};
+
     uint8_t  mPairChannel[kMaxFontId][kMaxInstOrWave];
     uint8_t  mChannelsAllocated = 0;
 
@@ -363,6 +428,7 @@ class MidiTranslator {
     std::atomic<int>     mDiscoveredCount{0};
 
     std::set<std::pair<uint8_t, int16_t>>        mTemporaryMute;
+    std::set<std::tuple<uint8_t, int16_t, uint8_t>> mTemporarySlotMute;
     std::map<std::pair<uint8_t, int16_t>, float> mTemporaryVolume;
     std::map<std::pair<uint8_t, int16_t>, std::string> mDisplayName;
 
@@ -389,6 +455,14 @@ class MidiTranslator {
     static constexpr int kDrumHistSlots = 128;
     struct DrumSlotHit { std::atomic<uint16_t> count{ 0 }; };
     DrumSlotHit mDrumSlotHits[kMaxFontId][kDrumHistInst][kDrumHistSlots];
+
+    // Per-pair drum channel mode (the per-instrument Native/Synth master). It
+    // is SEPARATE from per-slot `enabled` on purpose: setting a slot to Native
+    // must not flip the whole instrument. Native (false, default) => all slots
+    // play the engine drum regardless of per-slot state; Synth (true) =>
+    // per-slot enabled decides. Plain bool grid: audio thread reads it per
+    // drum note, UI writes it; a torn bool read is benign. Index [font][0|1].
+    bool mDrumChannelSynth[kMaxFontId][kDrumHistInst] = {};
 
     // ── Ship 11: entry-based config storage ──────────────────────────────
     std::vector<ConfigEntry> mEntries;

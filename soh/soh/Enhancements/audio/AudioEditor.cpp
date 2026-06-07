@@ -113,6 +113,13 @@ void AutoSaveOverrides() {
 static std::set<std::pair<uint8_t, int16_t>> sSoloedPairs;
 static std::set<std::pair<uint8_t, int16_t>> sExplicitMutedPairs;
 
+// Per-drum-slot analogues, keyed by (fontId, instOrWave, slot/noteLow), so an
+// individual drum sound can be soloed/muted to isolate it. A soloed slot
+// counts toward the global solo state (it mutes other pairs and other slots);
+// see the effective-mute apply pass.
+static std::set<std::tuple<uint8_t, int16_t, uint8_t>> sSoloedSlots;
+static std::set<std::tuple<uint8_t, int16_t, uint8_t>> sExplicitMutedSlots;
+
 // Export-pack-mapping popup state. Buffers are session-scoped: the popup
 // prefills sExportPackName from the user's most common selected pack each
 // time it opens, and sExportStatus carries the last write result so the
@@ -1754,7 +1761,10 @@ void AudioEditor::DrawElement() {
                             if (ImGui::SmallButton("Clear##overrideClear")) {
                                 sSoloedPairs.clear();
                                 sExplicitMutedPairs.clear();
+                                sSoloedSlots.clear();
+                                sExplicitMutedSlots.clear();
                                 SOH::MidiTranslator::Instance().ClearAllTemporaryMutes();
+                                SOH::MidiTranslator::Instance().ClearAllTemporarySlotMutes();
                                 SOH::MidiTranslator::Instance().ClearAllTemporaryVolumes();
                             }
                             ImGui::PopStyleColor(3);
@@ -1816,15 +1826,46 @@ void AudioEditor::DrawElement() {
                             // where anySolo = !sSoloedPairs.empty(), inSolo = membership in
                             // sSoloedPairs, inExplicitMute = membership in sExplicitMutedPairs.
                             {
-                                bool anySolo = !sSoloedPairs.empty();
+                                // A soloed drum slot also counts toward the global solo
+                                // state, so it mutes other pairs and sibling slots.
+                                bool anySolo = !sSoloedPairs.empty() || !sSoloedSlots.empty();
+                                SOH::MidiTranslator::Instance().ClearAllTemporarySlotMutes();
                                 for (int i = 0; i < nPairs; i++) {
                                     const auto& q = pairs[i];
                                     auto key = std::make_pair(q.fontId, q.instOrWave);
-                                    bool inSolo = sSoloedPairs.count(key) > 0;
+                                    bool isDrum = (q.instOrWave == 0 || q.instOrWave == 1);
+                                    bool pairHasSoloedSlot = false;
+                                    if (isDrum) {
+                                        for (const auto& t : sSoloedSlots)
+                                            if (std::get<0>(t) == q.fontId && std::get<1>(t) == q.instOrWave) {
+                                                pairHasSoloedSlot = true;
+                                                break;
+                                            }
+                                    }
+                                    bool inSolo = sSoloedPairs.count(key) > 0 || pairHasSoloedSlot;
                                     bool explicitMute = sExplicitMutedPairs.count(key) > 0;
-                                    bool eff = (anySolo && !inSolo) || explicitMute;
-                                    SOH::MidiTranslator::Instance().SetTemporaryMute(
-                                        q.fontId, q.instOrWave, eff);
+                                    bool effPair = (anySolo && !inSolo) || explicitMute;
+                                    SOH::MidiTranslator::Instance().SetTemporaryMute(q.fontId, q.instOrWave, effPair);
+
+                                    // Per-slot mutes only matter when the channel itself isn't
+                                    // muted (the pair-mute short-circuits before per-slot).
+                                    if (isDrum && !effPair) {
+                                        std::vector<int> idxs;
+                                        SOH::MidiTranslator::Instance().GetEntriesForPair(q.fontId, q.instOrWave,
+                                                                                          idxs);
+                                        for (int ei : idxs) {
+                                            const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
+                                            if (!ce.selected || ce.noteLow != ce.noteHigh)
+                                                continue;
+                                            auto st = std::make_tuple(q.fontId, q.instOrWave, ce.noteLow);
+                                            bool slotSolo =
+                                                sSoloedSlots.count(st) > 0 || sSoloedPairs.count(key) > 0;
+                                            bool effSlot = (anySolo && !slotSolo) || sExplicitMutedSlots.count(st) > 0;
+                                            if (effSlot)
+                                                SOH::MidiTranslator::Instance().SetTemporarySlotMute(
+                                                    q.fontId, q.instOrWave, ce.noteLow, true);
+                                        }
+                                    }
                                 }
                             }
 
@@ -1847,6 +1888,288 @@ void AudioEditor::DrawElement() {
                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kSynthTint);
                                 } else if (nativeActive > 0) {
                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kNativeTint);
+                                }
+
+                                // ── Drum / SFX pair: per-slot tree-row ───────────────
+                                // The engine routes all percussion through instOrWave 0
+                                // (SFX through 1); the `semitone` byte is a slot index, not a
+                                // pitch. Parent row behaves like a melodic row (Solo/Mute,
+                                // Native/Synth, a Kit dropdown); expanding reveals one child
+                                // row per drum slot (per-slot Solo/Mute, Mode, Drum Sound).
+                                // Diverts before the melodic body and continues.
+                                if (p.instOrWave == 0 || p.instOrWave == 1) {
+                                    auto pairKey = std::make_pair(p.fontId, p.instOrWave);
+                                    const char* fontName = SOH::GetFontName(p.fontId);
+                                    const SOH::ConfigEntry* dActive =
+                                        SOH::MidiTranslator::Instance().GetActiveEntry(p.fontId, p.instOrWave);
+                                    // The per-instrument Native/Synth state is the explicit
+                                    // master flag, NOT "any slot enabled" -- so per-slot edits
+                                    // never flip the instrument.
+                                    bool channelSynth =
+                                        SOH::MidiTranslator::Instance().IsDrumChannelSynth(p.fontId, p.instOrWave);
+
+                                    // Override: channel Solo + Mute (session-only).
+                                    ImGui::TableSetColumnIndex(overrideCol);
+                                    bool chSolo = sSoloedPairs.count(pairKey) > 0;
+                                    bool chMute = sExplicitMutedPairs.count(pairKey) > 0;
+                                    if (ImGui::SmallButton(chSolo ? "Unsolo##dsolo" : "Solo##dsolo")) {
+                                        if (chSolo) sSoloedPairs.erase(pairKey);
+                                        else        sSoloedPairs.insert(pairKey);
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::SmallButton(chMute ? "Unmute##dmute" : "Mute##dmute")) {
+                                        if (chMute) sExplicitMutedPairs.erase(pairKey);
+                                        else        sExplicitMutedPairs.insert(pairKey);
+                                    }
+
+                                    // Song: collapsible font-name node.
+                                    ImGui::TableSetColumnIndex(songCol);
+                                    bool treeOpen = ImGui::TreeNodeEx("##drumtree", ImGuiTreeNodeFlags_OpenOnArrow,
+                                                                      "%s", fontName ? fontName : "(font)");
+
+                                    ImGui::TableSetColumnIndex(instCol);
+                                    ImGui::TextUnformatted(p.instOrWave == 0 ? "Drum" : "SFX");
+
+                                    // Mode: Native / Synth for the whole channel.
+                                    ImGui::TableSetColumnIndex(modeCol);
+                                    if (ImGui::RadioButton("Native##dmode", !channelSynth)) {
+                                        SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId, p.instOrWave, false);
+                                        AutoSaveOverrides();
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::RadioButton("Synth##dmode", channelSynth)) {
+                                        SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId, p.instOrWave, true);
+                                        AutoSaveOverrides();
+                                    }
+
+                                    // Gain column reused for the slot-discovery action.
+                                    ImGui::TableSetColumnIndex(gainCol);
+                                    uint32_t hist[128];
+                                    int distinct = SOH::MidiTranslator::Instance().GetDrumSlotHistogram(
+                                        p.fontId, p.instOrWave, hist);
+                                    char autoBtn[48];
+                                    std::snprintf(autoBtn, sizeof autoBtn, "Slots (%d)##autosplit", distinct);
+                                    if (ImGui::SmallButton(autoBtn)) {
+                                        SOH::MidiTranslator::Instance().AutoSplitDrums(p.fontId, p.instOrWave);
+                                        AutoSaveOverrides();
+                                    }
+                                    if (ImGui::IsItemHovered())
+                                        ImGui::SetTooltip(
+                                            "Discover drum slots: create one synth entry per slot heard\n"
+                                            "(%d so far). Play the song first, then expand to map each\n"
+                                            "slot to a GM percussion sound.",
+                                            distinct);
+
+                                    // Preset: Kit dropdown (bank-128 presets). Mirrors the
+                                    // melodic Preset combo: a "None" entry sets the instrument to
+                                    // Native; picking a kit sets it to Synth.
+                                    ImGui::TableSetColumnIndex(presetCol);
+                                    ImGui::SetNextItemWidth(-1.0f);
+                                    std::string curKit = !channelSynth ? "None (native)" : "(pick a kit)";
+                                    if (channelSynth && dActive && !dActive->packName.empty())
+                                        curKit = dActive->presetName.empty() ? dActive->packName : dActive->presetName;
+                                    if (ImGui::BeginCombo("##drumkit", curKit.c_str())) {
+                                        if (ImGui::Selectable("None (native)", !channelSynth)) {
+                                            SOH::MidiTranslator::Instance().SetDrumChannelSynth(
+                                                p.fontId, p.instOrWave, false);
+                                            AutoSaveOverrides();
+                                        }
+                                        ImGui::Separator();
+                                        for (const auto& lp : sLoadedPresets) {
+                                            if (lp.bank != 128)
+                                                continue;
+                                            char lbl[112];
+                                            std::snprintf(lbl, sizeof lbl, "%s / %s##kit_%d_%d",
+                                                          lp.packName.c_str(), lp.name.c_str(), lp.sfontId, lp.program);
+                                            bool sel = channelSynth && dActive && dActive->bank == 128 &&
+                                                       dActive->packName == lp.packName && dActive->program == lp.program;
+                                            if (ImGui::Selectable(lbl, sel)) {
+                                                // Synth first (auto-splits slots if none exist),
+                                                // then apply the picked kit to those slots.
+                                                SOH::MidiTranslator::Instance().SetDrumChannelSynth(
+                                                    p.fontId, p.instOrWave, true);
+                                                SOH::MidiTranslator::Instance().SetDrumKit(
+                                                    p.fontId, p.instOrWave, lp.packName, (int16_t)lp.program, lp.name);
+                                                AutoSaveOverrides();
+                                            }
+                                            if (sel) ImGui::SetItemDefaultFocus();
+                                        }
+                                        ImGui::EndCombo();
+                                    }
+
+                                    if (treeOpen) {
+                                        std::vector<int> idxs;
+                                        SOH::MidiTranslator::Instance().GetEntriesForPair(
+                                            p.fontId, p.instOrWave, idxs);
+                                        std::vector<int> slots;
+                                        for (int ei : idxs) {
+                                            const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
+                                            // Drum splits are single-slot; skip full-range
+                                            // whole-pair entries so they don't all collapse onto
+                                            // slot 0.
+                                            if (ce.selected && ce.noteLow == ce.noteHigh)
+                                                slots.push_back(ei);
+                                        }
+                                        std::sort(slots.begin(), slots.end(), [](int a, int b) {
+                                            return SOH::MidiTranslator::Instance().GetEntry(a).noteLow <
+                                                   SOH::MidiTranslator::Instance().GetEntry(b).noteLow;
+                                        });
+                                        if (slots.empty()) {
+                                            ImGui::TableNextRow();
+                                            ImGui::TableSetColumnIndex(instCol);
+                                            ImGui::TextDisabled("(no slots - set Synth or click Slots)");
+                                        }
+                                        for (int ei : slots) {
+                                            const SOH::ConfigEntry& ce =
+                                                SOH::MidiTranslator::Instance().GetEntry(ei);
+                                            ImGui::TableNextRow();
+                                            ImGui::PushID(ei);
+
+                                            // Per-slot activity tint (green synth / blue native).
+                                            if (SOH::MidiTranslator::Instance().GetEntrySynthActive(ei) > 0)
+                                                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kSynthTint);
+                                            else if (SOH::MidiTranslator::Instance().GetEntryNativeActive(ei) > 0)
+                                                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kNativeTint);
+
+                                            // Override: per-slot Solo / Mute.
+                                            auto slotKey =
+                                                std::make_tuple(p.fontId, p.instOrWave, ce.noteLow);
+                                            ImGui::TableSetColumnIndex(overrideCol);
+                                            bool sSolo = sSoloedSlots.count(slotKey) > 0;
+                                            bool sMute = sExplicitMutedSlots.count(slotKey) > 0;
+                                            if (ImGui::SmallButton(sSolo ? "S*##ssolo" : "S##ssolo")) {
+                                                if (sSolo) sSoloedSlots.erase(slotKey);
+                                                else       sSoloedSlots.insert(slotKey);
+                                            }
+                                            if (ImGui::IsItemHovered())
+                                                ImGui::SetTooltip("Solo this drum slot (isolate it).");
+                                            ImGui::SameLine();
+                                            if (ImGui::SmallButton(sMute ? "M*##smute" : "M##smute")) {
+                                                if (sMute) sExplicitMutedSlots.erase(slotKey);
+                                                else       sExplicitMutedSlots.insert(slotKey);
+                                            }
+                                            if (ImGui::IsItemHovered())
+                                                ImGui::SetTooltip("Mute this drum slot.");
+
+                                            ImGui::TableSetColumnIndex(instCol);
+                                            ImGui::Text("slot %d", (int)ce.noteLow);
+
+                                            // Slot editing is gated by the instrument master mode:
+                                            // when the instrument is Native, the per-slot controls
+                                            // are read-only (Solo/Mute above stay live so a native
+                                            // drum can still be isolated).
+                                            ImGui::BeginDisabled(!channelSynth);
+
+                                            // Native / Synth radio: the enabled flag IS the per-slot
+                                            // Native/Synth state. Native plays the engine drum;
+                                            // Synth plays the chosen GM sound. Does NOT touch the
+                                            // instrument mode.
+                                            ImGui::TableSetColumnIndex(modeCol);
+                                            if (ImGui::RadioButton("Native##smode", !ce.enabled)) {
+                                                SOH::MidiTranslator::Instance().SetEntryEnabled(ei, false);
+                                                AutoSaveOverrides();
+                                            }
+                                            if (!channelSynth &&
+                                                ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                                                ImGui::SetTooltip("Instrument is set to Native. Set the "
+                                                                  "instrument to Synth to edit slots.");
+                                            ImGui::SameLine();
+                                            if (ImGui::RadioButton("Synth##smode", ce.enabled)) {
+                                                SOH::MidiTranslator::Instance().SetEntryRoute(
+                                                    ei, SOH::EntryRoute::Synth);
+                                                SOH::MidiTranslator::Instance().SetEntryEnabled(ei, true);
+                                                AutoSaveOverrides();
+                                            }
+
+                                            // Sound dropdown, mirroring the melodic Preset combo:
+                                            // a filter box, a "None" entry that reverts to native
+                                            // (sets the radio to Native), and the GM percussion
+                                            // sounds (each one forces Synth). Disabled slot shows
+                                            // "None".
+                                            ImGui::TableSetColumnIndex(presetCol);
+                                            char preview[48];
+                                            if (!ce.enabled)
+                                                std::snprintf(preview, sizeof preview, "None (native)");
+                                            else if (ce.bank == 128) {
+                                                const char* nm = SOH::GmPercussionName(ce.fixedNote);
+                                                if (nm[0])
+                                                    std::snprintf(preview, sizeof preview, "%d %s",
+                                                                  (int)ce.fixedNote, nm);
+                                                else
+                                                    std::snprintf(preview, sizeof preview, "note %d",
+                                                                  (int)ce.fixedNote);
+                                            } else
+                                                std::snprintf(preview, sizeof preview, "Pitch %d",
+                                                              ce.fixedNote < 0 ? 60 : (int)ce.fixedNote);
+                                            ImGui::SetNextItemWidth(-FLT_MIN);
+                                            if (ImGui::BeginCombo("##slotsound", preview,
+                                                                  ImGuiComboFlags_HeightLargest)) {
+                                                static char soundFilter[48] = "";
+                                                if (ImGui::IsWindowAppearing()) {
+                                                    soundFilter[0] = '\0';
+                                                    ImGui::SetKeyboardFocusHere();
+                                                }
+                                                ImGui::SetNextItemWidth(-FLT_MIN);
+                                                ImGui::InputTextWithHint("##soundFilter", "Filter sounds",
+                                                                         soundFilter, sizeof soundFilter);
+                                                ImGui::Separator();
+                                                auto containsCi = [](const char* hay, const char* needle) -> bool {
+                                                    if (!needle || !*needle) return true;
+                                                    auto lc = [](char c) {
+                                                        return (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+                                                    };
+                                                    std::string h, n;
+                                                    for (const char* q = hay; *q; ++q) h += lc(*q);
+                                                    for (const char* q = needle; *q; ++q) n += lc(*q);
+                                                    return h.find(n) != std::string::npos;
+                                                };
+                                                bool filterActive = soundFilter[0] != '\0';
+                                                if (!filterActive &&
+                                                    ImGui::Selectable("None (native)", !ce.enabled)) {
+                                                    SOH::MidiTranslator::Instance().SetEntryEnabled(ei, false);
+                                                    AutoSaveOverrides();
+                                                }
+                                                if (ce.bank == 128) {
+                                                    for (int n = SOH::kGmPercussionLo; n <= SOH::kGmPercussionHi;
+                                                         ++n) {
+                                                        const char* nm = SOH::GmPercussionName(n);
+                                                        if (filterActive && !containsCi(nm, soundFilter))
+                                                            continue;
+                                                        char lbl[48];
+                                                        std::snprintf(lbl, sizeof lbl, "%d %s##s%d", n, nm, n);
+                                                        bool sel = (ce.enabled && ce.fixedNote == n);
+                                                        if (ImGui::Selectable(lbl, sel)) {
+                                                            SOH::MidiTranslator::Instance().SetEntryFixedNote(
+                                                                ei, (int16_t)n);
+                                                            SOH::MidiTranslator::Instance().SetEntryRoute(
+                                                                ei, SOH::EntryRoute::Synth);
+                                                            SOH::MidiTranslator::Instance().SetEntryEnabled(ei, true);
+                                                            AutoSaveOverrides();
+                                                        }
+                                                        if (sel) ImGui::SetItemDefaultFocus();
+                                                    }
+                                                }
+                                                ImGui::EndCombo();
+                                            }
+                                            // Tuned (non-128) Synth slot: an explicit pitch.
+                                            if (ce.bank != 128 && ce.enabled) {
+                                                ImGui::TableSetColumnIndex(gainCol);
+                                                ImGui::SetNextItemWidth(-1.0f);
+                                                int pitch = ce.fixedNote < 0 ? 60 : ce.fixedNote;
+                                                if (ImGui::DragInt("##pitch", &pitch, 1.0f, 0, 127))
+                                                    SOH::MidiTranslator::Instance().SetEntryFixedNote(
+                                                        ei, (int16_t)pitch);
+                                                if (ImGui::IsItemDeactivatedAfterEdit())
+                                                    AutoSaveOverrides();
+                                            }
+
+                                            ImGui::EndDisabled(); // slot-edit gate (instrument mode)
+                                            ImGui::PopID();
+                                        }
+                                        ImGui::TreePop();
+                                    }
+                                    ImGui::PopID();
+                                    continue;
                                 }
 
                                 // Hoisted from below: needed by the Override column too.

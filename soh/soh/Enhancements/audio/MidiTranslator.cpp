@@ -80,6 +80,10 @@ void MidiTranslator::Reset() {
     for (auto& row : mNativeActiveByPair)
         for (auto& cell : row)
             cell = 0;
+    for (auto& c : mEntrySynthActive)
+        c = 0;
+    for (auto& c : mEntryNativeActive)
+        c = 0;
     auto synth = Ship::MidiSynthManager::Instance().GetActiveSynth();
     if (!synth)
         return;
@@ -121,6 +125,31 @@ uint8_t MidiTranslator::GetNativeActiveCount(uint8_t fontId, int16_t instOrWave)
     if (!BypassIndexValid(fontId, instOrWave))
         return 0;
     return mNativeActiveByPair[fontId][instOrWave];
+}
+
+void MidiTranslator::IncEntryActive(bool synth, int idx) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return; // native fall-through has no entry
+    uint8_t& c = synth ? mEntrySynthActive[idx] : mEntryNativeActive[idx];
+    if (c < 255)
+        c++;
+}
+void MidiTranslator::DecEntryActive(bool synth, int idx) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    uint8_t& c = synth ? mEntrySynthActive[idx] : mEntryNativeActive[idx];
+    if (c > 0)
+        c--;
+}
+uint8_t MidiTranslator::GetEntrySynthActive(int idx) const {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return 0;
+    return mEntrySynthActive[idx];
+}
+uint8_t MidiTranslator::GetEntryNativeActive(int idx) const {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return 0;
+    return mEntryNativeActive[idx];
 }
 
 // ── DEBUG: per-pair stats accessors ──────────────────────────────────────
@@ -264,7 +293,11 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
             const ConfigEntry& e = mEntries[idx];
             if (e.fontId != fontId || e.instOrWave != instOrWave)
                 continue;
-            if (!e.enabled || e.sfontId < 0)
+            if (!e.enabled)
+                continue;
+            // Native/Mute splits don't reference a soundfont, so they qualify
+            // without a resolved sfontId; only Synth entries need one.
+            if (e.route == EntryRoute::Synth && e.sfontId < 0)
                 continue;
             if (s < e.noteLow || s > e.noteHigh)
                 continue;
@@ -513,6 +546,164 @@ void MidiTranslator::ClickSynth(uint8_t fontId, int16_t instOrWave) {
     RecomputeActive(fontId, instOrWave);
 }
 
+// Find a drum pair's current kit (pack/program) from any existing selected
+// bank-128 slot entry, so re-running auto-split or toggling Synth preserves
+// the user's kit choice. Falls back to the first loaded bank-128 preset, then
+// to an empty pack (slots stay native until a kit is assigned).
+void MidiTranslator::ResolveDrumKit(uint8_t fontId, int16_t instOrWave, std::string& outPack, int& outProgram) const {
+    for (const auto& e : mEntries) {
+        if (e.fontId == fontId && e.instOrWave == instOrWave && e.selected && e.bank == 128 && !e.packName.empty()) {
+            outPack = e.packName;
+            outProgram = e.program;
+            return;
+        }
+    }
+    for (const auto& lp : mLoadedPresets) {
+        if (lp.bank == 128) {
+            outPack = lp.packName;
+            outProgram = lp.program;
+            return;
+        }
+    }
+    outPack.clear();
+    outProgram = 0;
+}
+
+int MidiTranslator::FindSlotEntryIdx(uint8_t fontId, int16_t instOrWave, uint8_t slot) const {
+    for (size_t idx = 0; idx < mEntries.size(); idx++) {
+        const ConfigEntry& e = mEntries[idx];
+        if (e.fontId == fontId && e.instOrWave == instOrWave && e.selected && e.noteLow == slot)
+            return static_cast<int>(idx);
+    }
+    return -1;
+}
+
+void MidiTranslator::AutoSplitDrums(uint8_t fontId, int16_t instOrWave) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    if (instOrWave < 0 || instOrWave >= kDrumHistInst)
+        return; // only the drum/SFX channels carry a per-slot histogram
+
+    std::string kitPack;
+    int kitProgram = 0;
+    const int16_t kitBank = 128;
+    ResolveDrumKit(fontId, instOrWave, kitPack, kitProgram);
+
+    // Map existing selected slot entries by their slot (noteLow) so a re-run
+    // updates them in place instead of duplicating (an entry created with a
+    // different/empty pack wouldn't be found by the (pack,program,noteLow)
+    // key, so we match on slot directly).
+    int bySlot[128];
+    for (int s = 0; s < 128; ++s)
+        bySlot[s] = -1;
+    for (size_t idx = 0; idx < mEntries.size(); idx++) {
+        const ConfigEntry& e = mEntries[idx];
+        // Only reuse existing single-slot entries; full-range whole-pair
+        // entries (noteLow 0..127, from earlier non-split mapping) must not be
+        // hijacked into slot 0.
+        if (e.fontId == fontId && e.instOrWave == instOrWave && e.selected && e.noteLow == e.noteHigh &&
+            e.noteLow < 128)
+            bySlot[e.noteLow] = static_cast<int>(idx);
+    }
+
+    // One single-slot entry per fired slot. The default GM percussion note is
+    // a stable per-slot spread (35 + slot, clamped) so each slot is audibly
+    // distinct; the user remaps via the Drum Sound combo (item 8.1 will
+    // auto-pick it later). An existing slot keeps its prior Drum Sound.
+    for (int s = 0; s < kDrumHistSlots; ++s) {
+        if (mDrumSlotHits[fontId][instOrWave][s].count.load(std::memory_order_relaxed) == 0)
+            continue;
+        int idx = bySlot[s];
+        const bool isNew = (idx < 0);
+        if (isNew) {
+            idx = FindOrCreateEntry(fontId, instOrWave, kitPack, static_cast<int16_t>(kitProgram), kitBank,
+                                    std::string("Drum Kit"), EntrySource::UserPicked, static_cast<uint8_t>(s));
+            if (idx < 0)
+                continue;
+        }
+        ConfigEntry& e = mEntries[idx];
+        e.noteLow = static_cast<uint8_t>(s);
+        e.noteHigh = static_cast<uint8_t>(s);
+        e.packName = kitPack;
+        e.program = static_cast<int16_t>(kitProgram);
+        e.bank = kitBank;
+        if (e.fixedNote < 0) {
+            e.fixedNote = static_cast<int16_t>(std::clamp(
+                static_cast<int>(kGmPercussionLo) + s, static_cast<int>(kGmPercussionLo),
+                static_cast<int>(kGmPercussionHi)));
+        }
+        e.route = EntryRoute::Synth;
+        e.source = EntrySource::UserPicked;
+        e.selected = true;
+        // Discovery only POPULATES the row. A freshly discovered slot defaults
+        // to Native (disabled) so switching the instrument to Synth doesn't
+        // suddenly blast a guessed GM kit; the user enables each slot by
+        // picking a sound. Existing slots keep their saved enabled state.
+        if (isNew)
+            e.enabled = false;
+        if (e.enabled)
+            e.lastEnabledSeq = mNextSeq++;
+        // No kit loaded -> unresolved (native) rather than mis-synthing on the
+        // empty-pack placeholder path (which would resolve to sfontId 0).
+        e.sfontId = kitPack.empty() ? -1 : ResolveSfontIdFromCache(kitPack, kitBank, kitProgram);
+    }
+    RecomputeActive(fontId, instOrWave);
+}
+
+void MidiTranslator::SetDrumChannelSynth(uint8_t fontId, int16_t instOrWave, bool synth) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    if (instOrWave < 0 || instOrWave >= kDrumHistInst)
+        return; // master flag only meaningful for the drum/SFX channels
+
+    // Master switch only: set the per-pair flag. We DON'T touch per-slot
+    // `enabled` here -- that is each slot's own Native/Synth state, preserved
+    // across instrument-mode toggles (so flipping to Native then back restores
+    // exactly what the slots were).
+    mDrumChannelSynth[fontId][instOrWave] = synth;
+
+    if (synth) {
+        // Going Synth needs rows to edit. If none exist yet, discover them
+        // from the histogram (created Native by default -- see AutoSplitDrums).
+        bool hasSlot = false;
+        for (const auto& e : mEntries) {
+            if (e.fontId == fontId && e.instOrWave == instOrWave && e.selected && e.noteLow == e.noteHigh) {
+                hasSlot = true;
+                break;
+            }
+        }
+        if (!hasSlot)
+            AutoSplitDrums(fontId, instOrWave);
+    }
+    // Resolution gates on the flag at play time (ProcessNote), so no chain
+    // rebuild is required for the toggle itself; AutoSplitDrums recomputes if
+    // it ran.
+}
+
+bool MidiTranslator::IsDrumChannelSynth(uint8_t fontId, int16_t instOrWave) const {
+    if (fontId >= kMaxFontId || instOrWave < 0 || instOrWave >= kDrumHistInst)
+        return false;
+    return mDrumChannelSynth[fontId][instOrWave];
+}
+
+void MidiTranslator::SetDrumKit(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program,
+                                const std::string& presetName) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    for (auto& e : mEntries) {
+        if (e.fontId != fontId || e.instOrWave != instOrWave || !e.selected)
+            continue;
+        e.packName = pack;
+        e.program = program;
+        e.bank = 128;
+        if (!presetName.empty())
+            e.presetName = presetName;
+        e.source = EntrySource::UserPicked;
+        e.sfontId = ResolveSfontIdFromCache(pack, 128, program);
+    }
+    RecomputeActive(fontId, instOrWave);
+}
+
 // ── Per-entry mutators ────────────────────────────────────────────────────
 
 void MidiTranslator::SetEntryGain(int idx, float gain) {
@@ -552,6 +743,30 @@ void MidiTranslator::SetEntryFilterResonance(int idx, int8_t cc) {
         return;
     mEntries[idx].q = ClampCcOrSentinel(cc);
 }
+void MidiTranslator::SetEntryFixedNote(int idx, int16_t note) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    // -1 = derive from semitone; otherwise a valid MIDI note. No chain
+    // recompute: fixedNote changes WHAT a winner plays, not WHICH wins.
+    mEntries[idx].fixedNote = (note < 0) ? -1 : static_cast<int16_t>(std::clamp<int>(note, 0, 127));
+}
+void MidiTranslator::SetEntryRoute(int idx, EntryRoute route) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    mEntries[idx].route = route;
+    // Route doesn't change chain membership today, but recompute keeps the
+    // cache authoritative if that ever changes; it's a cheap UI-thread call.
+    RecomputeActive(mEntries[idx].fontId, mEntries[idx].instOrWave);
+}
+void MidiTranslator::SetEntryEnabled(int idx, bool enabled) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    ConfigEntry& e = mEntries[idx];
+    e.enabled = enabled;
+    if (enabled)
+        e.lastEnabledSeq = mNextSeq++;
+    RecomputeActive(e.fontId, e.instOrWave);
+}
 // ── Per-pair display name (row label) ─────────────────────────────────────
 
 std::string MidiTranslator::GetDisplayName(uint8_t fontId, int16_t instOrWave) const {
@@ -582,6 +797,20 @@ void MidiTranslator::SetTemporaryMute(uint8_t fontId, int16_t instOrWave, bool m
 }
 void MidiTranslator::ClearAllTemporaryMutes() {
     mTemporaryMute.clear();
+}
+bool MidiTranslator::IsTemporarilySlotMuted(uint8_t fontId, int16_t instOrWave, uint8_t noteLow) const {
+    return mTemporarySlotMute.count({ fontId, instOrWave, noteLow }) > 0;
+}
+void MidiTranslator::SetTemporarySlotMute(uint8_t fontId, int16_t instOrWave, uint8_t noteLow, bool muted) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    if (muted)
+        mTemporarySlotMute.insert({ fontId, instOrWave, noteLow });
+    else
+        mTemporarySlotMute.erase({ fontId, instOrWave, noteLow });
+}
+void MidiTranslator::ClearAllTemporarySlotMutes() {
+    mTemporarySlotMute.clear();
 }
 
 float MidiTranslator::GetTemporaryVolume(uint8_t fontId, int16_t instOrWave) const {
@@ -701,6 +930,9 @@ void MidiTranslator::ResetAllOverrides() {
         for (auto& cell : row)
             cell = -1;
     mDisplayName.clear();
+    for (auto& row : mDrumChannelSynth)
+        for (auto& cell : row)
+            cell = false;
     // Channel allocation, discovery bits, and active-voice counters
     // intentionally survive — they're runtime state, not overrides.
 }
@@ -823,6 +1055,15 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
         entry["display_name"] = kv.second;
         j["entries"].push_back(std::move(entry));
     }
+
+    // Per-pair drum channel mode (the per-instrument Native/Synth master).
+    // Separate from per-slot entries, so persisted as its own list of pairs
+    // currently in Synth mode (absent => Native).
+    j["drum_channels_synth"] = nlohmann::json::array();
+    for (int f = 0; f < kMaxFontId; ++f)
+        for (int i = 0; i < kDrumHistInst; ++i)
+            if (mDrumChannelSynth[f][i])
+                j["drum_channels_synth"].push_back({ { "fontId", f }, { "instOrWave", i } });
 
     std::ofstream out(path);
     if (!out.is_open()) {
@@ -983,6 +1224,14 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
         e.selected = entry.value("selected", false);
         applied++;
     }
+    if (j.contains("drum_channels_synth")) {
+        for (const auto& d : j["drum_channels_synth"]) {
+            int f = d.value("fontId", -1);
+            int i = d.value("instOrWave", -1);
+            if (f >= 0 && f < kMaxFontId && i >= 0 && i < kDrumHistInst)
+                mDrumChannelSynth[f][i] = true;
+        }
+    }
     SPDLOG_INFO("[MidiTranslator] ApplyOverridesFromString: applied {} entries", applied);
     return true;
 }
@@ -1067,6 +1316,14 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
         e.source = EntrySource::UserPicked;
         applied++;
     }
+    if (j.contains("drum_channels_synth")) {
+        for (const auto& d : j["drum_channels_synth"]) {
+            int f = d.value("fontId", -1);
+            int i = d.value("instOrWave", -1);
+            if (f >= 0 && f < kMaxFontId && i >= 0 && i < kDrumHistInst)
+                mDrumChannelSynth[f][i] = true;
+        }
+    }
     SPDLOG_INFO("[MidiTranslator] ApplyOverridesFromFile: applied {} entries from {} (v{})", applied, path, version);
     return true;
 }
@@ -1088,11 +1345,11 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
 
     NoteTranslatorState& state = mNoteState[noteIndex];
 
-    // Discovery uses GetGmPreset purely as a "did the legacy mapping
-    // table know about this pair?" hint for the UI rows. Resolution
-    // itself runs off mActiveEntryIdx now.
-    GmPreset legacyGm = GetGmPreset(fontId, instOrWave);
-    RecordDiscovery(fontId, instOrWave, legacyGm.program != kUnmapped);
+    // Discovery uses GetGmPreset purely as a "did the built-in GM table
+    // know about this pair?" hint for the UI rows. Resolution itself runs
+    // off mActiveEntryIdx now.
+    GmPreset builtinGm = GetGmPreset(fontId, instOrWave);
+    RecordDiscovery(fontId, instOrWave, builtinGm.program != kUnmapped);
 
     // DEBUG: per-pair stats. Detect a fresh NoteOn (Idle → playing transition);
     // record the engine semitone. Route counters are incremented at the
@@ -1117,7 +1374,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         if (wasIdleStart && BypassIndexValid(fontId, instOrWave))
             (mDebugStats[fontId][instOrWave].*counter).fetch_add(1, std::memory_order_relaxed);
     };
-    DBG_LOG(fontId, instOrWave, semitone, freqScale, legacyGm.program != kUnmapped, legacyGm.bank, legacyGm.program);
+    DBG_LOG(fontId, instOrWave, semitone, freqScale, builtinGm.program != kUnmapped, builtinGm.bank, builtinGm.program);
 
     auto retireSlot = [&]() {
         if (state.kind == SlotKind::Synth) {
@@ -1126,25 +1383,33 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
                 mSynthActiveByPair[state.pairFontId][state.pairInstOrWave] > 0) {
                 mSynthActiveByPair[state.pairFontId][state.pairInstOrWave]--;
             }
+            DecEntryActive(true, state.activeEntryIdx);
         } else if (state.kind == SlotKind::Native) {
             if (BypassIndexValid(state.pairFontId, state.pairInstOrWave) &&
                 mNativeActiveByPair[state.pairFontId][state.pairInstOrWave] > 0) {
                 mNativeActiveByPair[state.pairFontId][state.pairInstOrWave]--;
             }
+            DecEntryActive(false, state.activeEntryIdx);
         }
         state.kind = SlotKind::Idle;
         state.pairInstOrWave = -1;
+        state.activeEntryIdx = -1;
     };
 
-    auto adoptNative = [&]() {
-        if (state.kind != SlotKind::Native || state.pairFontId != fontId || state.pairInstOrWave != instOrWave) {
+    // entryIdx attributes the native note to a split row (route=Native) so its
+    // row lights up; -1 for the plain "no entry covers this" fall-through.
+    auto adoptNative = [&](int entryIdx) {
+        if (state.kind != SlotKind::Native || state.pairFontId != fontId ||
+            state.pairInstOrWave != instOrWave || state.activeEntryIdx != entryIdx) {
             retireSlot();
             state.kind = SlotKind::Native;
             state.pairFontId = fontId;
             state.pairInstOrWave = instOrWave;
+            state.activeEntryIdx = static_cast<int16_t>(entryIdx);
             if (BypassIndexValid(fontId, instOrWave) && mNativeActiveByPair[fontId][instOrWave] < 255) {
                 mNativeActiveByPair[fontId][instOrWave]++;
             }
+            IncEntryActive(false, entryIdx);
         }
     };
 
@@ -1154,21 +1419,38 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         return true;
     }
 
+    // Per-slot transient mute for drum/SFX, BEFORE resolution: a drum slot's
+    // semitone IS its noteLow, so this catches native slots too (which skip the
+    // post-resolution check by falling through). Melodic ranges are still
+    // handled post-resolution by the covering entry's noteLow.
+    if ((instOrWave == 0 || instOrWave == 1) && semitone < 128 &&
+        mTemporarySlotMute.count({ fontId, instOrWave, static_cast<uint8_t>(semitone) })) {
+        retireSlot();
+        return true;
+    }
+
     // Engine drum (instOrWave==0) and SFX (instOrWave==1): the `semitone`
     // byte is a slot index (Audio_GetDrum / Audio_GetSfx), not a chromatic
-    // pitch. These flow through the same split resolution as melodic pairs:
-    // with no active entry the chain resolves to native exactly as before,
-    // but an authored per-slot split can claim a slot. The bank-128 guard
-    // below still routes percussion entries to native until the drum-split
-    // playback path (plan 4.5 phase 3) replaces it, so behaviour for current
-    // mappings is unchanged.
+    // pitch. The per-instrument master mode gates the whole channel: in Native
+    // mode every slot plays the engine drum regardless of per-slot state (the
+    // user can still see activity / mute / solo per slot). Only in Synth mode
+    // does per-slot resolution below decide synth vs native.
+    if ((instOrWave == 0 || instOrWave == 1) && !mDrumChannelSynth[fontId][instOrWave]) {
+        int nativeAttrib = FindSlotEntryIdx(fontId, instOrWave, static_cast<uint8_t>(semitone & 0x7F));
+        if (isFinished || velocity <= 0.0f)
+            retireSlot();
+        else
+            adoptNative(nativeAttrib);
+        bumpRoute(&DebugSlot::routedNative);
+        return false;
+    }
 
     // ── Resolution: walk the active-split chain ─────────────────────────
     if (!BypassIndexValid(fontId, instOrWave)) {
         if (isFinished || velocity <= 0.0f)
             retireSlot();
         else
-            adoptNative();
+            adoptNative(-1);
         // bumpRoute is a no-op outside the bypass range — fine.
         return false;
     }
@@ -1184,15 +1466,36 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         activeIdx = cand.nextActiveSplit;
     }
     if (activeIdx < 0 || activeIdx >= static_cast<int>(mEntries.size())) {
-        // No enabled entry covers this slot → native plays.
+        // No enabled entry covers this slot → native plays. For a drum/SFX
+        // slot, attribute the native note to its slot row (the disabled entry)
+        // so the row's activity tint lights even in Native mode.
+        int nativeAttrib = -1;
+        if (instOrWave == 0 || instOrWave == 1)
+            nativeAttrib = FindSlotEntryIdx(fontId, instOrWave, static_cast<uint8_t>(semitone & 0x7F));
+        // A slot explicitly set to None silences even when the channel is in
+        // Native mode (its entry is disabled, so it lands here, not in the
+        // route==Mute branch below). This is how "mute note 0 while the rest
+        // play native" works.
+        if (nativeAttrib >= 0 && mEntries[nativeAttrib].route == EntryRoute::Mute) {
+            retireSlot();
+            bumpRoute(&DebugSlot::routedMute);
+            return true;
+        }
         if (isFinished || velocity <= 0.0f)
             retireSlot();
         else
-            adoptNative();
+            adoptNative(nativeAttrib);
         bumpRoute(&DebugSlot::routedNative);
         return false;
     }
     const ConfigEntry& e = mEntries[activeIdx];
+
+    // Per-split transient mute (Solo/Mute on an individual drum slot or melodic
+    // range). Silences both paths for this slot, like the pair-level mute.
+    if (mTemporarySlotMute.count({ fontId, instOrWave, e.noteLow })) {
+        retireSlot();
+        return true;
+    }
 
     // Native-route split: this entry won its range but the audible path is
     // the engine sample (a range the author wants to keep native while a
@@ -1202,7 +1505,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         if (isFinished || velocity <= 0.0f)
             retireSlot();
         else
-            adoptNative();
+            adoptNative(activeIdx);
         bumpRoute(&DebugSlot::routedNative);
         return false;
     }
@@ -1220,18 +1523,10 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     const uint8_t gmProgram = static_cast<uint8_t>(e.program);
     const int16_t pinSfont = e.sfontId;
 
-    // GM percussion (bank 128) needs note-range splits to map each engine
-    // drum slot to its intended GM percussion note; until that lands the
-    // engine-semitone-to-GM-note heuristic produced nothing usable. Route
-    // to native and keep the authored entry around for the split-aware path.
-    if (gmBank == 128) {
-        if (isFinished || velocity <= 0.0f)
-            retireSlot();
-        else
-            adoptNative();
-        bumpRoute(&DebugSlot::routedNative);
-        return false;
-    }
+    // GM percussion (bank 128) now synths: the entry's range claims the
+    // engine drum slot and `fixedNote` (below) picks the GM percussion note
+    // to fire. ProgramSelect(bank=128) sets the channel to drum type, so the
+    // per-pair channel allocator handles it like any other preset.
 
     // Per-pair channel allocation — same channel for the life of a pair
     // so per-pair effect CCs survive across notes.
@@ -1242,15 +1537,24 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         if (isFinished || velocity <= 0.0f)
             retireSlot();
         else
-            adoptNative();
+            adoptNative(-1);
         bumpRoute(&DebugSlot::routedNative);
         return false;
     }
 
-    // Integer MIDI note from the engine semitone, with optional transpose.
+    // Output MIDI note. A fixedNote (>= 0) pins it directly -- a GM percussion
+    // note for a bank-128 entry, or a tuned pitch -- because on a drum slot
+    // the engine `semitone` is a slot index, not a playable pitch. Melodic
+    // entries (fixedNote < 0) derive it from semitone + offset + transpose.
+    const bool hasFixedNote = (e.fixedNote >= 0);
     int transpose = static_cast<int>(e.transpose);
-    int midiRaw = static_cast<int>(semitone) + kEngineSemitoneToMidiOffset + transpose;
+    int midiRaw = hasFixedNote ? static_cast<int>(e.fixedNote)
+                               : static_cast<int>(semitone) + kEngineSemitoneToMidiOffset + transpose;
     uint8_t midiNote = static_cast<uint8_t>(std::clamp(midiRaw, 0, 127));
+    // A pinned note must not ride the engine's per-sample resampling bend --
+    // for a drum slot that ratio is computed against a slot index and is
+    // meaningless -- so neutralise the wheel for fixed-note entries.
+    const float effectiveBend = hasFixedNote ? 1.0f : pitchBend;
 
     uint16_t preset = (static_cast<uint16_t>(gmBank) << 8) | gmProgram;
     ChannelState& chState = mChannelState[targetChannel];
@@ -1266,7 +1570,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         if (!ok) {
             // Pin failed mid-session — fall back to native for this note.
             retireSlot();
-            adoptNative();
+            adoptNative(-1);
             bumpRoute(&DebugSlot::routedNative);
             return false;
         }
@@ -1340,21 +1644,33 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     if (state.kind != SlotKind::Synth || state.pairFontId != fontId || state.pairInstOrWave != instOrWave ||
         midiNote != state.midiNote) {
         retireSlot();
-        synth->NoteOnPitchFactor(targetChannel, midiNote, noteOnVel, pitchBend);
+        // Drums: cut any voice already sounding this percussion note on the
+        // shared channel before retriggering. Percussion samples are one-shot
+        // (FluidSynth ignores NoteOff and plays them to completion), so rapid
+        // hits -- hi-hats, and the control slots that fire very often -- would
+        // otherwise stack voices on the same note and overflow the voice/event
+        // ring ("Ringbuffer full, increase synth.polyphony"). Drums don't need
+        // overlapping voices per note; melodic notes (no fixedNote) keep their
+        // polyphony untouched.
+        if (hasFixedNote)
+            synth->NoteOff(targetChannel, midiNote);
+        synth->NoteOnPitchFactor(targetChannel, midiNote, noteOnVel, effectiveBend);
         state.kind = SlotKind::Synth;
         state.channel = targetChannel;
         state.midiNote = midiNote;
         state.pairFontId = fontId;
         state.pairInstOrWave = instOrWave;
+        state.activeEntryIdx = static_cast<int16_t>(activeIdx);
         state.lastFreqScale = freqScale;
         if (mSynthActiveByPair[fontId][instOrWave] < 255) {
             mSynthActiveByPair[fontId][instOrWave]++;
         }
+        IncEntryActive(true, activeIdx);
         bumpRoute(&DebugSlot::routedSynth);
         return true;
     }
 
-    if (fabsf(freqScale - state.lastFreqScale) > 1e-6f) {
+    if (!hasFixedNote && fabsf(freqScale - state.lastFreqScale) > 1e-6f) {
         synth->PitchBendFactor(state.channel, pitchBend);
         state.lastFreqScale = freqScale;
     }
@@ -1373,14 +1689,17 @@ void MidiTranslator::NoteDisabled(int noteIndex) {
             mSynthActiveByPair[state.pairFontId][state.pairInstOrWave] > 0) {
             mSynthActiveByPair[state.pairFontId][state.pairInstOrWave]--;
         }
+        DecEntryActive(true, state.activeEntryIdx);
     } else if (state.kind == SlotKind::Native) {
         if (BypassIndexValid(state.pairFontId, state.pairInstOrWave) &&
             mNativeActiveByPair[state.pairFontId][state.pairInstOrWave] > 0) {
             mNativeActiveByPair[state.pairFontId][state.pairInstOrWave]--;
         }
+        DecEntryActive(false, state.activeEntryIdx);
     }
     state.kind = SlotKind::Idle;
     state.pairInstOrWave = -1;
+    state.activeEntryIdx = -1;
 }
 
 } // namespace SOH
