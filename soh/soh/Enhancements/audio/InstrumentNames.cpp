@@ -12,6 +12,9 @@ struct SlotSamples {
     std::string low;
     std::string normal;
     std::string high;
+    uint8_t rangeLo = 0;
+    uint8_t rangeHi = 127;
+    bool    hasRange = false;
 };
 
 struct State {
@@ -44,6 +47,18 @@ void SetInstrumentSampleName(uint8_t fontId, int16_t instId, SampleRange range,
     }
 }
 
+void SetInstrumentRange(uint8_t fontId, int16_t instId, uint8_t normalRangeLo, uint8_t normalRangeHi) {
+    if (instId < 0) {
+        return;
+    }
+    auto& s = GetState();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    auto& slot = s.entries[std::make_pair(fontId, instId)];
+    slot.rangeLo = normalRangeLo;
+    slot.rangeHi = normalRangeHi;
+    slot.hasRange = true;
+}
+
 InstrumentSampleSet GetInstrumentSampleNames(uint8_t fontId, int16_t instId) {
     InstrumentSampleSet out;
     if (instId < 0) {
@@ -55,9 +70,12 @@ InstrumentSampleSet GetInstrumentSampleNames(uint8_t fontId, int16_t instId) {
     if (it == s.entries.end()) {
         return out;
     }
-    out.low    = it->second.low;
-    out.normal = it->second.normal;
-    out.high   = it->second.high;
+    out.low      = it->second.low;
+    out.normal   = it->second.normal;
+    out.high     = it->second.high;
+    out.rangeLo  = it->second.rangeLo;
+    out.rangeHi  = it->second.rangeHi;
+    out.hasRange = it->second.hasRange;
     return out;
 }
 

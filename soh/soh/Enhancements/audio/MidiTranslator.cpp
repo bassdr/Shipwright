@@ -1,5 +1,6 @@
 #include "MidiTranslator.h"
 #include "GmInstrumentMap.h"
+#include "InstrumentNames.h"
 #include "soh/cvar_prefixes.h"
 #include <ship/audio/MidiSynthManager.h>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -701,6 +702,131 @@ void MidiTranslator::SetDrumKit(uint8_t fontId, int16_t instOrWave, const std::s
         e.source = EntrySource::UserPicked;
         e.sfontId = ResolveSfontIdFromCache(pack, 128, program);
     }
+    RecomputeActive(fontId, instOrWave);
+}
+
+// ── Note-range split editing (melodic) ──────────────────────────────────────
+
+int MidiTranslator::SplitEntry(int idx, uint8_t atSemitone) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return -1;
+    // The cut must fall strictly inside the range so both halves are non-empty.
+    if (atSemitone <= mEntries[idx].noteLow || atSemitone > mEntries[idx].noteHigh)
+        return -1;
+    if (mEntries.size() >= kMaxEntries)
+        return -1;
+    ConfigEntry sib = mEntries[idx];        // copy preset/gain/effects/route/etc.
+    sib.noteLow = atSemitone;               // sibling takes the upper half
+    sib.selected = true;
+    sib.source = EntrySource::UserPicked;
+    sib.lastEnabledSeq = mNextSeq++;
+    mEntries[idx].noteHigh = static_cast<uint8_t>(atSemitone - 1); // idx keeps lower half
+    mEntries.push_back(std::move(sib));      // mEntries reserved -> no realloc, idx stays valid
+    int newIdx = static_cast<int>(mEntries.size()) - 1;
+    RecomputeActive(mEntries[idx].fontId, mEntries[idx].instOrWave);
+    return newIdx;
+}
+
+void MidiTranslator::MergeWithNext(int idx) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    ConfigEntry& e = mEntries[idx];
+    if (e.noteHigh >= 127)
+        return; // nothing above to merge
+    const int wantLow = static_cast<int>(e.noteHigh) + 1;
+    int sib = -1;
+    for (size_t k = 0; k < mEntries.size(); k++) {
+        const ConfigEntry& c = mEntries[k];
+        if (c.fontId == e.fontId && c.instOrWave == e.instOrWave && c.selected &&
+            static_cast<int>(c.noteLow) == wantLow) {
+            sib = static_cast<int>(k);
+            break;
+        }
+    }
+    if (sib < 0)
+        return;
+    // Extend idx over the sibling's range, then retire the sibling (disable +
+    // deselect rather than erase -- erasing would shift every cached index and
+    // risk an audio-thread read mid-move; a deselected entry is dropped on the
+    // next save and ignored by resolution/UI).
+    e.noteHigh = mEntries[sib].noteHigh;
+    mEntries[sib].enabled = false;
+    mEntries[sib].selected = false;
+    RecomputeActive(e.fontId, e.instOrWave);
+}
+
+void MidiTranslator::SetEntryNoteRange(int idx, uint8_t noteLow, uint8_t noteHigh) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    if (noteHigh < noteLow)
+        noteHigh = noteLow;
+    mEntries[idx].noteLow = noteLow;
+    mEntries[idx].noteHigh = noteHigh;
+    RecomputeActive(mEntries[idx].fontId, mEntries[idx].instOrWave);
+}
+
+void MidiTranslator::SetEntryPreset(int idx, const std::string& pack, int16_t program, int16_t bank,
+                                    const std::string& presetName) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return;
+    ConfigEntry& e = mEntries[idx];
+    e.packName = pack;
+    e.program = program;
+    e.bank = bank;
+    if (!presetName.empty())
+        e.presetName = presetName;
+    e.route = EntryRoute::Synth;
+    e.fixedNote = -1; // melodic: derive the played pitch from the engine semitone
+    e.enabled = true;
+    e.selected = true;
+    e.source = EntrySource::UserPicked;
+    e.lastEnabledSeq = mNextSeq++;
+    e.sfontId = ResolveSfontIdFromCache(pack, bank, program);
+    RecomputeActive(e.fontId, e.instOrWave);
+}
+
+void MidiTranslator::AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    if (instOrWave < kDrumHistInst)
+        return; // melodic only -- drums use AutoSplitDrums
+
+    // The engine routes semitone < lo -> low sample, lo..hi -> normal,
+    // semitone > hi -> high. Mirror those boundaries.
+    InstrumentSampleSet names = GetInstrumentSampleNames(fontId, instOrWave);
+    if (!names.hasRange)
+        return; // no captured boundaries (older asset / mod font)
+    const uint8_t lo = names.rangeLo;
+    const uint8_t hi = names.rangeHi;
+    if (lo == 0 && hi >= 127)
+        return; // engine uses a single full range here -- nothing to split
+
+    // Split the pair's active entry (its preset is duplicated across the
+    // ranges). With no active synth entry there's nothing to mirror.
+    int actIdx = mActiveEntryIdx[fontId][instOrWave];
+    if (actIdx < 0 || actIdx >= static_cast<int>(mEntries.size()))
+        return;
+    ConfigEntry tmpl = mEntries[actIdx]; // copy the preset/gain/effects/route
+
+    // Repurpose the active entry as the normal range [lo, hi].
+    mEntries[actIdx].noteLow = lo;
+    mEntries[actIdx].noteHigh = hi;
+
+    auto addRange = [&](uint8_t rLo, uint8_t rHi) {
+        if (mEntries.size() >= kMaxEntries)
+            return;
+        ConfigEntry e = tmpl;
+        e.noteLow = rLo;
+        e.noteHigh = rHi;
+        e.selected = true;
+        e.source = EntrySource::UserPicked;
+        e.lastEnabledSeq = mNextSeq++;
+        mEntries.push_back(std::move(e));
+    };
+    if (lo > 0)
+        addRange(0, static_cast<uint8_t>(lo - 1));        // low sample range
+    if (hi < 127)
+        addRange(static_cast<uint8_t>(hi + 1), 127);      // high sample range
     RecomputeActive(fontId, instOrWave);
 }
 

@@ -288,6 +288,28 @@ class MidiTranslator {
     void SetDrumKit(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program,
                     const std::string& presetName);
 
+    // ── Note-range split editing (melodic) ───────────────────────────────
+    // SplitEntry bisects entry idx's range at `atSemitone`: idx keeps
+    // [noteLow, atSemitone-1], a copy (same preset/gain/effects/route) takes
+    // [atSemitone, noteHigh]. Returns the new sibling index, or -1 if the cut
+    // is outside the range / pool full. MergeWithNext absorbs the adjacent
+    // higher range (noteLow == this.noteHigh+1) back into idx. SetEntryNoteRange
+    // sets an entry's [lo,hi] (clamped). AutoSplitByEngineRanges splits a
+    // melodic pair's active entry into the engine's low/normal/high ranges
+    // (boundaries captured in InstrumentNames), duplicating the preset across
+    // them so each range can then be reassigned.
+    int  SplitEntry(int idx, uint8_t atSemitone);
+    void MergeWithNext(int idx);
+    void SetEntryNoteRange(int idx, uint8_t noteLow, uint8_t noteHigh);
+    void AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave);
+    // Set a specific entry's melodic preset (used by a split range row's preset
+    // dropdown -- scoped to that range, unlike PickPreset which is per-pair).
+    // Enables + selects the entry, route=Synth, fixedNote=-1 (pitch from
+    // semitone). Pass program<0 / empty pack to leave it (use SetEntryEnabled
+    // false for "None/native").
+    void SetEntryPreset(int idx, const std::string& pack, int16_t program, int16_t bank,
+                        const std::string& presetName);
+
     // ── Per-entry mutators (UI Override widgets) ─────────────────────────
     void SetEntryGain(int idx, float gain);
     void SetEntryTranspose(int idx, int8_t semis);

@@ -2172,6 +2172,205 @@ void AudioEditor::DrawElement() {
                                     continue;
                                 }
 
+                                // ── Melodic note-range split: tree-row ───────────────
+                                // A melodic pair that has any sub-range entry (noteLow!=0 ||
+                                // noteHigh!=127) renders as a collapsible header + one child
+                                // row per range (range editor + preset dropdown + Native/
+                                // Synth). Unsplit pairs fall through to the normal melodic row.
+                                {
+                                    std::vector<int> allIdx;
+                                    SOH::MidiTranslator::Instance().GetEntriesForPair(p.fontId, p.instOrWave, allIdx);
+                                    std::vector<int> ranges;
+                                    bool isRangeSplit = false;
+                                    for (int ei : allIdx) {
+                                        const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
+                                        if (!ce.selected)
+                                            continue;
+                                        ranges.push_back(ei);
+                                        if (ce.noteLow != 0 || ce.noteHigh != 127)
+                                            isRangeSplit = true;
+                                    }
+                                    if (isRangeSplit) {
+                                        std::sort(ranges.begin(), ranges.end(), [](int a, int b) {
+                                            return SOH::MidiTranslator::Instance().GetEntry(a).noteLow <
+                                                   SOH::MidiTranslator::Instance().GetEntry(b).noteLow;
+                                        });
+                                        auto pairKey = std::make_pair(p.fontId, p.instOrWave);
+
+                                        // Header: Solo/Mute, font tree, summary, Flatten.
+                                        ImGui::TableSetColumnIndex(overrideCol);
+                                        bool hSolo = sSoloedPairs.count(pairKey) > 0;
+                                        bool hMute = sExplicitMutedPairs.count(pairKey) > 0;
+                                        if (ImGui::SmallButton(hSolo ? "Unsolo##msolo" : "Solo##msolo")) {
+                                            if (hSolo) sSoloedPairs.erase(pairKey);
+                                            else       sSoloedPairs.insert(pairKey);
+                                        }
+                                        ImGui::SameLine();
+                                        if (ImGui::SmallButton(hMute ? "Unmute##mmute" : "Mute##mmute")) {
+                                            if (hMute) sExplicitMutedPairs.erase(pairKey);
+                                            else       sExplicitMutedPairs.insert(pairKey);
+                                        }
+
+                                        ImGui::TableSetColumnIndex(songCol);
+                                        const char* fName = SOH::GetFontName(p.fontId);
+                                        bool mTreeOpen = ImGui::TreeNodeEx("##melsplit",
+                                                                           ImGuiTreeNodeFlags_OpenOnArrow, "%s",
+                                                                           fName ? fName : "(font)");
+
+                                        ImGui::TableSetColumnIndex(instCol);
+                                        ImGui::Text("%d", (int)p.instOrWave);
+
+                                        ImGui::TableSetColumnIndex(presetCol);
+                                        ImGui::Text("%d ranges", (int)ranges.size());
+                                        ImGui::SameLine();
+                                        if (ImGui::SmallButton("Flatten##melflat")) {
+                                            // Collapse back to unsplit: widen every range to the
+                                            // full 0..127 (so none register as a sub-range) and
+                                            // keep only the first enabled. The pair then renders
+                                            // as the normal melodic row again.
+                                            for (size_t k = 0; k < ranges.size(); ++k) {
+                                                SOH::MidiTranslator::Instance().SetEntryNoteRange(ranges[k], 0, 127);
+                                                if (k > 0)
+                                                    SOH::MidiTranslator::Instance().SetEntryEnabled(ranges[k], false);
+                                            }
+                                            AutoSaveOverrides();
+                                        }
+                                        if (ImGui::IsItemHovered())
+                                            ImGui::SetTooltip("Merge all ranges back into a single full-range entry.");
+
+                                        if (mTreeOpen) {
+                                            for (int ei : ranges) {
+                                                const SOH::ConfigEntry& ce =
+                                                    SOH::MidiTranslator::Instance().GetEntry(ei);
+                                                ImGui::TableNextRow();
+                                                ImGui::PushID(ei);
+
+                                                if (SOH::MidiTranslator::Instance().GetEntrySynthActive(ei) > 0)
+                                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kSynthTint);
+                                                else if (SOH::MidiTranslator::Instance().GetEntryNativeActive(ei) > 0)
+                                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kNativeTint);
+
+                                                // Inst column: range editor [lo..hi].
+                                                ImGui::TableSetColumnIndex(instCol);
+                                                int lohi[2] = { (int)ce.noteLow, (int)ce.noteHigh };
+                                                ImGui::SetNextItemWidth(-FLT_MIN);
+                                                if (ImGui::DragInt2("##range", lohi, 0.5f, 0, 127)) {
+                                                    lohi[0] = std::clamp(lohi[0], 0, 127);
+                                                    lohi[1] = std::clamp(lohi[1], lohi[0], 127);
+                                                    SOH::MidiTranslator::Instance().SetEntryNoteRange(
+                                                        ei, (uint8_t)lohi[0], (uint8_t)lohi[1]);
+                                                }
+                                                if (ImGui::IsItemDeactivatedAfterEdit())
+                                                    AutoSaveOverrides();
+                                                if (ImGui::IsItemHovered())
+                                                    ImGui::SetTooltip("Engine-semitone range [low..high] this "
+                                                                      "preset covers. Keep ranges adjacent and "
+                                                                      "non-overlapping.");
+
+                                                // Mode: Native / Synth (enabled flag).
+                                                ImGui::TableSetColumnIndex(modeCol);
+                                                if (ImGui::RadioButton("Native##rmode", !ce.enabled)) {
+                                                    SOH::MidiTranslator::Instance().SetEntryEnabled(ei, false);
+                                                    AutoSaveOverrides();
+                                                }
+                                                ImGui::SameLine();
+                                                if (ImGui::RadioButton("Synth##rmode", ce.enabled)) {
+                                                    SOH::MidiTranslator::Instance().SetEntryEnabled(ei, true);
+                                                    AutoSaveOverrides();
+                                                }
+
+                                                // Shift column: a per-range Split-in-half button.
+                                                ImGui::TableSetColumnIndex(shiftCol);
+                                                if (ImGui::SmallButton("Split##rsplit")) {
+                                                    int mid = ((int)ce.noteLow + (int)ce.noteHigh + 1) / 2;
+                                                    SOH::MidiTranslator::Instance().SplitEntry(ei, (uint8_t)mid);
+                                                    AutoSaveOverrides();
+                                                }
+                                                if (ImGui::IsItemHovered())
+                                                    ImGui::SetTooltip("Split this range in half.");
+                                                ImGui::SameLine();
+                                                if (ImGui::SmallButton("Merge##rmerge")) {
+                                                    SOH::MidiTranslator::Instance().MergeWithNext(ei);
+                                                    AutoSaveOverrides();
+                                                }
+                                                if (ImGui::IsItemHovered())
+                                                    ImGui::SetTooltip("Merge with the next (higher) range.");
+
+                                                // Preset column: preset dropdown (filter + None).
+                                                ImGui::TableSetColumnIndex(presetCol);
+                                                char rprev[160];
+                                                if (!ce.enabled)
+                                                    std::snprintf(rprev, sizeof rprev, "None (native)");
+                                                else if (ce.packName.empty())
+                                                    std::snprintf(rprev, sizeof rprev, "(none)");
+                                                else
+                                                    std::snprintf(rprev, sizeof rprev, "%s: %s",
+                                                                  ce.packName.c_str(), ce.presetName.c_str());
+                                                ImGui::SetNextItemWidth(-FLT_MIN);
+                                                if (ImGui::BeginCombo("##rpreset", rprev,
+                                                                      ImGuiComboFlags_HeightLargest)) {
+                                                    static char rFilter[64] = "";
+                                                    if (ImGui::IsWindowAppearing()) {
+                                                        rFilter[0] = '\0';
+                                                        ImGui::SetKeyboardFocusHere();
+                                                    }
+                                                    ImGui::SetNextItemWidth(-FLT_MIN);
+                                                    ImGui::InputTextWithHint("##rfilter", "Filter (preset or pack)",
+                                                                             rFilter, sizeof rFilter);
+                                                    ImGui::Separator();
+                                                    auto ciHas = [](const std::string& hay, const char* n) {
+                                                        if (!n || !*n) return true;
+                                                        auto lc = [](char c) {
+                                                            return (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+                                                        };
+                                                        std::string h, nn;
+                                                        for (char c : hay) h += lc(c);
+                                                        for (const char* q = n; *q; ++q) nn += lc(*q);
+                                                        return h.find(nn) != std::string::npos;
+                                                    };
+                                                    bool fActive = rFilter[0] != '\0';
+                                                    if (!fActive && ImGui::Selectable("None (native)", !ce.enabled)) {
+                                                        SOH::MidiTranslator::Instance().SetEntryEnabled(ei, false);
+                                                        AutoSaveOverrides();
+                                                    }
+                                                    int lastSf = -2;
+                                                    for (const auto& lp : sLoadedPresets) {
+                                                        if (lp.bank == 128)
+                                                            continue; // percussion kits aren't melodic
+                                                        if (fActive && !ciHas(lp.name, rFilter) &&
+                                                            !ciHas(lp.packName, rFilter))
+                                                            continue;
+                                                        if (lp.sfontId != lastSf) {
+                                                            ImGui::Separator();
+                                                            ImGui::TextDisabled("%s", lp.packName.c_str());
+                                                            lastSf = lp.sfontId;
+                                                        }
+                                                        char it[200];
+                                                        std::snprintf(it, sizeof it, "B%d P%d: %s##%d:%d:%d", lp.bank,
+                                                                      lp.program, lp.name.c_str(), lp.sfontId, lp.bank,
+                                                                      lp.program);
+                                                        bool sel = ce.enabled && ce.packName == lp.packName &&
+                                                                   ce.bank == lp.bank && ce.program == lp.program;
+                                                        if (ImGui::Selectable(it, sel)) {
+                                                            SOH::MidiTranslator::Instance().SetEntryPreset(
+                                                                ei, lp.packName, (int16_t)lp.program, (int16_t)lp.bank,
+                                                                lp.name);
+                                                            AutoSaveOverrides();
+                                                        }
+                                                        if (sel) ImGui::SetItemDefaultFocus();
+                                                    }
+                                                    ImGui::EndCombo();
+                                                }
+
+                                                ImGui::PopID();
+                                            }
+                                            ImGui::TreePop();
+                                        }
+                                        ImGui::PopID();
+                                        continue;
+                                    }
+                                }
+
                                 // Hoisted from below: needed by the Override column too.
                                 // The Mode/Native vs Synth state comes straight from the
                                 // entry resolution — active entry == nullptr means there's
@@ -2448,6 +2647,37 @@ void AudioEditor::DrawElement() {
                                                 p.fontId, p.instOrWave);
                                         }
                                         ImGui::EndPopup();
+                                    }
+                                }
+                                // Split entry points (own line under the inst id so they're
+                                // visible and don't fight the narrow column). Manual "Split"
+                                // bisects the current preset into two note ranges and works
+                                // for any synth pair; "L/M/H" mirrors the engine's sample
+                                // ranges and needs the captured boundaries (an .o2r regen).
+                                if (activeEntry != nullptr && activeEntry->program >= 0) {
+                                    if (ImGui::SmallButton("Split##manualmel")) {
+                                        int mid = ((int)activeEntry->noteLow + (int)activeEntry->noteHigh + 1) / 2;
+                                        SOH::MidiTranslator::Instance().SplitEntry(activeIdx, (uint8_t)mid);
+                                        AutoSaveOverrides();
+                                    }
+                                    if (ImGui::IsItemHovered())
+                                        ImGui::SetTooltip("Split this instrument into two note ranges (at the\n"
+                                                          "midpoint) so the low and high halves can use\n"
+                                                          "different presets. Expand the row to edit them.");
+                                    auto rng = SOH::GetInstrumentSampleNames(p.fontId, p.instOrWave);
+                                    if (rng.hasRange && !(rng.rangeLo == 0 && rng.rangeHi >= 127)) {
+                                        ImGui::SameLine();
+                                        if (ImGui::SmallButton("L/M/H##autosplitmel")) {
+                                            SOH::MidiTranslator::Instance().AutoSplitByEngineRanges(
+                                                p.fontId, p.instOrWave);
+                                            AutoSaveOverrides();
+                                        }
+                                        if (ImGui::IsItemHovered())
+                                            ImGui::SetTooltip(
+                                                "Split into the engine's low / normal / high sample\n"
+                                                "ranges (boundaries %d / %d), duplicating the current\n"
+                                                "preset so each range can be reassigned.",
+                                                (int)rng.rangeLo, (int)rng.rangeHi);
                                     }
                                 }
                                 if (ImGui::IsItemHovered() && (p.instOrWave == 0 || p.instOrWave == 1)) {

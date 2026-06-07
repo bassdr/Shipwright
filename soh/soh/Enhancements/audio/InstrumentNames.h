@@ -33,6 +33,14 @@ enum class SampleRange : uint8_t { Low = 0, Normal = 1, High = 2 };
 void SetInstrumentSampleName(uint8_t fontId, int16_t instId, SampleRange range,
                              std::string name);
 
+// Record the engine's low/normal/high split boundaries for an instrument
+// slot (Instrument::normalRangeLo / normalRangeHi, in engine-semitone space):
+// semitone < lo -> low sample, lo..hi -> normal, semitone > hi -> high. The
+// SoundFont factory captures these alongside the sample names so the bypass
+// UI's "auto-split by engine ranges" can mirror the engine's per-pitch sample
+// routing without touching the live audio state.
+void SetInstrumentRange(uint8_t fontId, int16_t instId, uint8_t normalRangeLo, uint8_t normalRangeHi);
+
 // Snapshot of all three range names for an instrument slot. Empty
 // strings mean "no sample registered for that range." The bypass UI
 // uses this to disambiguate slots where the engine plays different
@@ -43,6 +51,12 @@ struct InstrumentSampleSet {
     std::string low;
     std::string normal;
     std::string high;
+    // Engine split boundaries (see SetInstrumentRange). hasRange is false when
+    // the factory never registered this slot (e.g. a mod font not yet capturing
+    // ranges); callers fall back to a single full-range entry then.
+    uint8_t rangeLo = 0;
+    uint8_t rangeHi = 127;
+    bool    hasRange = false;
     bool empty() const {
         return low.empty() && normal.empty() && high.empty();
     }

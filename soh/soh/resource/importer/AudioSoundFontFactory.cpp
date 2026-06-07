@@ -118,6 +118,11 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
         const int16_t slot = static_cast<int16_t>(i);
         std::string lowName, normalName, highName;
 
+        // Capture the engine's low/normal/high split boundaries so the bypass
+        // UI can auto-split a melodic pair along the same lines the engine
+        // routes per-pitch samples.
+        SOH::SetInstrumentRange(fntIdx, slot, instrument->normalRangeLo, instrument->normalRangeHi);
+
         bool hasLowNoteSoundFontEntry = reader->ReadInt8();
         if (hasLowNoteSoundFontEntry) {
             bool hasSampleRef = reader->ReadInt8();
