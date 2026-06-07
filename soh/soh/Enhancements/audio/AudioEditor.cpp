@@ -323,9 +323,9 @@ void RefreshEntryResolution(const std::vector<SynthPackEntry>& packs) {
 }
 
 // Common prefix used by ReapplyOverrideChain and ResetToPackBaseline:
-// wipe in-memory state, then layer built-in defaults followed by each
-// enabled pack's mapping.json (in the same order as the SF2 load).
-// The user JSON layer (if any) is what the two callers differ on.
+// wipe in-memory state, then layer each enabled pack's mapping.json (in
+// the same order as the SF2 load). The user JSON layer (if any) is what
+// the two callers differ on.
 void ApplyBaselineOnly(const std::vector<SynthPackEntry>& packs) {
     SOH::MidiTranslator::Instance().ResetAllOverrides();
 
@@ -340,9 +340,8 @@ void ApplyBaselineOnly(const std::vector<SynthPackEntry>& packs) {
 
 // Apply the override chain in precedence order:
 //   1. Reset to factory state (Auto / 1.0× / -1 / 0)
-//   2. Built-in defaults (currently empty; reserved for future curated set)
-//   3. Each enabled pack's mapping.json — overlays defaults in load order
-//   4. User's fluidsynth_overrides.json — wins over all the above
+//   2. Each enabled pack's mapping.json — overlays in load order
+//   3. User's fluidsynth_overrides.json — wins over all the above
 // Called at startup and whenever the enabled-pack set changes, so the
 // live translator state always reflects the current source-of-truth chain.
 void ReapplyOverrideChain(const std::vector<SynthPackEntry>& packs) {
@@ -3390,11 +3389,9 @@ void RegisterAudioWidgets() {
 
     // Override layering — applied in order so later sources overlay earlier:
     //   1. ResetAllOverrides — wipe to factory state (Auto / 1.0× / -1 / 0)
-    //   2. Built-in defaults string (currently empty; reserved for future
-    //      curated set; see DefaultFluidSynthOverrides.h for the policy)
-    //   3. Each enabled pack's mapping.json (in discovery order) — overlays defaults
-    //   4. User's fluidsynth_overrides.json — wins over both (missing
-    //      file is the typical first-run state)
+    //   2. Each enabled pack's mapping.json (in discovery order)
+    //   3. User's fluidsynth_overrides.json — wins (missing file is the
+    //      typical first-run state)
     ReapplyOverrideChain();
 #endif
 }
