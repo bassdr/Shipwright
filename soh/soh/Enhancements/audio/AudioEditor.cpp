@@ -26,7 +26,6 @@
 #include <ship/audio/FluidSynth.h>
 #include "MidiTranslator.h"
 #include "GmInstrumentMap.h"
-#include "DefaultFluidSynthOverrides.h"
 #include "InstrumentNames.h"
 #include <ship/resource/archive/ArchiveManager.h>
 #include <algorithm>
@@ -329,7 +328,6 @@ void RefreshEntryResolution(const std::vector<SynthPackEntry>& packs) {
 // The user JSON layer (if any) is what the two callers differ on.
 void ApplyBaselineOnly(const std::vector<SynthPackEntry>& packs) {
     SOH::MidiTranslator::Instance().ResetAllOverrides();
-    SOH::MidiTranslator::Instance().ApplyOverridesFromString(SOH::kDefaultFluidSynthOverridesJson);
 
     for (const auto& pack : packs) {
         if (pack.mappingPath.empty()) continue; // SF2-only pack is valid
@@ -388,6 +386,20 @@ static PipelineStatus sLastStatus;
 void SetStatus(std::string msg, bool isError = false) {
     sLastStatus.message = std::move(msg);
     sLastStatus.isError = isError;
+}
+
+// Effective per-mode global synth gain handed to the translator. The on-screen
+// slider is a relative level (1.0 = 100% = matched to native); each mode's real
+// calibration to native loudness is hidden here so the UI never shows the raw
+// values. Authentic is the louder mode (reverb), so it needs the deeper trim.
+static float ComputeSynthGlobalGain(SOH::SynthMode mode) {
+    constexpr float kGainCalAuthentic = 0.22f;
+    constexpr float kGainCalEnhanced = 0.70f;
+    const bool enhanced = (mode == SOH::SynthMode::Enhanced);
+    const float rel = CVarGetFloat(enhanced ? CVAR_AUDIO("FluidSynthGainEnhanced")
+                                            : CVAR_AUDIO("FluidSynthGainAuthentic"),
+                                   1.0f);
+    return rel * (enhanced ? kGainCalEnhanced : kGainCalAuthentic);
 }
 
 // Apply the current Modern audio pipeline + Synth pack configuration.
@@ -463,15 +475,30 @@ bool ApplyFluidSynthFromCVars() {
     // rate (typically 48 kHz). The native engine still runs at the source
     // rate (32 kHz) and is resampled up to meet the synth at the mix step.
     double sampleRate = static_cast<double>(audioPlayer->GetSampleRate());
+    Ship::FluidSynthConfig synthConfig;
+    synthConfig.sampleRate = sampleRate;
 
     // Mode-driven configuration. Authentic = Graham-Smith modulators + console-era
     // reverb (per docs/Reproducing_Console_OSTs_accurately.md). Enhanced = stock
     // SF2 modulators + a subtle reverb that lets the SF2's musical interpretation
     // breathe through. Translator branches its NoteOn / CC11 routing on the same mode.
     auto mode = static_cast<SOH::SynthMode>(CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0));
-    bool grahamSmith = (mode == SOH::SynthMode::Authentic);
+    synthConfig.linearVelocity = mode == SOH::SynthMode::Authentic;
 
-    auto synth = std::make_shared<Ship::FluidSynth>(sampleRate, grahamSmith);
+    // FluidSynth defaults to 256 voices. Normal gameplay with the game's native
+    // scores stays well under that, but custom/modded songs -- or live tinkering
+    // while authoring a mod -- can approach it. Bump to 512 for headroom. If it
+    // is ever hit, the log says so clearly and your will hear dropped notes,
+    // or worse, dropped NoteOffs that leave voices stuck on;
+    // raise it again if that happens.
+    synthConfig.polyphony = 512;
+
+    // Leave FluidSynth's master output gain at unity. Loudness matching to the
+    // native engine is NOT done here: it is a per-mode trim on the velocity/CC11
+    // the translator sends on each NoteOn.
+    // See the per-mode FluidSynthGain* CVars in MidiTranslator.
+    synthConfig.gain = 1.0;
+    auto synth = std::make_shared<Ship::FluidSynth>(synthConfig);
 
     // Stack every enabled pack's SF2 in discovery order. FluidSynth walks
     // loaded sfonts in reverse on preset lookup, so the LAST loaded pack
@@ -560,6 +587,7 @@ bool ApplyFluidSynthFromCVars() {
     }
     Ship::MidiSynthManager::Instance().SetSynth(synth);
     SOH::MidiTranslator::Instance().SetSynthMode(mode);
+    SOH::MidiTranslator::Instance().SetGlobalGain(ComputeSynthGlobalGain(mode));
     SOH_MidiTranslator_Reset();
 
     // Register the synth as a MixSource on the AudioPlayer. The callback
@@ -1423,6 +1451,10 @@ void AudioEditor::DrawElement() {
                             SohGui::mSohMenu->MenuDrawItem(
                                 gmode == 1 ? fluidSynthGainEnhanced : fluidSynthGainAuthentic,
                                 ImGui::GetContentRegionAvail().x, THEME_COLOR);
+                            // Push live so dragging the slider updates loudness immediately
+                            // (the translator no longer reads the CVar on the audio path).
+                            SOH::MidiTranslator::Instance().SetGlobalGain(
+                                ComputeSynthGlobalGain(static_cast<SOH::SynthMode>(gmode)));
                         }
 
                         {
@@ -2176,7 +2208,7 @@ void AudioEditor::DrawElement() {
                                             {
                                                 float g = ce.gain == 0.0f ? 1.0f : ce.gain;
                                                 ImGui::SetNextItemWidth(-1.0f);
-                                                if (ImGui::DragFloat("##slotgain", &g, 0.01f, 0.0f, 4.0f, "%.2fx"))
+                                                if (ImGui::DragFloat("##slotgain", &g, 0.01f, 0.0f, 4.0f, "%.2f"))
                                                     SOH::MidiTranslator::Instance().SetEntryGain(ei, g < 0.0f ? 0.0f : g);
                                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                                     AutoSaveOverrides();
@@ -2336,7 +2368,7 @@ void AudioEditor::DrawElement() {
                                                 {
                                                     float g = ce.gain == 0.0f ? 1.0f : ce.gain;
                                                     ImGui::SetNextItemWidth(-1.0f);
-                                                    if (ImGui::DragFloat("##rgain", &g, 0.01f, 0.0f, 4.0f, "%.2fx"))
+                                                    if (ImGui::DragFloat("##rgain", &g, 0.01f, 0.0f, 4.0f, "%.2f"))
                                                         SOH::MidiTranslator::Instance().SetEntryGain(
                                                             ei, g < 0.0f ? 0.0f : g);
                                                     if (ImGui::IsItemDeactivatedAfterEdit())
@@ -3312,34 +3344,34 @@ void RegisterAudioWidgets() {
                               "for pack selection and per-instrument tuning."));
     SohGui::mSohMenu->AddSearchWidget({ fluidSynthEnabled, "Enhancements", "Audio Editor", "Audio Options" });
 
-    // Per-mode global synth gain. Each mode is calibrated to native loudness
-    // independently because their reverb level and velocity curve differ. The
-    // multiplier rides the sqrt(velocity) curve sent as expression/velocity.
+    // Per-mode synth volume, shown to the user as a percentage relative to the
+    // native engine: 100% = matched to native. Each mode's real trim to reach
+    // native differs (reverb + curve) and is hidden behind a calibration constant
+    // in MidiTranslator, so the slider is a clean relative level defaulting to
+    // 100% for both modes -- the user never sees the raw per-mode values.
     auto gainTip =
-        "Global synth output level for this mode, calibrated so the synth sits\n"
-        "at the native engine's loudness (this mod enhances quality, not volume).\n"
-        "Multiplier on the sqrt(velocity) curve. Authentic and Enhanced differ\n"
-        "in loudness (reverb + curve), so each has its own trim.";
+        "Synth loudness for this mode, relative to the native engine.\n"
+        "100% = matched to native.";
     fluidSynthGainEnhanced = { .name = "Synth volume (Enhanced)", .type = WidgetType::WIDGET_CVAR_SLIDER_FLOAT };
     fluidSynthGainEnhanced.CVar(CVAR_AUDIO("FluidSynthGainEnhanced"))
         .Options(FloatSliderOptions()
                      .Color(THEME_COLOR)
+                     .IsPercentage()
                      .Min(0.0f)
-                     .Max(4.0f)
-                     .DefaultValue(0.7f)
+                     .Max(2.0f)
+                     .DefaultValue(1.0f)
                      .Size(ImVec2(300.0f, 0.0f))
                      .Tooltip(gainTip));
     SohGui::mSohMenu->AddSearchWidget({ fluidSynthGainEnhanced, "Enhancements", "Audio Editor", "FluidSynth" });
 
-    // Authentic default is a placeholder pending its own native A/B (it is the
-    // louder mode -- reverb 1.0 -- so expect it to land at or below Enhanced).
     fluidSynthGainAuthentic = { .name = "Synth volume (Authentic)", .type = WidgetType::WIDGET_CVAR_SLIDER_FLOAT };
     fluidSynthGainAuthentic.CVar(CVAR_AUDIO("FluidSynthGainAuthentic"))
         .Options(FloatSliderOptions()
                      .Color(THEME_COLOR)
+                     .IsPercentage()
                      .Min(0.0f)
-                     .Max(4.0f)
-                     .DefaultValue(0.7f)
+                     .Max(2.0f)
+                     .DefaultValue(1.0f)
                      .Size(ImVec2(300.0f, 0.0f))
                      .Tooltip(gainTip));
     SohGui::mSohMenu->AddSearchWidget({ fluidSynthGainAuthentic, "Enhancements", "Audio Editor", "FluidSynth" });

@@ -380,6 +380,9 @@ class MidiTranslator {
     void      SetSynthMode(SynthMode mode) { mSynthMode = mode; }
     SynthMode GetSynthMode() const         { return mSynthMode; }
 
+    // Effective global synth gain, configured upfront by the AudioEditor.
+    void SetGlobalGain(float gain) { mGlobalGain = gain; }
+
   private:
     MidiTranslator();
 
@@ -508,6 +511,8 @@ class MidiTranslator {
     std::vector<LoadedPresetRef> mLoadedPresets;
 
     SynthMode mSynthMode = SynthMode::Authentic;
+    // Set by the AudioEditor; default is a safe fallback until the first apply.
+    float     mGlobalGain = 0.70f;
 };
 
 } // namespace SOH

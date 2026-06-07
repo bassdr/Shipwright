@@ -1,9 +1,7 @@
 #include "MidiTranslator.h"
 #include "GmInstrumentMap.h"
 #include "InstrumentNames.h"
-#include "soh/cvar_prefixes.h"
 #include <ship/audio/MidiSynthManager.h>
-#include <libultraship/bridge/consolevariablebridge.h>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -1755,19 +1753,12 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     }
     chState.inited = true;
 
-    // ── Velocity shaping (same as PR 3 — see comments preserved below) ──
-    // Global gain is per-mode: the two modes differ in loudness (reverb level +
-    // velocity curve), so each carries its own trim calibrated to the native
-    // engine. Default 0.7 (Enhanced is calibrated; Authentic is a placeholder).
-    float gainGlobal = CVarGetFloat(mSynthMode == SynthMode::Enhanced
-                                        ? CVAR_AUDIO("FluidSynthGainEnhanced")
-                                        : CVAR_AUDIO("FluidSynthGainAuthentic"),
-                                    0.7f);
+    // ── Velocity shaping ──
     float entryGain = e.gain;
     if (entryGain == 0.0f)
         entryGain = 1.0f;
     float tempVol = GetTemporaryVolume(fontId, instOrWave);
-    float shaped = std::clamp(sqrtf(std::max(0.0f, velocity)) * gainGlobal * entryGain * tempVol, 0.0f, 1.0f);
+    float shaped = std::clamp(sqrtf(std::max(0.0f, velocity)) * mGlobalGain * entryGain * tempVol, 0.0f, 1.0f);
 
     uint8_t noteOnVel;
     uint8_t cc11val;
