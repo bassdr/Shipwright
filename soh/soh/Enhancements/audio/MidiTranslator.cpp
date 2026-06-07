@@ -1756,7 +1756,13 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     chState.inited = true;
 
     // ── Velocity shaping (same as PR 3 — see comments preserved below) ──
-    float gainGlobal = CVarGetFloat(CVAR_AUDIO("FluidSynthGain"), 1.0f);
+    // Global gain is per-mode: the two modes differ in loudness (reverb level +
+    // velocity curve), so each carries its own trim calibrated to the native
+    // engine. Default 0.7 (Enhanced is calibrated; Authentic is a placeholder).
+    float gainGlobal = CVarGetFloat(mSynthMode == SynthMode::Enhanced
+                                        ? CVAR_AUDIO("FluidSynthGainEnhanced")
+                                        : CVAR_AUDIO("FluidSynthGainAuthentic"),
+                                    0.7f);
     float entryGain = e.gain;
     if (entryGain == 0.0f)
         entryGain = 1.0f;

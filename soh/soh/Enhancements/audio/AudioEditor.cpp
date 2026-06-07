@@ -664,7 +664,11 @@ static WidgetInfo lowerOctaves;
 
 #if ENABLE_FLUIDSYNTH
 static WidgetInfo fluidSynthEnabled;
-static WidgetInfo fluidSynthGain;
+// Global synth gain is per-mode: Authentic and Enhanced differ in loudness
+// (reverb level + velocity curve), so each carries its own trim calibrated to
+// the native engine. The active mode's widget is drawn in the FluidSynth tab.
+static WidgetInfo fluidSynthGainAuthentic;
+static WidgetInfo fluidSynthGainEnhanced;
 #endif
 
 namespace SohGui {
@@ -1412,8 +1416,14 @@ void AudioEditor::DrawElement() {
                         ImGui::Separator();
 
                         // ── Synth mode + volume ──────────────────────────
-                        SohGui::mSohMenu->MenuDrawItem(fluidSynthGain,
-                                                       ImGui::GetContentRegionAvail().x, THEME_COLOR);
+                        // Draw the gain slider for the mode that's actually
+                        // active, so editing volume targets that mode's trim.
+                        {
+                            int gmode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
+                            SohGui::mSohMenu->MenuDrawItem(
+                                gmode == 1 ? fluidSynthGainEnhanced : fluidSynthGainAuthentic,
+                                ImGui::GetContentRegionAvail().x, THEME_COLOR);
+                        }
 
                         {
                             int mode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
@@ -3302,19 +3312,37 @@ void RegisterAudioWidgets() {
                               "for pack selection and per-instrument tuning."));
     SohGui::mSohMenu->AddSearchWidget({ fluidSynthEnabled, "Enhancements", "Audio Editor", "Audio Options" });
 
-    fluidSynthGain = { .name = "Synth volume", .type = WidgetType::WIDGET_CVAR_SLIDER_FLOAT };
-    fluidSynthGain.CVar(CVAR_AUDIO("FluidSynthGain"))
+    // Per-mode global synth gain. Each mode is calibrated to native loudness
+    // independently because their reverb level and velocity curve differ. The
+    // multiplier rides the sqrt(velocity) curve sent as expression/velocity.
+    auto gainTip =
+        "Global synth output level for this mode, calibrated so the synth sits\n"
+        "at the native engine's loudness (this mod enhances quality, not volume).\n"
+        "Multiplier on the sqrt(velocity) curve. Authentic and Enhanced differ\n"
+        "in loudness (reverb + curve), so each has its own trim.";
+    fluidSynthGainEnhanced = { .name = "Synth volume (Enhanced)", .type = WidgetType::WIDGET_CVAR_SLIDER_FLOAT };
+    fluidSynthGainEnhanced.CVar(CVAR_AUDIO("FluidSynthGainEnhanced"))
         .Options(FloatSliderOptions()
                      .Color(THEME_COLOR)
                      .Min(0.0f)
                      .Max(4.0f)
-                     .DefaultValue(1.0f)
+                     .DefaultValue(0.7f)
                      .Size(ImVec2(300.0f, 0.0f))
-                     .Tooltip("Per-pack synth output level. Multiplier on the sqrt(velocity)\n"
-                              "curve sent as CC11 (expression). 1.0 = no boost (sqrt curve only).\n"
-                              "Higher values lift quiet notes but saturate CC11 quickly, which\n"
-                              "contributes to mix clipping."));
-    SohGui::mSohMenu->AddSearchWidget({ fluidSynthGain, "Enhancements", "Audio Editor", "FluidSynth" });
+                     .Tooltip(gainTip));
+    SohGui::mSohMenu->AddSearchWidget({ fluidSynthGainEnhanced, "Enhancements", "Audio Editor", "FluidSynth" });
+
+    // Authentic default is a placeholder pending its own native A/B (it is the
+    // louder mode -- reverb 1.0 -- so expect it to land at or below Enhanced).
+    fluidSynthGainAuthentic = { .name = "Synth volume (Authentic)", .type = WidgetType::WIDGET_CVAR_SLIDER_FLOAT };
+    fluidSynthGainAuthentic.CVar(CVAR_AUDIO("FluidSynthGainAuthentic"))
+        .Options(FloatSliderOptions()
+                     .Color(THEME_COLOR)
+                     .Min(0.0f)
+                     .Max(4.0f)
+                     .DefaultValue(0.7f)
+                     .Size(ImVec2(300.0f, 0.0f))
+                     .Tooltip(gainTip));
+    SohGui::mSohMenu->AddSearchWidget({ fluidSynthGainAuthentic, "Enhancements", "Audio Editor", "FluidSynth" });
 
     // Auto-apply at launch: if the user had the Modern audio pipeline
     // enabled in a previous session, switch the AudioPlayer into float
