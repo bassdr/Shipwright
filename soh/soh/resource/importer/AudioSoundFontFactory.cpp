@@ -115,7 +115,11 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
         // spdlog level to debug the empty-name case if music slots come
         // up blank after a fresh .o2r regen.
         const uint8_t fntIdx = static_cast<uint8_t>(audioSoundFont->soundFont.fntIndex);
-        const int16_t slot = static_cast<int16_t>(i);
+        // Key the registry by instOrWave (array index + 2), not the raw array
+        // index, so it matches how MidiTranslator and the bypass UI look names
+        // up. instOrWave 0/1 are the drum/SFX channels; melodic instruments
+        // start at 2 (see kMelodicInstOrWaveBase and AudioSeq_SetInstrument).
+        const int16_t slot = static_cast<int16_t>(i) + SOH::kMelodicInstOrWaveBase;
         std::string lowName, normalName, highName;
 
         // Capture the engine's low/normal/high split boundaries so the bypass

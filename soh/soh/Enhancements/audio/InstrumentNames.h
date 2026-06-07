@@ -27,6 +27,17 @@ namespace SOH {
 // normal for the middle range — many instruments only populate one or two).
 enum class SampleRange : uint8_t { Low = 0, Normal = 1, High = 2 };
 
+// The audio engine exposes a melodic instrument to the sequence player (and
+// thus to MidiTranslator and the bypass UI) as instOrWave = soundfont
+// instrument-array index + 2: instOrWave 0 and 1 are the drum and SFX
+// "channels" (see AudioSeq_SetInstrument and MidiTranslator::kDrumHistInst).
+// Every consumer of this registry keys by instOrWave, so the SoundFont factory
+// must register names/ranges under (array index + this base). Registering by
+// the raw array index instead shifts every entry two slots — music rows then
+// show the wrong instrument, the top two go blank, and the drum/SFX rows pick
+// up melodic-instrument names.
+inline constexpr int16_t kMelodicInstOrWaveBase = 2;
+
 // Record one sample filename for an (instrument slot, range). Pass the raw
 // string the factory loaded (with directory prefix) — the helper strips it
 // on display. Empty `name` clears any prior entry for that range.
