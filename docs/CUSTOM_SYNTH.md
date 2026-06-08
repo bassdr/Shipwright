@@ -226,16 +226,16 @@ A generic SoundFont can't fully match the original samples:
 Loose form (for iterating during authoring - no zip step):
 
 ```paths
-<SoH-config>/synth-packs/MyPack.sf2
-<SoH-config>/synth-packs/MyPack.json   (optional)
+<SoH-config>/synth-packs/MyPack.sf3   (or .sf2)
+<SoH-config>/synth-packs/MyPack.json  (optional, sibling)
 ```
 
-Archive form (for distribution):
+Archive form (for distribution - what **Export .o2r** builds for you):
 
 ```paths
 <MyPack.o2r>/
-  audio/synth/MyPack/soundfont.sf2
-  audio/synth/MyPack/mapping.json   (optional)
+  audio/synth/MyPack/soundfont.sf3   (or .sf2)
+  audio/synth/MyPack/mapping.json    (optional)
 ```
 
 The `<pack-name>` segment is the user-visible identifier - a short ASCII
@@ -257,24 +257,40 @@ slug like `OoT-HD-Orchestra` or `FluidR3-Default`.
      when you come back to it.
    - Use **Solo** to hear one voice; Mute to drop one out.
 4. Every edit auto-saves to `fluidsynth_overrides.json`. When happy, use
-   **Export pack mapping...** to write a shippable `mapping.json`.
+   **Export pack...** to write a shippable mod.
 
-### Export pack mapping
+### Export pack
 
-The **Export pack mapping...** button (above the table) opens a dialog
-prefilled with the pack name most common among your selected entries. It
-writes only the entries currently **enabled AND selected** for that pack,
-strips the runtime-only flags (`enabled` / `selected`), and adds a
-`pack_name` header. The dialog previews the entry count before you commit.
+The **Export pack...** button (above the table) opens a dialog prefilled
+with the pack name most common among your selected entries. It exports
+only the entries currently **enabled AND selected** for that pack, strips
+the runtime-only flags (`enabled` / `selected`), and writes the pack name
+**once** as a `pack_name` header (entries no longer repeat it). The dialog
+previews the entry count before you commit. Two outputs:
 
-It writes to:
+- **Export .o2r** (recommended) - zips your soundfont and the mapping into
+  a single shareable mod at:
 
-```paths
-<SoH-config>/synth-packs/<pack_name>/mapping.json
-```
+  ```paths
+  <SoH-config>/mods/<pack_name>.o2r
+  ```
 
-That folder already matches the archive's inner shape - drop your
-`soundfont.sf2` beside it and zip (see Packaging).
+  with the files placed at `audio/synth/<pack_name>/soundfont.sf3` (or
+  `.sf2`) and `.../mapping.json`. This is the artifact you upload. It
+  loads on the **next launch** (mods are mounted at startup).
+
+- **JSON only** - writes just the mapping beside your loose soundfont at:
+
+  ```paths
+  <SoH-config>/synth-packs/<pack_name>.json
+  ```
+
+  Picked up on **Rescan**, no restart needed - handy for iterating before
+  you build the final `.o2r`.
+
+The pack name must match the soundfont's name (`<pack_name>.sf3` loose, or
+the `audio/synth/<pack_name>/` folder in the archive); that name is what
+the loader uses to tie the mapping to the soundfont.
 
 ### `mapping.json` schema
 
@@ -291,7 +307,6 @@ pack-enable and are never written back to the user file.
     {
       "fontId": 6,
       "instOrWave": 12,
-      "pack": "MyPack",
       "bank": 0,
       "program": 46,
       "preset_name": "Orchestral Harp",
@@ -313,10 +328,10 @@ pack-enable and are never written back to the user file.
 | Key             | Type               | Meaning                                                              |
 |-----------------|--------------------|---------------------------------------------------------------------|
 | `version`       | int                | Schema version. Use `2`.                                            |
-| `pack_name`     | string             | Top-level header naming the pack (added by Export).                 |
+| `pack_name`     | string             | Top-level header naming the pack (added by Export). This is the authoritative owner for every entry; the loader also derives it from the pack's file/folder name, so a rename is safe. |
 | `fontId`        | int 0-63           | Engine sound-font index. Required. 0-37 are vanilla.               |
 | `instOrWave`    | int 0-255          | Engine instrument slot. Required. `0` = drum bank, `1` = SFX bank.  |
-| `pack`          | string             | Pack name this entry pins to. Required for the row to pin.          |
+| `pack`          | string             | Per-entry pack owner. **Optional / legacy** - `pack_name` (or the file name) supplies this now. Only read when there is no `pack_name` header. |
 | `bank`          | int 0-255          | SF2 bank. Default 0 (GM melodic); 128 = GM drums.                   |
 | `program`       | int 0-127          | SF2 program inside that bank.                                       |
 | `preset_name`   | string             | Human-readable SF2 preset name. Metadata only - the UI uses it to detect drift. |
@@ -371,18 +386,44 @@ re-tune individual pairs to taste without touching your pack.
 
 ### Packaging
 
-> **Note:** `.o2r` packaging is a work in progress and not yet tested
-> end to end. The loose-folder authoring flow above is the reliable path
-> for now; treat the steps below as provisional.
+The easiest path is the **Export .o2r** button (see Export pack above) -
+it writes a ready-to-share `mods/<pack_name>.o2r` with your soundfont and
+mapping already at the right paths inside. Users drop that `.o2r` into
+their own `<SoH-config>/mods/` and it loads on next launch.
 
-Standard `zip` produces a valid `.o2r`:
+To build one by hand instead, lay out the inner shape and zip it -
+standard `zip` produces a valid `.o2r`:
 
 ```bash
-cd my-pack/
+cd my-pack/          # contains audio/synth/MyPack/{soundfont.sf3,mapping.json}
 zip -r ../MyPack.o2r audio/
 ```
 
-Users drop the `.o2r` into `<SoH-config>/mods/`.
+#### Shipping more than one soundfont
+
+Each soundfont is its own pack (one `audio/synth/<pack>/` folder = one
+enableable row). **Export .o2r** writes one pack per file, so the simple
+way to ship two soundfonts is two `.o2r` files - export each pack, ship
+both. They are independent: users can enable either or both.
+
+If you'd rather hand-pack them into a single `.o2r`, put each in its own
+folder and zip together - the archive name itself doesn't matter, only the
+inner folders:
+
+```paths
+<MyMod.o2r>/
+  audio/synth/SoundBankA/{soundfont.sf2, mapping.json}
+  audio/synth/SoundBankB/{soundfont.sf3, mapping.json}
+```
+
+They still appear as two separate rows (SoundBankA, SoundBankB), not one
+merged pack.
+
+> **Same name = same pack.** A pack's name (the loose file stem or the
+> `audio/synth/<name>/` folder) is its whole identity. If a loose
+> `<name>.sf3` and a shipped `<name>.o2r` both exist, only one row shows
+> (the `.o2r` wins) - so after you build the `.o2r`, you don't need to keep
+> the loose copy of the same name around.
 
 ### Caveats
 

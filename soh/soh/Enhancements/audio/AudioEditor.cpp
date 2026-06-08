@@ -28,6 +28,7 @@
 #include "GmInstrumentMap.h"
 #include "InstrumentNames.h"
 #include <ship/resource/archive/ArchiveManager.h>
+#include <ship/resource/archive/O2rArchive.h>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -209,6 +210,23 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
         for (auto& e : loose) result.push_back(std::move(e));
     }
 
+    // Cross-source dedupe by name: the pack name is the whole identity (it
+    // keys the disabled-set CSV and the override owner), so two packs with the
+    // same name are "the same pack" and a single row must represent them.
+    // Keep the first occurrence — archives precede loose here, so a shipped
+    // <pack>.o2r shadows the loose <pack>.sf3 it was exported from. Without
+    // this, both rows share a name and toggling one toggles both.
+    {
+        std::set<std::string> seen;
+        std::vector<SynthPackEntry> deduped;
+        deduped.reserve(result.size());
+        for (auto& e : result) {
+            if (seen.insert(e.name).second)
+                deduped.push_back(std::move(e));
+        }
+        result = std::move(deduped);
+    }
+
     return result;
 }
 
@@ -302,6 +320,87 @@ std::vector<SynthPackEntry> EnabledPacksInOrder() {
     return out;
 }
 
+// One-click pack publish: bundle a pack's soundfont + a freshly-built
+// mapping.json into a single <pack>.o2r under mods/. The .o2r is the
+// shippable artifact -- dropped in mods/ it loads on the next launch and is
+// discovered through the archive path (which keys on soundfont.sf[23]), so it
+// sidesteps the loose-folder sibling-naming the manual mapping export needs.
+// Returns true on success; `outMsg` always carries a user-facing summary or
+// the failure reason (ASCII only -- shown in the ImGui popup).
+bool ExportPackO2r(const std::string& packName, std::string& outMsg) {
+    if (packName.empty()) {
+        outMsg = "Enter a pack name first.";
+        return false;
+    }
+
+    // 1. Locate the source soundfont for this pack (the .sf2/.sf3 the entries
+    //    were authored against) and read its bytes.
+    std::vector<uint8_t> sfBytes;
+    std::string          sfExt = ".sf2";
+    {
+        const auto all = EnumerateSynthPacks();
+        const SynthPackEntry* match = nullptr;
+        for (const auto& e : all) {
+            if (e.name == packName) { match = &e; break; }
+        }
+        if (!match) {
+            outMsg = "No discovered pack named '" + packName +
+                     "' to read a soundfont from. Drop its .sf2/.sf3 in synth-packs/ first.";
+            return false;
+        }
+        sfBytes = ReadPackFile(*match, /*wantSf2=*/true);
+        if (sfBytes.empty()) {
+            outMsg = "Could not read the soundfont for '" + packName + "'.";
+            return false;
+        }
+        auto dot = match->sf2Path.rfind('.');
+        if (dot != std::string::npos) {
+            std::string ext = match->sf2Path.substr(dot);
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext == ".sf2" || ext == ".sf3") sfExt = ext;
+        }
+    }
+
+    // 2. Build the mapping.json in memory.
+    int nEntries = 0;
+    std::string mappingJson =
+        SOH::MidiTranslator::Instance().BuildPackMappingJson(packName, nEntries);
+    if (nEntries <= 0) {
+        outMsg = "No exportable entries for '" + packName +
+                 "'. Pick presets for it (enabled + selected) first.";
+        return false;
+    }
+
+    // 3. Write both into a fresh <pack>.o2r under mods/. Overwrite any prior
+    //    export so re-running is idempotent.
+    std::string modsDir = Ship::Context::GetPathRelativeToAppDirectory("mods", appShortName);
+    std::error_code ec;
+    std::filesystem::create_directories(modsDir, ec);
+    std::string o2rPath = (std::filesystem::path(modsDir) / (packName + ".o2r")).generic_string();
+    std::filesystem::remove(o2rPath, ec);
+
+    auto archive = std::make_shared<Ship::O2rArchive>(o2rPath);
+    if (!archive->Open()) {
+        outMsg = "Could not create " + o2rPath;
+        return false;
+    }
+    const std::string base = std::string("audio/synth/") + packName + "/";
+    std::vector<uint8_t> jsonBytes(mappingJson.begin(), mappingJson.end());
+    bool ok = archive->WriteFile(base + "mapping.json", jsonBytes) &&
+              archive->WriteFile(base + "soundfont" + sfExt, sfBytes);
+    archive->Close();
+    if (!ok) {
+        outMsg = "Failed writing into " + o2rPath + " (see log).";
+        return false;
+    }
+
+    outMsg = "Wrote " + std::to_string(nEntries) + " entries + soundfont (" +
+             std::to_string(sfBytes.size() / (1024 * 1024)) + " MiB) to:\n" + o2rPath +
+             "\nLoads on next launch; share this .o2r to publish the pack.";
+    return true;
+}
+
 // Push the current SF2 stack + pack load order into the translator and
 // recompute every entry's runtime sfontId. Called after every change
 // that affects entry resolution: pack load/unload, file load, user pick.
@@ -343,7 +442,10 @@ void ApplyBaselineOnly(const std::vector<SynthPackEntry>& packs) {
         auto bytes = ReadPackFile(pack, /*wantSf2=*/false);
         if (bytes.empty()) continue;
         std::string json(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-        SOH::MidiTranslator::Instance().ApplyOverridesFromString(json);
+        // pack.name is the authoritative owner (loose stem / archive folder),
+        // so the mapping.json doesn't need a per-entry "pack" and a renamed
+        // pack still resolves.
+        SOH::MidiTranslator::Instance().ApplyOverridesFromString(json, pack.name);
     }
 }
 
@@ -1622,7 +1724,7 @@ void AudioEditor::DrawElement() {
                                 "automatically.");
                         }
                         ImGui::SameLine();
-                        if (ImGui::SmallButton("Export pack mapping...##bypassExport")) {
+                        if (ImGui::SmallButton("Export pack...##bypassExport")) {
                             // Prefill the pack-name input with the most common pack
                             // among the user's currently selected entries — usually
                             // exactly what they want to publish.
@@ -1646,12 +1748,16 @@ void AudioEditor::DrawElement() {
                         }
                         if (ImGui::IsItemHovered()) {
                             ImGui::SetTooltip(
-                                "Write a mapping.json shaped for shipping inside a synth\n"
-                                "pack. Only entries that are currently enabled AND selected\n"
-                                "for the named pack get exported; runtime fields are\n"
-                                "stripped and a 'pack_name' header is added.\n\n"
-                                "Destination: synth-packs/<pack_name>/mapping.json under\n"
-                                "the SoH config directory.");
+                                "Publish the pairs you picked for one pack. Only entries\n"
+                                "currently enabled AND selected for the named pack are\n"
+                                "exported; runtime fields (enabled/selected/sfontId) are\n"
+                                "stripped. The pack name is written once in a 'pack_name'\n"
+                                "header, not on every entry.\n\n"
+                                "Two outputs:\n"
+                                "  .o2r     - soundfont + mapping zipped into mods/<pack>.o2r\n"
+                                "             (the shareable mod; loads on next launch).\n"
+                                "  JSON only - mapping to synth-packs/<pack>.json, beside\n"
+                                "             your loose soundfont (picked up on Rescan).");
                         }
                         // Export popup: pack-name input + entry-count preview + Export.
                         ImVec2 popupCenter = ImGui::GetMainViewport()->GetCenter();
@@ -1660,8 +1766,8 @@ void AudioEditor::DrawElement() {
                                                    ImGuiWindowFlags_AlwaysAutoResize)) {
                             ImGui::TextWrapped(
                                 "Publishes only entries that are currently enabled AND\n"
-                                "selected for the named pack. Writes to:\n"
-                                "  synth-packs/<pack_name>/mapping.json");
+                                "selected for the named pack. The pack name (below) must\n"
+                                "match the soundfont's name so the two stay paired.");
                             ImGui::Separator();
 
                             ImGui::SetNextItemWidth(280.0f);
@@ -1673,11 +1779,25 @@ void AudioEditor::DrawElement() {
                             ImGui::Text("Entries to export: %d", previewN);
 
                             bool canExport = previewN > 0 && !filter.empty();
+
+                            // Primary: bundle soundfont + mapping into a shareable .o2r.
                             ImGui::BeginDisabled(!canExport);
-                            if (ImGui::Button("Export##exportPackGo", ImVec2(120, 0))) {
+                            if (ImGui::Button("Export .o2r##exportPackO2r", ImVec2(150, 0))) {
+                                std::string msg;
+                                bool ok = ExportPackO2r(filter, msg);
+                                std::snprintf(sExportStatus, sizeof(sExportStatus), "%s%s",
+                                              ok ? "" : "FAILED: ", msg.c_str());
+                            }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::SetTooltip("Zip the loose soundfont + mapping into\n"
+                                                  "mods/%s.o2r. Loads on next launch.",
+                                                  filter.empty() ? "<pack>" : filter.c_str());
+                            }
+                            ImGui::SameLine();
+                            // Secondary: mapping.json only, beside the loose soundfont.
+                            if (ImGui::Button("JSON only##exportPackGo", ImVec2(120, 0))) {
                                 std::string dest = Ship::Context::GetPathRelativeToAppDirectory(
-                                    (std::string(kLooseSynthPacksDirName) + "/" + filter + "/" +
-                                     kSynthPackJsonName).c_str(),
+                                    (std::string(kLooseSynthPacksDirName) + "/" + filter + ".json").c_str(),
                                     appShortName);
                                 int n = SOH::MidiTranslator::Instance().ExportPackMapping(dest, filter);
                                 if (n < 0) {
@@ -1688,9 +1808,14 @@ void AudioEditor::DrawElement() {
                                                   "Wrote %d entries to:\n%s", n, dest.c_str());
                                 }
                             }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::SetTooltip("Write only the mapping to\n"
+                                                  "synth-packs/%s.json (beside your loose soundfont).",
+                                                  filter.empty() ? "<pack>" : filter.c_str());
+                            }
                             ImGui::EndDisabled();
                             ImGui::SameLine();
-                            if (ImGui::Button("Close##exportPackClose", ImVec2(120, 0))) {
+                            if (ImGui::Button("Close##exportPackClose", ImVec2(100, 0))) {
                                 ImGui::CloseCurrentPopup();
                             }
 

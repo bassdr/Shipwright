@@ -358,7 +358,14 @@ class MidiTranslator {
     bool SaveOverridesToFile(const std::string& path) const;
     // String overlay = pack mapping.json: new entries land with
     // source=ModSupplied, selected=false, enabled=true.
-    bool ApplyOverridesFromString(const std::string& json);
+    //
+    // `packName`, when non-empty, is the pack's *discovered* name (the loose
+    // file stem or the archive's audio/synth/<name>/ folder). It is the
+    // authoritative owner for every entry in the file, so the mapping.json no
+    // longer has to repeat a per-entry "pack" field and survives a rename of
+    // the file/folder. When empty (legacy/direct calls), the owner falls back
+    // to the per-entry "pack", then the file's top-level "pack_name" header.
+    bool ApplyOverridesFromString(const std::string& json, const std::string& packName = "");
     // File overlay = user fluidsynth_overrides.json: entries land with
     // source=UserPicked. enabled / selected come from the file; missing
     // fields default to true.
@@ -371,6 +378,11 @@ class MidiTranslator {
     // entries written (or -1 on I/O failure). When packNameFilter is empty,
     // every selected entry is emitted regardless of its source pack.
     int ExportPackMapping(const std::string& path, const std::string& packNameFilter) const;
+
+    // Same content ExportPackMapping writes, built in memory (no file I/O).
+    // `outWritten` receives the entry count. Used by the one-click .o2r
+    // bundler so the JSON and the soundfont go straight into the archive.
+    std::string BuildPackMappingJson(const std::string& packNameFilter, int& outWritten) const;
 
     // Helper: how many entries `ExportPackMapping` would emit for a given
     // pack filter. Same predicate as the writer; lets the UI show a preview

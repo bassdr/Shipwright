@@ -1231,9 +1231,12 @@ int MidiTranslator::CountExportableEntries(const std::string& packNameFilter) co
     return n;
 }
 
-int MidiTranslator::ExportPackMapping(const std::string& path, const std::string& packNameFilter) const {
+std::string MidiTranslator::BuildPackMappingJson(const std::string& packNameFilter, int& outWritten) const {
     nlohmann::json j;
     j["version"] = 2;
+    // The pack name lives once, in this header. Entries do NOT repeat a
+    // per-entry "pack": the loader takes ownership from the pack's discovered
+    // name (and falls back to this header), so the field would be redundant.
     if (!packNameFilter.empty())
         j["pack_name"] = packNameFilter;
     j["entries"] = nlohmann::json::array();
@@ -1246,7 +1249,6 @@ int MidiTranslator::ExportPackMapping(const std::string& path, const std::string
         nlohmann::json entry;
         entry["fontId"] = e.fontId;
         entry["instOrWave"] = e.instOrWave;
-        entry["pack"] = e.packName;
         entry["program"] = e.program;
         entry["bank"] = e.bank;
         if (!e.presetName.empty())
@@ -1275,6 +1277,14 @@ int MidiTranslator::ExportPackMapping(const std::string& path, const std::string
         ++written;
     }
 
+    outWritten = written;
+    return j.dump(2);
+}
+
+int MidiTranslator::ExportPackMapping(const std::string& path, const std::string& packNameFilter) const {
+    int written = 0;
+    std::string text = BuildPackMappingJson(packNameFilter, written);
+
     std::error_code ec;
     auto parent = std::filesystem::path(path).parent_path();
     if (!parent.empty())
@@ -1285,7 +1295,7 @@ int MidiTranslator::ExportPackMapping(const std::string& path, const std::string
         SPDLOG_WARN("[MidiTranslator] ExportPackMapping: cannot open {}", path);
         return -1;
     }
-    out << j.dump(2);
+    out << text;
     if (!out.good()) {
         SPDLOG_WARN("[MidiTranslator] ExportPackMapping: write failed for {}", path);
         return -1;
@@ -1294,7 +1304,7 @@ int MidiTranslator::ExportPackMapping(const std::string& path, const std::string
     return written;
 }
 
-bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
+bool MidiTranslator::ApplyOverridesFromString(const std::string& json, const std::string& packName) {
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(json);
@@ -1302,6 +1312,9 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
         SPDLOG_ERROR("[MidiTranslator] ApplyOverridesFromString: parse error: {}", e.what());
         return false;
     }
+    // Owner resolution order: the caller's discovered name (authoritative) ->
+    // the file's "pack_name" header -> the per-entry "pack" (legacy files).
+    std::string headerPack = !packName.empty() ? packName : j.value("pack_name", std::string{});
     auto entries = j.value("entries", nlohmann::json::array());
     int applied = 0;
     for (const auto& entry : entries) {
@@ -1314,9 +1327,15 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json) {
             std::string dn = entry.value("display_name", std::string{});
             SetDisplayName(static_cast<uint8_t>(fontId), static_cast<int16_t>(instOrWave), dn);
         }
-        if (!entry.contains("pack"))
+        // A routing entry needs a program. Pairs without one are display-name
+        // -only stubs (handled just above) -> skip the routing path. The owner
+        // pack comes from the header/caller, falling back to a per-entry "pack"
+        // only for legacy files that still carry it.
+        if (!entry.contains("program"))
             continue;
-        std::string pack = entry.value("pack", std::string{});
+        std::string pack = !headerPack.empty() ? headerPack : entry.value("pack", std::string{});
+        if (pack.empty())
+            continue;
         int program = entry.value("program", -1);
         int bank = entry.value("bank", 0);
         if (program < -1 || program > 127)
