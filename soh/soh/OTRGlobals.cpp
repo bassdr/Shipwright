@@ -1082,15 +1082,53 @@ void OTRAudio_Thread() {
         }
     };
 
+    // Self-pump cadence. The gfx thread wakes us once per rendered frame
+    // (Graph_ProcessGfxCommands sets audio.processing), but a single long
+    // frame -- the classic repro is the first pause-menu open, which loads
+    // assets and can stall the gfx thread for hundreds of ms -- would
+    // otherwise leave us asleep while the backend's queue (~128 ms reservoir,
+    // DesiredBuffered) drains to silence. So we also wake on a short timeout
+    // and top the reservoir up off the audio clock, independent of the gfx
+    // frame rate. The N64 sequencer advancing on its own clock is already
+    // documented as safe (see the pre-buffer loop below); doing so is in fact
+    // closer to the console, where the audio task ran off the scheduler rather
+    // than gated on rendering. A timeout wake when the reservoir is already
+    // full just re-checks AudioPlayer_Buffered() and returns -- negligible CPU.
+    constexpr auto kSelfPumpInterval = std::chrono::milliseconds(5);
+
+    // The N64 audio engine (gAudioContext: command queues, ABI buffers) is set
+    // up during boot on the game thread; AudioMgr_CreateNextAudioBuffer derefs
+    // it with no readiness guard. The original code never produced before the
+    // gfx thread set audio.processing, which only happens once the game has
+    // reached its render loop -- i.e. after audio init. The self-pump timeout
+    // must preserve that ordering, so it only kicks in AFTER the first real
+    // gfx wake has primed us; before that we wait indefinitely like before.
+    bool primed = false;
+
     while (audio.running) {
         {
             std::unique_lock<std::mutex> Lock(audio.mutex);
-            while (!audio.processing && audio.running) {
-                audio.cv_to_thread.wait(Lock);
+            if (!primed) {
+                // Pre-init: block until the gfx thread drives the first buffer
+                // (engine guaranteed ready by then), exactly as before.
+                while (!audio.processing && audio.running) {
+                    audio.cv_to_thread.wait(Lock);
+                }
+            } else if (!audio.processing && audio.running) {
+                // Primed: wait for the next gfx wake, but no longer than
+                // kSelfPumpInterval so a stalled gfx thread can't starve the
+                // backend queue. A pending wake falls straight through.
+                audio.cv_to_thread.wait_for(Lock, kSelfPumpInterval);
             }
 
             if (!audio.running) {
                 break;
+            }
+
+            // A real gfx wake (processing set) means the game is rendering and
+            // the audio engine is up; from here the self-pump path is safe.
+            if (audio.processing) {
+                primed = true;
             }
         }
 
