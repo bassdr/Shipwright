@@ -1973,6 +1973,56 @@ void AudioEditor::DrawElement() {
                             };
                             (void)drawAdvPopup;
 
+                            // Per-entry octave/semitone Shift editor, in the Shift column unit
+                            // (octaves or +/-24 semitones) chosen by the header toggle. Shared by
+                            // the split-range rows so each range gets its own pitch shift; the
+                            // unsplit melodic row keeps its own inline copy. idx < 0 -> "-".
+                            auto drawShiftEditor = [&](int idx) {
+                                if (idx < 0) {
+                                    ImGui::TextDisabled("-");
+                                    return;
+                                }
+                                int transStored = SOH::MidiTranslator::Instance().GetEntry(idx).transpose;
+                                int curOctaves   = transStored / 12;
+                                int curRemainder = transStored - curOctaves * 12;
+                                int displayValue, displayMin, displayMax;
+                                if (transSemis) {
+                                    displayValue = transStored; displayMin = -24; displayMax = 24;
+                                } else {
+                                    displayValue = curOctaves;  displayMin = -8;  displayMax = 8;
+                                }
+                                const bool hasRemainder = (!transSemis && curRemainder != 0);
+                                if (hasRemainder)
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg,
+                                                           IM_COL32(220, 150, 60, 70));
+                                char fmt[32];
+                                if (transSemis)
+                                    std::strcpy(fmt, "%+d st");
+                                else if (hasRemainder)
+                                    std::snprintf(fmt, sizeof fmt, "%%+d oct (%+d st)", curRemainder);
+                                else
+                                    std::strcpy(fmt, "%+d oct");
+                                ImGui::SetNextItemWidth(-FLT_MIN);
+                                if (ImGui::DragInt("##rshift", &displayValue, 0.1f, displayMin, displayMax, fmt)) {
+                                    displayValue = std::clamp(displayValue, displayMin, displayMax);
+                                    int newSemis;
+                                    if (transSemis)
+                                        newSemis = displayValue;
+                                    else
+                                        newSemis = transStored + (displayValue - curOctaves) * 12;
+                                    newSemis = std::clamp(newSemis, -127, 127);
+                                    SOH::MidiTranslator::Instance().SetEntryTranspose(idx, (int8_t)newSemis);
+                                }
+                                if (ImGui::IsItemDeactivatedAfterEdit())
+                                    AutoSaveOverrides();
+                                if (ImGui::IsItemHovered())
+                                    ImGui::SetTooltip(
+                                        "Shift this range's notes (%+d st stored). Toggle Semitone\n"
+                                        "precision in the header for +/-24 st fine control.",
+                                        transStored);
+                            };
+                            (void)drawShiftEditor;
+
                             // Standardized Solo (S, brown/orange) + Mute (M, red) buttons. The
                             // warm/red palette signals "session-only, not saved". Used for both
                             // the pair-level sets and the per-drum-slot sets.
@@ -2040,7 +2090,9 @@ void AudioEditor::DrawElement() {
                                 for (int i = 0; i < nPairs; i++) {
                                     const auto& q = pairs[i];
                                     auto key = std::make_pair(q.fontId, q.instOrWave);
-                                    bool isDrum = (q.instOrWave == 0 || q.instOrWave == 1);
+                                    bool isDrum = (q.instOrWave == 0 || q.instOrWave == 1) ||
+                                                  SOH::MidiTranslator::Instance().IsForcedDrum(q.fontId,
+                                                                                               q.instOrWave);
                                     bool pairHasSoloedSlot = false;
                                     if (isDrum) {
                                         for (const auto& t : sSoloedSlots)
@@ -2110,16 +2162,22 @@ void AudioEditor::DrawElement() {
                                 // Native/Synth, a Kit dropdown); expanding reveals one child
                                 // row per drum slot (per-slot Solo/Mute, Mode, Drum Sound).
                                 // Diverts before the melodic body and continues.
-                                if (p.instOrWave == 0 || p.instOrWave == 1) {
+                                bool forcedDrum =
+                                    SOH::MidiTranslator::Instance().IsForcedDrum(p.fontId, p.instOrWave);
+                                if (p.instOrWave == 0 || p.instOrWave == 1 || forcedDrum) {
                                     auto pairKey = std::make_pair(p.fontId, p.instOrWave);
                                     const char* fontName = SOH::GetFontName(p.fontId);
                                     const SOH::ConfigEntry* dActive =
                                         SOH::MidiTranslator::Instance().GetActiveEntry(p.fontId, p.instOrWave);
                                     // The per-instrument Native/Synth state is the explicit
                                     // master flag, NOT "any slot enabled" -- so per-slot edits
-                                    // never flip the instrument.
+                                    // never flip the instrument. A forced-drum pair has no
+                                    // separate master: the "Treat as drum" flag IS its Synth
+                                    // mode (clearing it reverts the pair to melodic).
                                     bool channelSynth =
-                                        SOH::MidiTranslator::Instance().IsDrumChannelSynth(p.fontId, p.instOrWave);
+                                        forcedDrum ? true
+                                                   : SOH::MidiTranslator::Instance().IsDrumChannelSynth(
+                                                         p.fontId, p.instOrWave);
 
                                     // Parent tint aggregates the slots: green if any slot is
                                     // synth-active, blue if any is native-active and none synth,
@@ -2145,11 +2203,16 @@ void AudioEditor::DrawElement() {
                                     ImGui::TextUnformatted(fontName ? fontName : "(font)");
 
                                     ImGui::TableSetColumnIndex(instCol);
-                                    ImGui::TextUnformatted(p.instOrWave == 0 ? "Drum" : "SFX");
+                                    if (forcedDrum)
+                                        ImGui::Text("%d (Drum)", (int)p.instOrWave);
+                                    else
+                                        ImGui::TextUnformatted(p.instOrWave == 0 ? "Drum" : "SFX");
                                     if (ImGui::IsItemHovered()) {
                                         auto s = SOH::MidiTranslator::Instance().GetDebugStats(p.fontId, p.instOrWave);
+                                        const char* kind = forcedDrum ? "forced-drum"
+                                                                      : (p.instOrWave == 0 ? "drum" : "SFX");
                                         ImGui::SetTooltip("font %u, %s channel\nNoteOns %u (synth %u / native %u)",
-                                                          (unsigned)p.fontId, p.instOrWave == 0 ? "drum" : "SFX",
+                                                          (unsigned)p.fontId, kind,
                                                           s.noteOns, s.routedSynth, s.routedNative);
                                     }
                                     // Slots discovery lives in the Inst column (next to the
@@ -2170,16 +2233,32 @@ void AudioEditor::DrawElement() {
                                             "each slot to a GM percussion sound.",
                                             distinct);
 
-                                    // Mode: Native / Synth for the whole channel.
+                                    // Mode: for the intrinsic drum/SFX channels, Native / Synth
+                                    // for the whole channel. A forced-drum pair has no separate
+                                    // master (the flag IS Synth), so it shows a revert-to-melodic
+                                    // button instead.
                                     ImGui::TableSetColumnIndex(modeCol);
-                                    if (ImGui::RadioButton("Native##dmode", !channelSynth)) {
-                                        SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId, p.instOrWave, false);
-                                        AutoSaveOverrides();
-                                    }
-                                    ImGui::SameLine();
-                                    if (ImGui::RadioButton("Synth##dmode", channelSynth)) {
-                                        SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId, p.instOrWave, true);
-                                        AutoSaveOverrides();
+                                    if (forcedDrum) {
+                                        if (ImGui::SmallButton("Melodic##undrum")) {
+                                            SOH::MidiTranslator::Instance().SetForcedDrum(p.fontId, p.instOrWave,
+                                                                                          false);
+                                            AutoSaveOverrides();
+                                        }
+                                        if (ImGui::IsItemHovered())
+                                            ImGui::SetTooltip("Stop treating this instrument as a drum\n"
+                                                              "(revert to normal melodic routing).");
+                                    } else {
+                                        if (ImGui::RadioButton("Native##dmode", !channelSynth)) {
+                                            SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId, p.instOrWave,
+                                                                                                false);
+                                            AutoSaveOverrides();
+                                        }
+                                        ImGui::SameLine();
+                                        if (ImGui::RadioButton("Synth##dmode", channelSynth)) {
+                                            SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId, p.instOrWave,
+                                                                                                true);
+                                            AutoSaveOverrides();
+                                        }
                                     }
 
                                     // Preset: Kit dropdown (bank-128 presets). Mirrors the
@@ -2191,9 +2270,16 @@ void AudioEditor::DrawElement() {
                                     if (channelSynth && dActive && !dActive->packName.empty())
                                         curKit = dActive->presetName.empty() ? dActive->packName : dActive->presetName;
                                     if (ImGui::BeginCombo("##drumkit", curKit.c_str())) {
+                                        // "None (native)" returns the whole instrument to native:
+                                        // the drum-channel master for 0/1, or un-forcing a
+                                        // forced-drum pair back to melodic.
                                         if (ImGui::Selectable("None (native)", !channelSynth)) {
-                                            SOH::MidiTranslator::Instance().SetDrumChannelSynth(
-                                                p.fontId, p.instOrWave, false);
+                                            if (forcedDrum)
+                                                SOH::MidiTranslator::Instance().SetForcedDrum(
+                                                    p.fontId, p.instOrWave, false);
+                                            else
+                                                SOH::MidiTranslator::Instance().SetDrumChannelSynth(
+                                                    p.fontId, p.instOrWave, false);
                                             AutoSaveOverrides();
                                         }
                                         ImGui::Separator();
@@ -2464,7 +2550,8 @@ void AudioEditor::DrawElement() {
                                             ImGui::SetTooltip("Merge all ranges back into a single full-range entry.");
 
                                         if (mTreeOpen) {
-                                            for (int ei : ranges) {
+                                            for (size_t k = 0; k < ranges.size(); ++k) {
+                                                int ei = ranges[k];
                                                 const SOH::ConfigEntry& ce =
                                                     SOH::MidiTranslator::Instance().GetEntry(ei);
                                                 ImGui::TableNextRow();
@@ -2475,22 +2562,49 @@ void AudioEditor::DrawElement() {
                                                 else if (SOH::MidiTranslator::Instance().GetEntryNativeActive(ei) > 0)
                                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kNativeTint);
 
-                                                // Inst column: range editor [lo..hi].
+                                                // Inst column: contiguous-range boundary editor. Ranges
+                                                // are kept adjacent and non-overlapping by construction:
+                                                // the first range's low is pinned to 0 and the last
+                                                // range's high to 127 (both grayed); the only editable
+                                                // value is the boundary between two ranges, and moving it
+                                                // shifts the neighbouring range's edge with it. So a
+                                                // range's low mirrors the previous range's high+1 and
+                                                // can't be set independently.
+                                                const bool isFirst = (k == 0);
+                                                const bool isLast  = (k + 1 == ranges.size());
+                                                const int  prevIdx = isFirst ? -1 : ranges[k - 1];
+                                                const int  nextIdx = isLast ? -1 : ranges[k + 1];
                                                 ImGui::TableSetColumnIndex(instCol);
-                                                int lohi[2] = { (int)ce.noteLow, (int)ce.noteHigh };
-                                                ImGui::SetNextItemWidth(-FLT_MIN);
-                                                if (ImGui::DragInt2("##range", lohi, 0.5f, 0, 127)) {
-                                                    lohi[0] = std::clamp(lohi[0], 0, 127);
-                                                    lohi[1] = std::clamp(lohi[1], lohi[0], 127);
-                                                    SOH::MidiTranslator::Instance().SetEntryNoteRange(
-                                                        ei, (uint8_t)lohi[0], (uint8_t)lohi[1]);
-                                                }
+                                                // Low edge (== previous range's high + 1). Editing it moves
+                                                // the boundary shared with the previous range.
+                                                int lo = (int)ce.noteLow;
+                                                ImGui::BeginDisabled(isFirst);
+                                                ImGui::SetNextItemWidth(44.0f);
+                                                if (ImGui::DragInt("##rlo", &lo, 0.3f, 0, 127, "%d") && !isFirst)
+                                                    SOH::MidiTranslator::Instance().SetSplitBoundary(
+                                                        prevIdx, ei, (uint8_t)std::clamp(lo - 1, 0, 127));
                                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                                     AutoSaveOverrides();
+                                                ImGui::EndDisabled();
+                                                ImGui::SameLine(0.0f, 4.0f);
+                                                ImGui::TextUnformatted("..");
+                                                ImGui::SameLine(0.0f, 4.0f);
+                                                // High edge (== next range's low - 1). Editing it moves the
+                                                // boundary shared with the next range.
+                                                int hi = (int)ce.noteHigh;
+                                                ImGui::BeginDisabled(isLast);
+                                                ImGui::SetNextItemWidth(44.0f);
+                                                if (ImGui::DragInt("##rhi", &hi, 0.3f, 0, 127, "%d") && !isLast)
+                                                    SOH::MidiTranslator::Instance().SetSplitBoundary(
+                                                        ei, nextIdx, (uint8_t)std::clamp(hi, 0, 127));
+                                                if (ImGui::IsItemDeactivatedAfterEdit())
+                                                    AutoSaveOverrides();
+                                                ImGui::EndDisabled();
                                                 if (ImGui::IsItemHovered())
-                                                    ImGui::SetTooltip("Engine-semitone range [low..high] this "
-                                                                      "preset covers. Keep ranges adjacent and "
-                                                                      "non-overlapping.");
+                                                    ImGui::SetTooltip(
+                                                        "Engine-semitone range. Ranges stay adjacent: the\n"
+                                                        "first starts at 0, the last ends at 127, and moving\n"
+                                                        "a boundary shifts the neighbouring range with it.");
                                                 // Split/Merge under the range editor.
                                                 if (ImGui::SmallButton("Split##rsplit")) {
                                                     int mid = ((int)ce.noteLow + (int)ce.noteHigh + 1) / 2;
@@ -2596,6 +2710,13 @@ void AudioEditor::DrawElement() {
                                                     }
                                                     ImGui::EndCombo();
                                                 }
+
+                                                // Per-range pitch Shift (octaves / semitones), greyed
+                                                // when the range plays native (nothing to shift).
+                                                ImGui::TableSetColumnIndex(shiftCol);
+                                                ImGui::BeginDisabled(!ce.enabled);
+                                                drawShiftEditor(ei);
+                                                ImGui::EndDisabled();
 
                                                 // Per-range advanced effects (Reverb/Chorus/Cutoff/Q).
                                                 ImGui::TableSetColumnIndex(advCol);
@@ -2789,6 +2910,21 @@ void AudioEditor::DrawElement() {
                                                 (int)rng.rangeLo, (int)rng.rangeHi);
                                     }
                                 }
+                                // "Treat as drum": route this melodic instrument through the
+                                // drum path so each distinct note becomes a slot mapped to a GM
+                                // percussion sound. For a melodic slot that's really percussion
+                                // (e.g. a song using an instrument slot for a drum hit). Always
+                                // available -- works even on a Native pair.
+                                if (ImGui::SmallButton("As Drum##forcedrum")) {
+                                    SOH::MidiTranslator::Instance().SetForcedDrum(p.fontId, p.instOrWave, true);
+                                    AutoSaveOverrides();
+                                }
+                                if (ImGui::IsItemHovered())
+                                    ImGui::SetTooltip(
+                                        "Treat this instrument as a drum/percussion channel.\n"
+                                        "Each distinct note it plays becomes a slot you map to\n"
+                                        "a GM drum sound. Play the song first, then expand the\n"
+                                        "row and click Slots to discover the notes.");
                                 ImGui::TableSetColumnIndex(modeCol);
                                 // Native click disables every enabled entry for this pair
                                 // (keeps their selected flag so ClickSynth can restore).

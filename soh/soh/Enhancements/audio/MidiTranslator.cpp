@@ -61,6 +61,10 @@ MidiTranslator::MidiTranslator() {
     for (auto& row : mPairChannel)
         for (auto& cell : row)
             cell = 0xFF;
+    // -1 = pair not forced-drum (and not holding a discovery-pool slot).
+    for (auto& row : mForcedDrumPool)
+        for (auto& cell : row)
+            cell = -1;
 }
 
 MidiTranslator& MidiTranslator::Instance() {
@@ -183,11 +187,12 @@ MidiTranslator::DebugPairStats MidiTranslator::GetDebugStats(uint8_t fontId, int
 int MidiTranslator::GetDrumSlotHistogram(uint8_t fontId, int16_t instOrWave, uint32_t out[128]) const {
     for (int s = 0; s < kDrumHistSlots; ++s)
         out[s] = 0;
-    if (fontId >= kMaxFontId || instOrWave < 0 || instOrWave >= kDrumHistInst)
+    const DrumSlotHit* hist = DrumHistFor(fontId, instOrWave);
+    if (!hist)
         return 0;
     int distinct = 0;
     for (int s = 0; s < kDrumHistSlots; ++s) {
-        uint32_t c = mDrumSlotHits[fontId][instOrWave][s].count.load(std::memory_order_relaxed);
+        uint32_t c = hist[s].count.load(std::memory_order_relaxed);
         out[s] = c;
         if (c > 0)
             ++distinct;
@@ -210,9 +215,9 @@ void MidiTranslator::ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave) 
     s.routedNative.store(0, std::memory_order_relaxed);
     s.routedMute.store(0, std::memory_order_relaxed);
     s.lastSemitone     = 0;
-    if (instOrWave >= 0 && instOrWave < kDrumHistInst) {
+    if (DrumSlotHit* hist = DrumHistFor(fontId, instOrWave)) {
         for (int slot = 0; slot < kDrumHistSlots; ++slot)
-            mDrumSlotHits[fontId][instOrWave][slot].count.store(0, std::memory_order_relaxed);
+            hist[slot].count.store(0, std::memory_order_relaxed);
     }
 }
 
@@ -591,11 +596,98 @@ int MidiTranslator::FindSlotEntryIdx(uint8_t fontId, int16_t instOrWave, uint8_t
     return -1;
 }
 
+const MidiTranslator::DrumSlotHit* MidiTranslator::DrumHistFor(uint8_t fontId, int16_t instOrWave) const {
+    if (fontId >= kMaxFontId || instOrWave < 0 || instOrWave >= kMaxInstOrWave)
+        return nullptr;
+    if (instOrWave < kDrumHistInst)
+        return mDrumSlotHits[fontId][instOrWave];
+    int8_t pool = mForcedDrumPool[fontId][instOrWave];
+    if (pool < 0 || pool >= kMaxForcedDrumPairs)
+        return nullptr;
+    return mForcedDrumHits[pool];
+}
+
+MidiTranslator::DrumSlotHit* MidiTranslator::DrumHistFor(uint8_t fontId, int16_t instOrWave) {
+    return const_cast<DrumSlotHit*>(
+        static_cast<const MidiTranslator*>(this)->DrumHistFor(fontId, instOrWave));
+}
+
+int MidiTranslator::AllocForcedDrumPool() {
+    for (int p = 0; p < kMaxForcedDrumPairs; ++p) {
+        if (!mForcedDrumPoolUsed[p]) {
+            mForcedDrumPoolUsed[p] = true;
+            for (int s = 0; s < kDrumHistSlots; ++s)
+                mForcedDrumHits[p][s].count.store(0, std::memory_order_relaxed);
+            return p;
+        }
+    }
+    return -1;
+}
+
+void MidiTranslator::SetForcedDrum(uint8_t fontId, int16_t instOrWave, bool forced) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    if (instOrWave < kDrumHistInst)
+        return; // 0/1 are intrinsic drum channels -- use SetDrumChannelSynth
+
+    const bool wasForced = mForcedDrumPool[fontId][instOrWave] >= 0;
+    if (forced == wasForced)
+        return;
+
+    if (forced) {
+        int pool = AllocForcedDrumPool();
+        if (pool < 0) {
+            SPDLOG_WARN("[MidiTranslator] SetForcedDrum: pool full ({} pairs), "
+                        "cannot flag font {} inst {}",
+                        kMaxForcedDrumPairs, fontId, instOrWave);
+            return; // toggle doesn't stick; the pool is generously sized
+        }
+        // A full-range melodic entry would otherwise cover every slot and
+        // shadow the per-slot drum entries once discovered. Disable any enabled
+        // one so the pair starts from a clean native baseline (it stays in
+        // mEntries, deselected-but-present, so flipping back restores it).
+        for (auto& e : mEntries) {
+            if (e.fontId == fontId && e.instOrWave == instOrWave && e.enabled &&
+                e.noteLow == 0 && e.noteHigh == 127)
+                e.enabled = false;
+        }
+        mForcedDrumPool[fontId][instOrWave] = static_cast<int8_t>(pool);
+    } else {
+        int8_t pool = mForcedDrumPool[fontId][instOrWave];
+        if (pool >= 0 && pool < kMaxForcedDrumPairs)
+            mForcedDrumPoolUsed[pool] = false;
+        mForcedDrumPool[fontId][instOrWave] = -1;
+        // Drop the per-slot drum entries so the pair returns to a clean melodic
+        // row instead of lingering as a pile of scattered single-note "splits"
+        // (which can't be merged -- the slots aren't adjacent -- and have no
+        // octave/Shift editor). Disable + deselect rather than erase: erasing
+        // shifts the cached indices the audio thread reads; a deselected entry
+        // is ignored by resolution and the UI and dropped on the next save. Re-
+        // forcing rediscovers/reuses them by key.
+        for (auto& e : mEntries) {
+            if (e.fontId == fontId && e.instOrWave == instOrWave && e.noteLow == e.noteHigh) {
+                e.enabled = false;
+                e.selected = false;
+            }
+        }
+    }
+    // Resolution gates on the flag at play time, but disabling a full-range
+    // entry (above) changes the chain, so recompute either way.
+    RecomputeActive(fontId, instOrWave);
+}
+
+bool MidiTranslator::IsForcedDrum(uint8_t fontId, int16_t instOrWave) const {
+    if (fontId >= kMaxFontId || instOrWave < 0 || instOrWave >= kMaxInstOrWave)
+        return false;
+    return instOrWave >= kDrumHistInst && mForcedDrumPool[fontId][instOrWave] >= 0;
+}
+
 void MidiTranslator::AutoSplitDrums(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
-    if (instOrWave < 0 || instOrWave >= kDrumHistInst)
-        return; // only the drum/SFX channels carry a per-slot histogram
+    const DrumSlotHit* hist = DrumHistFor(fontId, instOrWave);
+    if (!hist)
+        return; // no per-slot histogram (not a drum/SFX channel or forced pair)
 
     std::string kitPack;
     int kitProgram = 0;
@@ -624,7 +716,7 @@ void MidiTranslator::AutoSplitDrums(uint8_t fontId, int16_t instOrWave) {
     // distinct; the user remaps via the Drum Sound combo (item 8.1 will
     // auto-pick it later). An existing slot keeps its prior Drum Sound.
     for (int s = 0; s < kDrumHistSlots; ++s) {
-        if (mDrumSlotHits[fontId][instOrWave][s].count.load(std::memory_order_relaxed) == 0)
+        if (hist[s].count.load(std::memory_order_relaxed) == 0)
             continue;
         int idx = bySlot[s];
         const bool isNew = (idx < 0);
@@ -765,6 +857,20 @@ void MidiTranslator::MergeWithNext(int idx) {
     mEntries[sib].enabled = false;
     mEntries[sib].selected = false;
     RecomputeActive(e.fontId, e.instOrWave);
+}
+
+void MidiTranslator::SetSplitBoundary(int lowerIdx, int upperIdx, uint8_t boundary) {
+    const int n = static_cast<int>(mEntries.size());
+    if (lowerIdx < 0 || lowerIdx >= n || upperIdx < 0 || upperIdx >= n)
+        return;
+    ConfigEntry& lo = mEntries[lowerIdx];
+    ConfigEntry& hi = mEntries[upperIdx];
+    // Keep both ranges non-empty: lo spans [lo.noteLow .. b], hi spans
+    // [b+1 .. hi.noteHigh], so b must sit in [lo.noteLow, hi.noteHigh - 1].
+    int b = std::clamp<int>(boundary, lo.noteLow, static_cast<int>(hi.noteHigh) - 1);
+    lo.noteHigh = static_cast<uint8_t>(b);
+    hi.noteLow = static_cast<uint8_t>(b + 1);
+    RecomputeActive(lo.fontId, lo.instOrWave);
 }
 
 void MidiTranslator::SetEntryNoteRange(int idx, uint8_t noteLow, uint8_t noteHigh) {
@@ -1071,6 +1177,11 @@ void MidiTranslator::ResetAllOverrides() {
     for (auto& row : mDrumChannelSynth)
         for (auto& cell : row)
             cell = false;
+    for (auto& row : mForcedDrumPool)
+        for (auto& cell : row)
+            cell = -1;
+    for (auto& used : mForcedDrumPoolUsed)
+        used = false;
     // Channel allocation, discovery bits, and active-voice counters
     // intentionally survive — they're runtime state, not overrides.
 }
@@ -1203,6 +1314,15 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
             if (mDrumChannelSynth[f][i])
                 j["drum_channels_synth"].push_back({ { "fontId", f }, { "instOrWave", i } });
 
+    // Forced-drum ("Treat as drum") pairs: a per-pair list, mirroring the drum
+    // channel-mode list above. The histogram pool slot is runtime-only; only
+    // the flag (instOrWave >= kDrumHistInst) is persisted.
+    j["forced_drums"] = nlohmann::json::array();
+    for (int f = 0; f < kMaxFontId; ++f)
+        for (int i = kDrumHistInst; i < kMaxInstOrWave; ++i)
+            if (mForcedDrumPool[f][i] >= 0)
+                j["forced_drums"].push_back({ { "fontId", f }, { "instOrWave", i } });
+
     std::ofstream out(path);
     if (!out.is_open()) {
         SPDLOG_WARN("[MidiTranslator] SaveOverridesToFile: cannot open {}", path);
@@ -1286,6 +1406,30 @@ std::string MidiTranslator::BuildPackMappingJson(const std::string& packNameFilt
         j["entries"].push_back(std::move(entry));
         ++written;
     }
+
+    // Forced-drum flags for the pairs that actually shipped a slot entry above,
+    // so a downstream user loads the pack with those pairs already routing as
+    // drums (the slot entries alone don't imply the master flag). Scoped to
+    // written pairs to avoid leaking unrelated forced pairs into a single-pack
+    // export.
+    nlohmann::json forced = nlohmann::json::array();
+    for (int f = 0; f < kMaxFontId; ++f) {
+        for (int i = kDrumHistInst; i < kMaxInstOrWave; ++i) {
+            if (mForcedDrumPool[f][i] < 0)
+                continue;
+            bool shipped = false;
+            for (const auto& e : mEntries) {
+                if (e.fontId == f && e.instOrWave == i && ExportEntryMatches(e, packNameFilter)) {
+                    shipped = true;
+                    break;
+                }
+            }
+            if (shipped)
+                forced.push_back({ { "fontId", f }, { "instOrWave", i } });
+        }
+    }
+    if (!forced.empty())
+        j["forced_drums"] = std::move(forced);
 
     outWritten = written;
     return j.dump(2);
@@ -1399,6 +1543,14 @@ bool MidiTranslator::ApplyOverridesFromString(const std::string& json, const std
                 mDrumChannelSynth[f][i] = true;
         }
     }
+    if (j.contains("forced_drums")) {
+        for (const auto& d : j["forced_drums"]) {
+            int f = d.value("fontId", -1);
+            int i = d.value("instOrWave", -1);
+            if (f >= 0 && f < kMaxFontId && i >= kDrumHistInst && i < kMaxInstOrWave)
+                SetForcedDrum(static_cast<uint8_t>(f), static_cast<int16_t>(i), true);
+        }
+    }
     SPDLOG_INFO("[MidiTranslator] ApplyOverridesFromString: applied {} entries", applied);
     return true;
 }
@@ -1491,6 +1643,14 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
                 mDrumChannelSynth[f][i] = true;
         }
     }
+    if (j.contains("forced_drums")) {
+        for (const auto& d : j["forced_drums"]) {
+            int f = d.value("fontId", -1);
+            int i = d.value("instOrWave", -1);
+            if (f >= 0 && f < kMaxFontId && i >= kDrumHistInst && i < kMaxInstOrWave)
+                SetForcedDrum(static_cast<uint8_t>(f), static_cast<int16_t>(i), true);
+        }
+    }
     SPDLOG_INFO("[MidiTranslator] ApplyOverridesFromFile: applied {} entries from {} (v{})", applied, path, version);
     return true;
 }
@@ -1529,10 +1689,14 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         auto& dbg = mDebugStats[fontId][instOrWave];
         dbg.noteOns.fetch_add(1, std::memory_order_relaxed);
         dbg.lastSemitone = semitone;
-        // Drum/SFX slot histogram: on these channels `semitone` is a slot
+        // Drum/SFX slot histogram: on those channels `semitone` is a slot
         // index, so this is the per-slot fire count the drum auto-split reads.
-        if (instOrWave < kDrumHistInst && semitone < kDrumHistSlots) {
-            mDrumSlotHits[fontId][instOrWave][semitone].count.fetch_add(1, std::memory_order_relaxed);
+        // For a forced-drum melodic pair `semitone` is a real pitch, but the
+        // drum UI treats each distinct incoming value as a slot all the same, so
+        // the same histogram (a pool slot, via DrumHistFor) drives discovery.
+        if (semitone < kDrumHistSlots) {
+            if (DrumSlotHit* hist = DrumHistFor(fontId, instOrWave))
+                hist[semitone].count.fetch_add(1, std::memory_order_relaxed);
         }
     }
     // Helper for the route-decision counters below. Only counts on a fresh
@@ -1586,11 +1750,17 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         return true;
     }
 
-    // Per-slot transient mute for drum/SFX, BEFORE resolution: a drum slot's
+    // Drum-like routing covers the intrinsic drum/SFX channels (instOrWave 0/1)
+    // and any pair the user flagged "Treat as drum". For both, the incoming
+    // `semitone` indexes a slot row whose fixedNote picks the played sound.
+    const bool isForcedDrum = IsForcedDrum(fontId, instOrWave);
+    const bool drumLike = (instOrWave == 0 || instOrWave == 1) || isForcedDrum;
+
+    // Per-slot transient mute for drum-like pairs, BEFORE resolution: a slot's
     // semitone IS its noteLow, so this catches native slots too (which skip the
     // post-resolution check by falling through). Melodic ranges are still
     // handled post-resolution by the covering entry's noteLow.
-    if ((instOrWave == 0 || instOrWave == 1) && semitone < 128 &&
+    if (drumLike && semitone < 128 &&
         mTemporarySlotMute.count({ fontId, instOrWave, static_cast<uint8_t>(semitone) })) {
         retireSlot();
         return true;
@@ -1633,11 +1803,11 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         activeIdx = cand.nextActiveSplit;
     }
     if (activeIdx < 0 || activeIdx >= static_cast<int>(mEntries.size())) {
-        // No enabled entry covers this slot → native plays. For a drum/SFX
+        // No enabled entry covers this slot → native plays. For a drum-like
         // slot, attribute the native note to its slot row (the disabled entry)
         // so the row's activity tint lights even in Native mode.
         int nativeAttrib = -1;
-        if (instOrWave == 0 || instOrWave == 1)
+        if (drumLike)
             nativeAttrib = FindSlotEntryIdx(fontId, instOrWave, static_cast<uint8_t>(semitone & 0x7F));
         // A slot explicitly set to None silences even when the channel is in
         // Native mode (its entry is disabled, so it lands here, not in the

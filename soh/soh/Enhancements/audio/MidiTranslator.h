@@ -292,6 +292,17 @@ class MidiTranslator {
     // default). IsDrumChannelSynth reads the flag (audio-thread safe).
     void SetDrumChannelSynth(uint8_t fontId, int16_t instOrWave, bool synth);
     bool IsDrumChannelSynth(uint8_t fontId, int16_t instOrWave) const;
+    // "Treat as drum" -- generalises the drum master from the intrinsic drum/SFX
+    // channels (instOrWave 0/1) to any melodic pair (instOrWave >= 2). A flagged
+    // pair runs the drum resolution path: each distinct incoming engine semitone
+    // becomes a slot the user maps to a GM percussion sound (fixedNote), exactly
+    // like the drum channels. Flagging it on is equivalent to the channel being
+    // in Synth mode; clearing it returns the pair to melodic routing. A small
+    // fixed pool of discovery histograms backs the flagged pairs (don't widen
+    // the static drum grid to all 256 instOrWave). IsForcedDrum reads the flag
+    // (audio-thread safe). No-op for instOrWave 0/1 (use SetDrumChannelSynth).
+    void SetForcedDrum(uint8_t fontId, int16_t instOrWave, bool forced);
+    bool IsForcedDrum(uint8_t fontId, int16_t instOrWave) const;
     // Set the kit (bank-128 pack/program) for every selected slot entry of a
     // drum pair at once -- the GM percussion note stays per slot (fixedNote).
     void SetDrumKit(uint8_t fontId, int16_t instOrWave, const std::string& pack, int16_t program,
@@ -310,6 +321,14 @@ class MidiTranslator {
     int  SplitEntry(int idx, uint8_t atSemitone);
     void MergeWithNext(int idx);
     void SetEntryNoteRange(int idx, uint8_t noteLow, uint8_t noteHigh);
+    // Move the single boundary between two adjacent split ranges atomically:
+    // lowerIdx keeps [its noteLow .. boundary], upperIdx takes [boundary+1 ..
+    // its noteHigh]. The boundary is clamped so neither range becomes empty
+    // (lowerIdx.noteLow <= boundary < upperIdx.noteHigh). One chain recompute,
+    // so the audio thread never sees a transient overlap/gap. This is the only
+    // way the split UI edits ranges -- it keeps them contiguous and
+    // non-overlapping by construction, with the outer ends pinned (0 / 127).
+    void SetSplitBoundary(int lowerIdx, int upperIdx, uint8_t boundary);
     void AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave);
     // Set a specific entry's melodic preset (used by a split range row's preset
     // dropdown -- scoped to that range, unlike PickPreset which is per-pair).
@@ -411,6 +430,16 @@ class MidiTranslator {
     // enabled or not. Lets a native-routed drum note attribute its activity to
     // the slot's row even when the entry is disabled. -1 if none.
     int     FindSlotEntryIdx(uint8_t fontId, int16_t instOrWave, uint8_t slot) const;
+    // Per-slot NoteOn histogram backing this pair's slot discovery, or nullptr if
+    // the pair has none (not a drum/SFX channel and not a forced-drum pair).
+    // Centralises the "drum/SFX use the static grid, forced pairs use a pool
+    // slot" choice so every reader/writer agrees. Points at [0..127].
+    struct DrumSlotHit;
+    DrumSlotHit*       DrumHistFor(uint8_t fontId, int16_t instOrWave);
+    const DrumSlotHit* DrumHistFor(uint8_t fontId, int16_t instOrWave) const;
+    // Claim a free forced-drum histogram pool slot, zeroing it; -1 if the pool
+    // is full (>= kMaxForcedDrumPairs flagged at once).
+    int     AllocForcedDrumPool();
     uint8_t AllocateChannelForPair(uint8_t fontId, int16_t instOrWave);
     // Frees the channel of the first idle pair found (no active synth notes,
     // and not the requesting pair) and returns it, or 0xFF if every channel
@@ -509,6 +538,20 @@ class MidiTranslator {
     // per-slot enabled decides. Plain bool grid: audio thread reads it per
     // drum note, UI writes it; a torn bool read is benign. Index [font][0|1].
     bool mDrumChannelSynth[kMaxFontId][kDrumHistInst] = {};
+
+    // ── Forced-drum ("Treat as drum") pairs ──────────────────────────────
+    // A flagged melodic pair routes through the drum path. The per-pair grid
+    // doubles as the flag AND the discovery-histogram pool index: -1 = not
+    // forced; 0..kMaxForcedDrumPairs-1 = forced, value is the pool slot whose
+    // 128-entry histogram records the pair's incoming notes. Plain int8 grid,
+    // same lock-free idiom as mDrumChannelSynth: the audio thread reads it per
+    // note, the UI writes it, and a torn int8 read is benign. Only instOrWave
+    // >= kDrumHistInst is ever flagged (0/1 use mDrumChannelSynth). Initialised
+    // to -1 in the constructor (int8 arrays aren't zero-initialised).
+    static constexpr int kMaxForcedDrumPairs = 32;
+    int8_t mForcedDrumPool[kMaxFontId][kMaxInstOrWave];
+    bool   mForcedDrumPoolUsed[kMaxForcedDrumPairs] = {};
+    DrumSlotHit mForcedDrumHits[kMaxForcedDrumPairs][kDrumHistSlots];
 
     // ── Ship 11: entry-based config storage ──────────────────────────────
     std::vector<ConfigEntry> mEntries;

@@ -133,7 +133,7 @@ Columns:
 | Override | Session-only **Solo** (S) / **Mute** (M) buttons. Warm/red palette = *not saved*.            |
 | Song     | Engine font name (e.g. "Fairy Fountain"). Read-only.                                          |
 | Sample   | Editable label - type a name like "Hyrule Field strings". Hint shows the auto-detected SF2 sample name; hover for the engine's Low/Mid/High samples. |
-| Inst     | Engine slot id; `0 (Drum)` / `1 (SFX)` are special. Holds the **Split** / **L/M/H** / **Slots** buttons; hover for NoteOn stats. |
+| Inst     | Engine slot id; `0 (Drum)` / `1 (SFX)` are special. Holds the **Split** / **L/M/H** / **As Drum** (and, for drum rows, **Slots**) buttons; hover for NoteOn stats. |
 | Mode     | **Native** (engine synth) vs **Synth** (FluidSynth).                                          |
 | Gain     | Per-instrument synth volume (0..4x).                                                          |
 | Shift    | Pitch shift. Header has a **Semitone** checkbox to switch the column between octaves (+/-8) and semitones (+/-24). |
@@ -164,10 +164,15 @@ another. Split a melodic row to assign a different preset per range:
   ranges, duplicating the current preset so each range can be reassigned.
 
 A split row becomes a collapsible header (`N ranges`). Expand it to edit
-each range's `[low..high]` (engine-semitone, kept adjacent and
-non-overlapping), Native/Synth, Gain, Preset, and Adv effects, plus
-per-range **Split** / **Merge**. **Flatten** collapses everything back to
-one full-range entry.
+each range independently: Native/Synth, Gain, **Shift** (per-range octave/
+semitone), Preset, and Adv effects, plus per-range **Split** / **Merge**.
+**Flatten** collapses everything back to one full-range entry.
+
+Ranges are always contiguous and non-overlapping, so the boundary between
+two ranges is the only editable value. The first range's low is pinned to
+0 and the last range's high to 127 (both grayed); dragging any boundary
+moves the neighbouring range's edge with it. **Merge** absorbs the next
+(higher) range into this one.
 
 ### Drums
 
@@ -186,6 +191,19 @@ a pitch, so they get their own collapsible tree-row:
   Gain, and Adv effects. Slot rows are editable only while the
   instrument master is Synth; Native greys them out but still lets you
   Solo/Mute to isolate a native drum.
+
+### Treat a melodic instrument as a drum
+
+Some songs play a percussion hit through a *melodic* instrument slot
+rather than the drum bank. The **As Drum** button (Inst column, next to
+Split / L/M/H) routes any melodic instrument through the drum path: each
+distinct note it plays becomes a slot you map to a GM percussion sound.
+
+Click **As Drum**, play the part so the notes are heard, then expand the
+row and use **Slots (N)** to discover them - the row now behaves exactly
+like a drum tree-row (Kit dropdown, per-slot Drum Sound, Solo/Mute). The
+**Melodic** button in the Mode column reverts it to normal melodic
+routing. Notes you haven't mapped keep playing the original instrument.
 
 ### Source state (pin behavior)
 
@@ -322,6 +340,9 @@ pack-enable and are never written back to the user file.
   ],
   "drum_channels_synth": [
     { "fontId": 9, "instOrWave": 0 }
+  ],
+  "forced_drums": [
+    { "fontId": 9, "instOrWave": 3 }
   ]
 }
 ```
@@ -351,6 +372,10 @@ pack-enable and are never written back to the user file.
 `drum_channels_synth` is a separate top-level array listing the
 `(fontId, instOrWave)` drum channels whose per-instrument master is set
 to Synth (absent = Native).
+
+`forced_drums` is a separate top-level array listing the melodic pairs
+(`instOrWave >= 2`) flagged **As Drum** - each plays through the drum path
+with its notes mapped to GM percussion via per-slot `fixed_note` entries.
 
 Omit any field you don't want to set - partial entries layer cleanly over
 the chain below them. Multiple entries can share one `(fontId,
