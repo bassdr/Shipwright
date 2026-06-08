@@ -1,7 +1,8 @@
 # Custom SoundFonts using FluidSynth
 
 SoH can play its music through [FluidSynth](https://www.fluidsynth.org/)
-using one or more SoundFont (`.sf2`) files supplied as **synth packs**.
+using one or more SoundFont (`.sf2` or `.sf3`) files supplied as **synth
+packs**.
 Each engine instrument can be routed to a specific SF2 preset, tuned per
 pair (gain, pitch shift, reverb / chorus / filter), split across note
 ranges, mapped per drum slot, and labeled with a friendly name. This doc
@@ -34,11 +35,20 @@ option after the first generation).
 With it compiled in, the **Audio Editor** gains a dedicated **FluidSynth**
 tab. That's where everything below lives.
 
-### Adding SF2 files
+### Adding SoundFont files (SF2 / SF3)
 
-Two ways:
+Both `.sf2` and `.sf3` are accepted. SF3 is the same format with its
+samples Ogg/Vorbis-compressed - typically a fraction of the size (a large
+GM SoundFont can drop from ~200 MB to ~40 MB) for essentially the same
+sound. FluidSynth decompresses SF3 transparently, **provided the
+FluidSynth it was linked against was built with libsndfile + Vorbis**
+(most distro packages are; a minimal build may not). An `.sf3` that can't
+be decoded is skipped with a reason shown in the FluidSynth tab rather
+than failing silently.
 
-**Loose folder.** Drop a `*.sf2` into:
+Two ways to supply a pack:
+
+**Loose folder.** Drop a `*.sf2` or `*.sf3` into:
 
 ```paths
 <SoH-config>/synth-packs/
@@ -51,8 +61,8 @@ to your `mods` folder.
 **Mod archive.** Files inside any mounted `.o2r` archive at:
 
 ```paths
-audio/synth/<pack-name>/soundfont.sf2
-audio/synth/<pack-name>/mapping.json   (optional)
+audio/synth/<pack-name>/soundfont.sf2   (or soundfont.sf3)
+audio/synth/<pack-name>/mapping.json    (optional)
 ```
 
 Both sources show up in the FluidSynth tab's pack list, tagged `[loose]`

@@ -41,15 +41,24 @@ namespace {
 // Synth packs come from two sources, stacked at apply time in this order:
 //   1. Mod-supplied   — resources under audio/synth/<pack>/ inside any
 //                       mounted .o2r archive (the existing path).
-//   2. Loose          — bare .sf2 files dropped into <config-dir>/synth-packs/,
+//   2. Loose          — bare .sf2/.sf3 files dropped into <config-dir>/synth-packs/,
 //                       with an optional sibling <basename>.json for the
 //                       mapping overlay.
 // Both sources allow an unlimited number of packs; FluidSynth's preset
 // lookup walks loaded SF2s in reverse load order, so the last enabled pack
 // wins on (bank, program) collisions — same "last-loaded wins" semantics as
 // the wider mod stack.
+//
+// SF3 = SF2 with Ogg/Vorbis-compressed samples. FluidSynth's default loader
+// reads it transparently via the same fluid_synth_sfload path (libsndfile +
+// Vorbis decode the samples at load time), so accepting SF3 is purely a
+// discovery/extension change — the load path stays byte-stream agnostic.
 constexpr const char* kSynthPackRoot          = "audio/synth";
 constexpr const char* kSynthPackSf2Name       = "soundfont.sf2";
+// Archive glob matching either soundfont.sf2 or soundfont.sf3. Both names are
+// the same length, so the suffix-stripping below can keep using
+// kSynthPackSf2Name for the length math.
+constexpr const char* kSynthPackSfGlob        = "soundfont.sf[23]";
 constexpr const char* kSynthPackJsonName      = "mapping.json";
 constexpr const char* kLooseSynthPacksDirName = "synth-packs";
 
@@ -137,7 +146,7 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
 
     // ── Archive-supplied packs ───────────────────────────────────────
     auto archives = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
-    if (auto matches = archives->ListFiles(std::string(kSynthPackRoot) + "/*/" + kSynthPackSf2Name)) {
+    if (auto matches = archives->ListFiles(std::string(kSynthPackRoot) + "/*/" + kSynthPackSfGlob)) {
         const size_t prefixLen = std::strlen(kSynthPackRoot) + 1;
         const size_t suffixLen = std::strlen(kSynthPackSf2Name) + 1;
         std::vector<SynthPackEntry> arc;
@@ -178,11 +187,11 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
             if (ec) break;
             if (!entry.is_regular_file(ec)) continue;
             auto ext = entry.path().extension().string();
-            // Case-insensitive .sf2 match — Windows users often have .SF2 etc.
+            // Case-insensitive .sf2/.sf3 match — Windows users often have .SF2 etc.
             std::string extLower = ext;
             std::transform(extLower.begin(), extLower.end(), extLower.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (extLower != ".sf2") continue;
+            if (extLower != ".sf2" && extLower != ".sf3") continue;
 
             SynthPackEntry e;
             e.name    = entry.path().stem().string();
@@ -377,14 +386,28 @@ void ResetToPackBaseline() {
 // reconcile paths, read by the tab UI. Plain-string status keeps the
 // state model trivial; isError just toggles the colour.
 struct PipelineStatus {
-    std::string message;
-    bool        isError = false;
+    std::string              message;
+    bool                     isError = false;
+    // Per-pack skip reasons ("<name>: <reason>"). A pack that fails to load
+    // for any reason is skipped (the others still load); each skip is recorded
+    // here and rendered amber under the main status line so a partial failure
+    // is visible on screen, not just in spdlog.
+    std::vector<std::string> warnings;
 };
 static PipelineStatus sLastStatus;
 
+// Setting a fresh status clears any prior skip list — stale warnings from a
+// previous apply must not linger once the pipeline is reconciled again.
 void SetStatus(std::string msg, bool isError = false) {
     sLastStatus.message = std::move(msg);
     sLastStatus.isError = isError;
+    sLastStatus.warnings.clear();
+}
+
+// Attach the skipped-pack list to the current status. Call AFTER SetStatus
+// (which clears it). Empty list = no warnings shown.
+void SetStatusWarnings(std::vector<std::string> warnings) {
+    sLastStatus.warnings = std::move(warnings);
 }
 
 // Effective per-mode global synth gain handed to the translator. The on-screen
@@ -504,34 +527,39 @@ bool ApplyFluidSynthFromCVars() {
     // wins on (bank, program) collisions — matches the mod stack precedence.
     size_t      totalBytes  = 0;
     size_t      loadedPacks = 0;
-    std::string firstFailure;
+    // One "<name>: <reason>" entry per pack we couldn't load. Loading is
+    // best-effort: any pack that fails is skipped and the rest still load.
+    std::vector<std::string> skipped;
     std::unordered_map<int, std::string> idToPackName;
     for (const auto& pack : packs) {
         auto bytes = ReadPackFile(pack, /*wantSf2=*/true);
         if (bytes.empty()) {
-            SPDLOG_ERROR("[AudioEditor] FluidSynth: pack '{}' has no readable soundfont.sf2",
-                         pack.name);
-            if (firstFailure.empty()) firstFailure = pack.name;
+            const char* reason = "soundfont file missing or unreadable";
+            SPDLOG_ERROR("[AudioEditor] FluidSynth: skipping pack '{}' -- {}", pack.name, reason);
+            skipped.push_back(pack.name + ": " + reason);
             continue;
         }
         int id = synth->AddSoundFontFromMemory(bytes.data(), bytes.size());
         if (id < 0) {
-            SPDLOG_ERROR("[AudioEditor] FluidSynth: pack '{}' SF2 rejected by FluidSynth", pack.name);
-            if (firstFailure.empty()) firstFailure = pack.name;
+            // -1 is FluidSynth's generic loader failure: corrupt/unsupported
+            // soundfont, or an .sf3 when the linked FluidSynth lacks libsndfile
+            // + Vorbis. We can't tell which apart, so name both possibilities.
+            const char* reason = "rejected by FluidSynth (corrupt soundfont, or "
+                                 ".sf3 without libsndfile/Vorbis support)";
+            SPDLOG_ERROR("[AudioEditor] FluidSynth: skipping pack '{}' -- {}", pack.name, reason);
+            skipped.push_back(pack.name + ": " + reason);
             continue;
         }
         idToPackName[id] = pack.name;
         totalBytes += bytes.size();
         loadedPacks++;
-        SPDLOG_INFO("[AudioEditor] FluidSynth: loaded SF2 from pack '{}' ({} bytes, id={})",
+        SPDLOG_INFO("[AudioEditor] FluidSynth: loaded soundfont from pack '{}' ({} bytes, id={})",
                     pack.name, bytes.size(), id);
     }
 
     if (loadedPacks == 0) {
-        SetStatus(firstFailure.empty()
-                      ? std::string("No enabled synth pack provided a readable SF2.")
-                      : std::string("Pack '" + firstFailure + "' has no readable soundfont.sf2."),
-                  true);
+        SetStatus("No synth pack could be loaded.", true);
+        SetStatusWarnings(skipped);
         return false;
     }
 
@@ -578,6 +606,9 @@ bool ApplyFluidSynthFromCVars() {
     SetStatus(std::to_string(loadedPacks) + " pack" + (loadedPacks == 1 ? "" : "s") +
               " loaded (" + std::to_string(totalBytes / (1024 * 1024)) + " MiB total, " +
               std::to_string(sLoadedPresets.size()) + " presets).");
+    // Some packs loaded, but not all -- surface the skipped ones too so a
+    // partial failure isn't silent on screen.
+    SetStatusWarnings(skipped);
 
     if (mode == SOH::SynthMode::Authentic) {
         synth->SetReverbParams(0.65, 0.0, 1.0, 1.0);
@@ -1340,12 +1371,22 @@ void AudioEditor::DrawElement() {
                         ImGui::TextColored(sLastStatus.isError ? red : green, "%s",
                                            sLastStatus.message.c_str());
                     }
+                    // Per-pack skip reasons from the last apply -- amber, one
+                    // line each, wrapped so long reasons stay readable.
+                    if (!sLastStatus.warnings.empty()) {
+                        const ImVec4 amber(0.95f, 0.75f, 0.30f, 1.0f);
+                        ImGui::PushStyleColor(ImGuiCol_Text, amber);
+                        for (const auto& w : sLastStatus.warnings) {
+                            ImGui::TextWrapped("Skipped %s", w.c_str());
+                        }
+                        ImGui::PopStyleColor();
+                    }
                     ImGui::Separator();
 
                     // ── Synth packs ──────────────────────────────────────
                     // Discovered packs come from two sources (see
                     // EnumerateSynthPacks): mod-supplied via mounted .o2r
-                    // archives, then loose .sf2 files under
+                    // archives, then loose .sf2/.sf3 files under
                     // <config-dir>/synth-packs/. The list is cached across
                     // frames; the Rescan button re-enumerates without a
                     // restart so a freshly-dropped file becomes visible.
@@ -1375,16 +1416,16 @@ void AudioEditor::DrawElement() {
                     if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip(
                             "Re-enumerate audio/synth/* across mounted .o2r archives\n"
-                            "and <config-dir>/synth-packs/*.sf2. Use after dropping a\n"
-                            "new SF2 or mod without restarting.");
+                            "and <config-dir>/synth-packs/*.sf2 / *.sf3. Use after\n"
+                            "dropping a new SF2/SF3 or mod without restarting.");
                     }
 
                     if (packs.empty()) {
                         ImGui::TextDisabled(
                             "No synth packs discovered.\n"
-                            "Drop an SF2 into <config-dir>/synth-packs/ (optionally\n"
+                            "Drop an SF2/SF3 into <config-dir>/synth-packs/ (optionally\n"
                             "with a sibling .json mapping) or install a mod that\n"
-                            "ships audio/synth/<pack>/soundfont.sf2.");
+                            "ships audio/synth/<pack>/soundfont.sf2 (or .sf3).");
                     } else {
                         // Bordered child so the list reads as a unit when
                         // many packs are discovered. Height clamps to a
@@ -1414,7 +1455,7 @@ void AudioEditor::DrawElement() {
                                 ImGui::TextUnformatted(e.name.c_str());
                                 if (ImGui::IsItemHovered()) {
                                     if (e.mappingPath.empty()) {
-                                        ImGui::SetTooltip("%s\n(SF2 only - no mapping.json)", e.sf2Path.c_str());
+                                        ImGui::SetTooltip("%s\n(soundfont only - no mapping.json)", e.sf2Path.c_str());
                                     } else {
                                         ImGui::SetTooltip("%s\nmapping: %s",
                                                           e.sf2Path.c_str(), e.mappingPath.c_str());
