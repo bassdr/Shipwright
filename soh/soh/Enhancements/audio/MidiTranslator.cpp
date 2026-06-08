@@ -1215,8 +1215,18 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
 // Shared predicate for "ship this entry inside a pack mapping?". Same gate
 // used by ExportPackMapping and CountExportableEntries so the previewed
 // count always matches what gets written.
+//
+// We export every entry currently ENABLED and resolvable for the pack — the
+// pack's effective mapping right now — regardless of whether it came from a
+// fresh user pick (UserPicked, selected) or the pack's own loaded mapping.json
+// (ModSupplied, selected=false). Requiring `selected` here was wrong: after a
+// user deletes their fluidsynth_overrides.json and relies purely on a loaded
+// mapping.json, nothing is `selected`, yet the pack is fully configured and
+// must still be re-exportable (e.g. loose mapping -> .o2r round-trip).
+// PickPreset keeps at most one entry enabled per (pair, split), so dropping
+// the `selected` gate never double-emits a pair.
 static bool ExportEntryMatches(const ConfigEntry& e, const std::string& packNameFilter) {
-    if (!e.enabled || !e.selected) return false;
+    if (!e.enabled) return false;
     if (e.program < 0) return false;          // None placeholder — not shippable
     if (e.packName.empty()) return false;
     if (!packNameFilter.empty() && e.packName != packNameFilter) return false;

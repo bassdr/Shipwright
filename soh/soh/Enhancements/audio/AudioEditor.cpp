@@ -210,31 +210,24 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
         for (auto& e : loose) result.push_back(std::move(e));
     }
 
-    // Cross-source dedupe by name: the pack name is the whole identity (it
-    // keys the disabled-set CSV and the override owner), so two packs with the
-    // same name are "the same pack" and a single row must represent them.
-    // Keep the first occurrence — archives precede loose here, so a shipped
-    // <pack>.o2r shadows the loose <pack>.sf3 it was exported from. Without
-    // this, both rows share a name and toggling one toggles both.
-    {
-        std::set<std::string> seen;
-        std::vector<SynthPackEntry> deduped;
-        deduped.reserve(result.size());
-        for (auto& e : result) {
-            if (seen.insert(e.name).second)
-                deduped.push_back(std::move(e));
-        }
-        result = std::move(deduped);
-    }
-
     return result;
+}
+
+// A pack's key in the disabled-set CSV. Archive packs key on the bare name
+// (back-compat + the common case). Loose packs get a "loose:" prefix so a
+// loose <name>.sf3 and a shipped <name>.o2r — which share a display name —
+// can be enabled/disabled independently. Without this the CSV keys on name
+// alone and toggling either row toggles both. (The display name still shows
+// plain, disambiguated by the [mod]/[loose] badge in the list.)
+std::string PackKey(const SynthPackEntry& e) {
+    return e.source == SynthPackEntry::Source::Loose ? ("loose:" + e.name) : e.name;
 }
 
 // ── Disabled-pack CVar (CSV, default empty = all discovered packs enabled) ──
 //
-// Stored as a plain comma-separated string of pack names — the names are
-// user-controlled but practically alphanumeric, so a CSV is good enough and
-// keeps the CVar layer simple (no JSON escaping). Empty entries are
+// Stored as a plain comma-separated string of pack keys (see PackKey) — the
+// names are user-controlled but practically alphanumeric, so a CSV is good
+// enough and keeps the CVar layer simple (no JSON escaping). Empty entries are
 // tolerated on parse so the file survives manual edits.
 
 std::set<std::string> ParseDisabledPacksCSV() {
@@ -315,7 +308,7 @@ std::vector<SynthPackEntry> EnabledPacksInOrder() {
     std::vector<SynthPackEntry> out;
     out.reserve(all.size());
     for (auto& e : all) {
-        if (!disabled.count(e.name)) out.push_back(std::move(e));
+        if (!disabled.count(PackKey(e))) out.push_back(std::move(e));
     }
     return out;
 }
@@ -846,7 +839,6 @@ extern std::shared_ptr<SohMenu> mSohMenu;
 #define SEQ_COUNT_INSTRUMENT 6
 #define SEQ_COUNT_SFX 57
 #define SEQ_COUNT_VOICE 108
-#define SEQ_COUNT_ENDING 5
 
 size_t AuthenticCountBySequenceType(SeqType type) {
     switch (type) {
@@ -868,8 +860,6 @@ size_t AuthenticCountBySequenceType(SeqType type) {
             return SEQ_COUNT_INSTRUMENT;
         case SEQ_VOICE:
             return SEQ_COUNT_VOICE;
-        case SEQ_ENDING:
-            return SEQ_COUNT_ENDING;
         default:
             return 0;
     }
@@ -1506,7 +1496,7 @@ void AudioEditor::DrawElement() {
                     auto disabledSet = ParseDisabledPacksCSV();
                     int enabledCount = 0;
                     for (const auto& e : packs) {
-                        if (!disabledSet.count(e.name)) enabledCount++;
+                        if (!disabledSet.count(PackKey(e))) enabledCount++;
                     }
 
                     ImGui::Text("Synth packs (%d enabled / %d discovered)",
@@ -1540,10 +1530,10 @@ void AudioEditor::DrawElement() {
                                               ImGuiChildFlags_Border)) {
                             for (size_t i = 0; i < packs.size(); i++) {
                                 const auto& e = packs[i];
-                                bool enabled = !disabledSet.count(e.name);
+                                bool enabled = !disabledSet.count(PackKey(e));
                                 ImGui::PushID((int)i);
                                 if (ImGui::Checkbox("##packCheck", &enabled)) {
-                                    SetPackDisabled(e.name, !enabled);
+                                    SetPackDisabled(PackKey(e), !enabled);
                                     Ship::Context::GetRawInstance()->GetWindow()->GetGui()
                                         ->SaveConsoleVariablesNextFrame();
                                     ReapplyOverrideChain();
@@ -1726,13 +1716,14 @@ void AudioEditor::DrawElement() {
                         ImGui::SameLine();
                         if (ImGui::SmallButton("Export pack...##bypassExport")) {
                             // Prefill the pack-name input with the most common pack
-                            // among the user's currently selected entries — usually
-                            // exactly what they want to publish.
+                            // among the currently active entries — matches the export
+                            // gate (enabled + program), so a pack configured purely
+                            // from its loaded mapping.json still prefills.
                             std::map<std::string, int> tally;
                             int nEntries = SOH::MidiTranslator::Instance().GetEntryCount();
                             for (int i = 0; i < nEntries; ++i) {
                                 const auto& e = SOH::MidiTranslator::Instance().GetEntry(i);
-                                if (!e.enabled || !e.selected || e.program < 0 || e.packName.empty())
+                                if (!e.enabled || e.program < 0 || e.packName.empty())
                                     continue;
                                 tally[e.packName]++;
                             }
@@ -3351,8 +3342,7 @@ void AudioEditor::DrawElement() {
 }
 
 std::vector<SeqType> allTypes = {
-    SEQ_BGM_WORLD,  SEQ_BGM_EVENT, SEQ_BGM_BATTLE, SEQ_OCARINA, SEQ_FANFARE,
-    SEQ_INSTRUMENT, SEQ_SFX,       SEQ_VOICE,      SEQ_ENDING,
+    SEQ_BGM_WORLD, SEQ_BGM_EVENT, SEQ_BGM_BATTLE, SEQ_OCARINA, SEQ_FANFARE, SEQ_INSTRUMENT, SEQ_SFX, SEQ_VOICE,
 };
 
 void AudioEditor_RandomizeAll() {

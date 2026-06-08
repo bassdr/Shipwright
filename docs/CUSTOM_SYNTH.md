@@ -262,11 +262,12 @@ slug like `OoT-HD-Orchestra` or `FluidR3-Default`.
 ### Export pack
 
 The **Export pack...** button (above the table) opens a dialog prefilled
-with the pack name most common among your selected entries. It exports
-only the entries currently **enabled AND selected** for that pack, strips
-the runtime-only flags (`enabled` / `selected`), and writes the pack name
-**once** as a `pack_name` header (entries no longer repeat it). The dialog
-previews the entry count before you commit. Two outputs:
+with the pack's name. It exports the pack's **effective mapping** - every
+entry currently **enabled** (routing through synth) for that pack, whether
+you hand-picked it or it came from the pack's own loaded `mapping.json`. It
+strips the runtime-only flags (`enabled` / `selected`) and writes the pack
+name **once** as a `pack_name` header (entries no longer repeat it). The
+dialog previews the entry count before you commit. Two outputs:
 
 - **Export .o2r** (recommended) - zips your soundfont and the mapping into
   a single shareable mod at:
@@ -419,11 +420,12 @@ inner folders:
 They still appear as two separate rows (SoundBankA, SoundBankB), not one
 merged pack.
 
-> **Same name = same pack.** A pack's name (the loose file stem or the
-> `audio/synth/<name>/` folder) is its whole identity. If a loose
-> `<name>.sf3` and a shipped `<name>.o2r` both exist, only one row shows
-> (the `.o2r` wins) - so after you build the `.o2r`, you don't need to keep
-> the loose copy of the same name around.
+> **Loose + mod with the same name.** A loose `<name>.sf3` and a shipped
+> `<name>.o2r` both show in the list (tagged `[loose]` and `[mod]`) and
+> enable/disable independently. They do share the same internal pack name,
+> so if you leave *both* enabled their mappings overlay and routing is
+> ambiguous - keep only one of the two enabled. The usual flow is to author
+> against the loose copy, then disable it once the `.o2r` is built.
 
 ### Caveats
 
