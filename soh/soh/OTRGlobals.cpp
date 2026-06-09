@@ -1031,9 +1031,13 @@ std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 // buffer; AudioEditor flips it on FluidSynth enable/disable (and matches
 // the player's float-pipeline mode). Plain atomic is enough — mode flips
 // are rare and a one-buffer staleness is harmless.
-static std::atomic<bool> sFloatAudioPipeline{false};
-bool OTRAudio_GetFloatPipeline() { return sFloatAudioPipeline.load(std::memory_order_acquire); }
-void OTRAudio_SetFloatPipeline(bool enabled) { sFloatAudioPipeline.store(enabled, std::memory_order_release); }
+static std::atomic<bool> sFloatAudioPipeline{ false };
+bool OTRAudio_GetFloatPipeline() {
+    return sFloatAudioPipeline.load(std::memory_order_acquire);
+}
+void OTRAudio_SetFloatPipeline(bool enabled) {
+    sFloatAudioPipeline.store(enabled, std::memory_order_release);
+}
 
 void OTRAudio_Thread() {
 #define SAMPLES_HIGH 560
@@ -1063,7 +1067,7 @@ void OTRAudio_Thread() {
         const u32 total_samples = total_frames * NUM_AUDIO_CHANNELS;
 
         // 3 is the maximum authentic frame divisor.
-        static thread_local s16   native_s16[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
+        static thread_local s16 native_s16[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
         static thread_local float native_f32[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
 
         for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
@@ -1077,8 +1081,7 @@ void OTRAudio_Thread() {
             }
             AudioPlayer_PlayF32(native_f32, total_frames);
         } else {
-            AudioPlayer_Play(reinterpret_cast<u8*>(native_s16),
-                             total_samples * sizeof(int16_t));
+            AudioPlayer_Play(reinterpret_cast<u8*>(native_s16), total_samples * sizeof(int16_t));
         }
     };
 
