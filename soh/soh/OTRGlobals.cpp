@@ -1652,8 +1652,7 @@ extern "C" void Graph_StartFrame() {
                 case SaveStateReturn::FAIL_WRONG_GAMESTATE:
                     SPDLOG_ERROR("[SOH] Can not save a state outside of \"GamePlay\"");
                     break;
-                [[unlikely]] default:
-                    break;
+                    [[unlikely]] default : break;
             }
             break;
         }
@@ -1697,8 +1696,7 @@ extern "C" void Graph_StartFrame() {
                 case SaveStateReturn::FAIL_WRONG_GAMESTATE:
                     SPDLOG_ERROR("[SOH] Can not load a state outside of \"GamePlay\"");
                     break;
-                [[unlikely]] default:
-                    break;
+                    [[unlikely]] default : break;
             }
 
             break;
