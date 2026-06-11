@@ -130,6 +130,7 @@ zypper in gcc gcc-c++ $(cat linux-build-deps/zypper.txt)
 # or using clang
 zypper in clang libstdc++-devel $(cat linux-build-deps/zypper.txt)
 ```
+_Optional: install SDL3 (`libsdl3-dev` on Debian 13+/Ubuntu 24.10+, `sdl3` on Arch, `SDL3-devel` on Fedora 40+) to enable the SDL3 audio backend. It is compiled in only when SDL3 development files are present; without them the backend is simply left out._
 #### Nix
 This repository provides a [`linux-build-deps/flake.nix`](../linux-build-deps/flake.nix) for setting up a development environment using [Nix](https://nixos.org/).
 
@@ -229,6 +230,8 @@ cmake --build build-cmake --target ExtractAssetHeaders
 
 ## macOS
 Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+
+_Optional: also install SDL3 (`sdl3` via homebrew, `SDL3` via MacPorts) to enable the SDL3 audio backend; it is compiled in only when present._
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
