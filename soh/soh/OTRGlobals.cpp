@@ -1158,6 +1158,15 @@ void OTRAudio_Thread() {
             int samples_left = AudioPlayer_Buffered();
             u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
             produce_and_play(num_audio_samples);
+
+            // A sink that never retains what we just produced (the Null backend
+            // discards; a wedged device stays at 0) would otherwise spin here
+            // forever -- rendering audio every iteration (with FluidSynth, pegging
+            // a core) and starving the gfx thread, which blocks on audio.processing.
+            // Stop pre-buffering against such a sink.
+            if (AudioPlayer_Buffered() <= samples_left) {
+                break;
+            }
         }
     }
 }
