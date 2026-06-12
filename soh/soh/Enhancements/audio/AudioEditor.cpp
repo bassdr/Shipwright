@@ -535,14 +535,15 @@ bool ApplyFluidSynthFromCVars() {
         SetStatus("Audio player not ready.", true);
         return false;
     }
-    // Float pipeline always on when this code runs — the checkbox is the
-    // gate. The AudioPlayer reinits the backend; on failure we bail.
-    if (!audioPlayer->SetUseFloatPipeline(true)) {
+    // Float pipeline always on when this code runs — the checkbox is the gate.
+    // Audio is the single authority for the mode (it updates the live flag, the
+    // settings new players inherit, and the current player's device); on failure
+    // we bail.
+    if (!Ship::Context::GetRawInstance()->GetAudio()->SetUseFloatPipeline(true)) {
         SPDLOG_ERROR("[AudioEditor] Float audio: AudioPlayer refused float mode, aborting apply");
         SetStatus("Audio backend refused float mode.", true);
         return false;
     }
-    OTRAudio_SetFloatPipeline(true);
 
     auto packs = EnabledPacksInOrder();
 
@@ -741,13 +742,13 @@ namespace {
 // only present in builds where the synth is available.
 
 void DisableModernAudioPipeline() {
-    if (auto audioPlayer = Ship::Context::GetRawInstance()->GetAudio()->GetAudioPlayer()) {
+    auto audio = Ship::Context::GetRawInstance()->GetAudio();
 #if ENABLE_FLUIDSYNTH
+    if (auto audioPlayer = audio->GetAudioPlayer()) {
         audioPlayer->SetMixSource(nullptr);
-#endif
-        audioPlayer->SetUseFloatPipeline(false);
     }
-    OTRAudio_SetFloatPipeline(false);
+#endif
+    audio->SetUseFloatPipeline(false);
 #if ENABLE_FLUIDSYNTH
     Ship::MidiSynthManager::Instance().SetSynth(nullptr);
     SOH_MidiTranslator_Reset();
@@ -760,11 +761,9 @@ bool EnableModernAudioPipeline() {
     // Full apply path: float mode + (optional) synth pack + status line.
     return ApplyFluidSynthFromCVars();
 #else
-    auto audioPlayer = Ship::Context::GetRawInstance()->GetAudio()->GetAudioPlayer();
-    if (!audioPlayer || !audioPlayer->SetUseFloatPipeline(true)) {
+    if (!Ship::Context::GetRawInstance()->GetAudio()->SetUseFloatPipeline(true)) {
         return false;
     }
-    OTRAudio_SetFloatPipeline(true);
     return true;
 #endif
 }
@@ -3480,6 +3479,17 @@ void AudioEditor::DrawElement() {
 std::vector<SeqType> allTypes = {
     SEQ_BGM_WORLD, SEQ_BGM_EVENT, SEQ_BGM_BATTLE, SEQ_OCARINA, SEQ_FANFARE, SEQ_INSTRUMENT, SEQ_SFX, SEQ_VOICE,
 };
+
+void AudioEditor_ReapplyModernAudioPipeline() {
+    // A backend switch builds a fresh AudioPlayer that comes up in the default
+    // (s16, no mix source) state. If the modern pipeline is enabled, re-install
+    // it on the new player so float mode and the FluidSynth mix source are
+    // restored; otherwise the producer would keep sending float into an s16
+    // player. No-op when the modern pipeline is off.
+    if (CVarGetInteger(CVAR_AUDIO("ModernAudioPipeline"), 0)) {
+        EnableModernAudioPipeline();
+    }
+}
 
 void AudioEditor_RandomizeAll() {
     for (auto type : allTypes) {

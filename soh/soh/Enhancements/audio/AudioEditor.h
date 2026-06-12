@@ -24,6 +24,11 @@ void AudioEditor_ResetAll();
 void AudioEditor_ResetGroup(SeqType group);
 void AudioEditor_LockAll();
 void AudioEditor_UnlockAll();
+// Re-installs the modern (float) audio pipeline and FluidSynth mix source on the
+// current AudioPlayer when the modern pipeline is enabled. Registered with Audio
+// (see OTRAudio_Init) as the "player initialised" hook so a backend switch, which
+// builds a fresh AudioPlayer, restores it in one place.
+void AudioEditor_ReapplyModernAudioPipeline();
 
 extern "C" {
 #endif

@@ -76,12 +76,6 @@ class OTRGlobals {
     bool hasOriginal;
     ImFont* CreateFontWithSize(float size, std::string fontPath, bool isJapaneseFont = false);
 };
-
-// Set by AudioEditor when FluidSynth is enabled/disabled. OTRAudio_Thread
-// reads it each iteration and dispatches to either the s16 legacy producer
-// path or the float HD producer path. C++-only — only AudioEditor flips it.
-void OTRAudio_SetFloatPipeline(bool enabled);
-bool OTRAudio_GetFloatPipeline();
 #endif
 
 #ifndef __cplusplus

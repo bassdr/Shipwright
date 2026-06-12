@@ -1027,17 +1027,10 @@ int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
 std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 
-// Pipeline mode tracking. The audio thread reads this once per produced
-// buffer; AudioEditor flips it on FluidSynth enable/disable (and matches
-// the player's float-pipeline mode). Plain atomic is enough — mode flips
-// are rare and a one-buffer staleness is harmless.
-static std::atomic<bool> sFloatAudioPipeline{ false };
-bool OTRAudio_GetFloatPipeline() {
-    return sFloatAudioPipeline.load(std::memory_order_acquire);
-}
-void OTRAudio_SetFloatPipeline(bool enabled) {
-    sFloatAudioPipeline.store(enabled, std::memory_order_release);
-}
+// Re-installs the modern (float) pipeline + FluidSynth mix source on the current
+// AudioPlayer. Registered with Audio as the "player initialised" hook so a
+// backend switch (which builds a fresh player) restores it in one place.
+void AudioEditor_ReapplyModernAudioPipeline();
 
 void OTRAudio_Thread() {
 #define SAMPLES_HIGH 560
@@ -1045,9 +1038,9 @@ void OTRAudio_Thread() {
 #define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
 #define NUM_AUDIO_CHANNELS 2
 
-    // The audio thread runs one of two paths per produced buffer, switched
-    // by sFloatAudioPipeline (typically flipped when FluidSynth is enabled
-    // or disabled):
+    // The audio thread runs one of two paths per produced buffer, switched by
+    // Audio::IsUsingFloatPipeline() -- the single source of truth, flipped when
+    // FluidSynth is enabled or disabled:
     //
     // S16 LEGACY PATH (no synth, or synth disabled):
     //   Native engine writes s16 directly into audio_buffer; AudioPlayer
@@ -1075,7 +1068,7 @@ void OTRAudio_Thread() {
                                            num_audio_samples);
         }
 
-        if (sFloatAudioPipeline.load(std::memory_order_acquire)) {
+        if (Ship::Context::GetRawInstance()->GetAudio()->IsUsingFloatPipeline()) {
             for (u32 s = 0; s < total_samples; s++) {
                 native_f32[s] = static_cast<float>(native_s16[s]) * (1.0f / 32767.0f);
             }
@@ -1172,6 +1165,12 @@ void OTRAudio_Thread() {
 void OTRAudio_Init() {
     // Precache all our samples, sequences, etc...
     ResourceMgr_LoadDirectory("audio");
+
+    // Whenever Audio (re)builds the AudioPlayer -- e.g. on a backend switch -- the
+    // fresh player comes up without the FluidSynth mix source. Re-install it here,
+    // in one place, instead of every call site that can trigger a rebuild.
+    Ship::Context::GetRawInstance()->GetAudio()->SetOnAudioPlayerInitialized(
+        []() { AudioEditor_ReapplyModernAudioPipeline(); });
 
     if (!audio.running) {
         audio.running = true;
