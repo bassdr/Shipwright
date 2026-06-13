@@ -510,13 +510,40 @@ void SetStatusWarnings(std::vector<std::string> warnings) {
 // calibration to native loudness is hidden here so the UI never shows the raw
 // values. Authentic is the louder mode (reverb), so it needs the deeper trim.
 static float ComputeSynthGlobalGain(SOH::SynthMode mode) {
-    constexpr float kGainCalAuthentic = 0.22f;
-    constexpr float kGainCalEnhanced = 0.70f;
+    // These were ear-calibrated against native at Master 40% while synth.gain was
+    // pinned to unity. synth.gain now tracks Master (= 0.40 at the default 40),
+    // dropping every synth voice by 0.40x, so each constant is scaled to restore
+    // 2.5x of voice amplitude and land back on the original calibration -- now
+    // master-INVARIANT (native and synth both ride Master, so the balance holds
+    // at every level). The exponent differs by mode because loudness rides a
+    // different FluidSynth curve in each:
+    //   Authentic: loudness via CC11 through the Graham-Smith HALVED modulator
+    //     (480 cB => amplitude is linear in the control), so amplitude ~ C.
+    //     0.22 * 2.5 = 0.55. Never clamps (shaped <= 0.55).
+    //   Enhanced: loudness via NoteOn velocity through the STOCK concave
+    //     modulator (960 cB => amplitude ~ (vel/127)^2), so amplitude ~ C^2.
+    //     0.70 * sqrt(2.5) = 1.107. Only the loudest notes (input vel > 0.82)
+    //     clip the shaped-velocity clamp -- a minor top-end softening.
+    // See MidiTranslator.cpp ProcessNote (sqrt(vel)*C shaping) and
+    // FluidSynth::InstallLinearVelocityModulators (the 480 vs 960 cB curves).
+    constexpr float kGainCalAuthentic = 0.55f;
+    constexpr float kGainCalEnhanced = 1.107f;
     const bool enhanced = (mode == SOH::SynthMode::Enhanced);
     const float rel = CVarGetFloat(enhanced ? CVAR_AUDIO("FluidSynthGainEnhanced")
                                             : CVAR_AUDIO("FluidSynthGainAuthentic"),
                                    1.0f);
     return rel * (enhanced ? kGainCalEnhanced : kGainCalAuthentic);
+}
+
+// FluidSynth's master output gain tracks SoH's Master Volume slider so the synth
+// scales with it exactly as the native engine does — Master is applied per
+// native note in audio_playback.c, but FluidSynth renders its own PCM downstream
+// of that and never saw it before. Master is mode-NEUTRAL (a flat linear fader,
+// equal dB on both modes), which is precisely what synth.gain is, so it lives
+// here and NOT in the per-mode velocity-curve trim (ComputeSynthGlobalGain).
+// Default 40 mirrors the slider's coded default (audio_playback.c).
+static float SynthMasterGainFromCVar() {
+    return CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
 }
 
 // Apply the current Modern audio pipeline + Synth pack configuration.
@@ -611,11 +638,14 @@ bool ApplyFluidSynthFromCVars() {
     // raise it again if that happens.
     synthConfig.polyphony = 512;
 
-    // Leave FluidSynth's master output gain at unity. Loudness matching to the
-    // native engine is NOT done here: it is a per-mode trim on the velocity/CC11
-    // the translator sends on each NoteOn.
-    // See the per-mode FluidSynthGain* CVars in MidiTranslator.
-    synthConfig.gain = 1.0;
+    // FluidSynth's master output gain tracks the Master Volume slider, so the
+    // synth scales with it exactly as the native engine does (Master is applied
+    // per native note in audio_playback.c; the synth renders downstream of that
+    // and otherwise never saw it). Loudness matching to native is NOT done here:
+    // that is a per-mode trim on the velocity/CC11 the translator sends on each
+    // NoteOn (ComputeSynthGlobalGain -> SetGlobalGain). The live slider keeps
+    // this in sync without a rebuild via AudioEditor_ApplySynthMasterVolume.
+    synthConfig.gain = SynthMasterGainFromCVar();
     auto synth = std::make_shared<Ship::FluidSynth>(synthConfig);
 
     // Stack every enabled pack's SF2 in discovery order. FluidSynth walks
@@ -3074,8 +3104,7 @@ void AudioEditor::DrawElement() {
                                 // sees WHY the row went native.
                                 // fallbackSaved: the most-recently-enabled selected entry for a
                                 // currently-native row -- consumed by the Preset preview +
-                                // tooltip below. (The old Source column's "[Pack] B#" text was
-                                // folded into that Preset tooltip.)
+                                // tooltip below.
                                 const SOH::ConfigEntry* fallbackSaved = nullptr;
                                 if (!activeEntry) {
                                     std::vector<int> idxs;
@@ -3489,6 +3518,20 @@ void AudioEditor_ReapplyModernAudioPipeline() {
     if (CVarGetInteger(CVAR_AUDIO("ModernAudioPipeline"), 0)) {
         EnableModernAudioPipeline();
     }
+}
+
+// Push the current Master Volume straight onto the live synth's master gain so
+// dragging the slider scales synth output in lockstep with native -- no synth
+// rebuild. No-op when no synth is installed (native path): GetActiveSynth()
+// returns nullptr. Construction-time gain is set from the same CVar in
+// ApplyFluidSynthFromCVars, so startup / pipeline-enable / backend-switch are
+// already covered; this handles the slider moving while a synth is running.
+void AudioEditor_ApplySynthMasterVolume() {
+#if ENABLE_FLUIDSYNTH
+    if (auto synth = Ship::MidiSynthManager::Instance().GetActiveSynth()) {
+        synth->SetMasterGain(SynthMasterGainFromCVar());
+    }
+#endif
 }
 
 void AudioEditor_RandomizeAll() {

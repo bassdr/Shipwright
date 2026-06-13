@@ -29,6 +29,11 @@ void AudioEditor_UnlockAll();
 // (see OTRAudio_Init) as the "player initialised" hook so a backend switch, which
 // builds a fresh AudioPlayer, restores it in one place.
 void AudioEditor_ReapplyModernAudioPipeline();
+// Pushes the current Master Volume CVar onto the running FluidSynth's master
+// gain so the synth tracks the slider in lockstep with the native engine. Cheap
+// (no synth rebuild) and a no-op when no synth is installed; call from the
+// Master Volume slider's handler.
+void AudioEditor_ApplySynthMasterVolume();
 
 extern "C" {
 #endif
