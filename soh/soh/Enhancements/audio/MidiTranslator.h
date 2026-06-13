@@ -50,7 +50,7 @@ struct NoteTranslatorState {
 
 // Overall translator behaviour, set from AudioEditor and read by ProcessNote.
 enum class SynthMode : uint8_t {
-    Authentic = 0, // Graham-Smith modulators + console-era reverb
+    Authentic = 0, // richer modulators + console-era reverb
     Enhanced  = 1, // stock SF2 modulators + low default reverb
 };
 
@@ -109,16 +109,12 @@ struct ConfigEntry {
     bool        selected      = false;
     uint32_t    lastEnabledSeq = 0;  // process-lifetime; not persisted
     EntrySource source        = EntrySource::UserPicked;
-    // ── Note-range split (engine-semitone space; see plan 4.5) ───────────
-    // noteLow/noteHigh bound which engine `semitone` values this entry
-    // claims (inclusive). Default 0..127 = whole range = an unsplit entry,
-    // byte-equivalent to the pre-split schema. fixedNote pins the OUTPUT
-    // note: -1 = derive it from `semitone` (the normal melodic path); >= 0 =
-    // play this exact MIDI note regardless of the slot. The slot index
-    // selects WHICH entry wins; fixedNote selects WHAT it plays. It serves
-    // both a bank-128 GM percussion note and a tuned-percussion pitch — the
-    // preset's bank only decides how the UI labels it, not playback. route
-    // dispatches the winner (synth / engine sample / silent).
+    // ── Note-range split (engine-semitone space) ─────────────────────────
+    // noteLow/noteHigh bound which engine `semitone` values this entry claims
+    // (inclusive); default 0..127 is an unsplit entry. fixedNote pins the OUTPUT
+    // note: -1 derives it from `semitone` (normal melodic path), >= 0 plays that
+    // exact MIDI note. So the slot index selects WHICH entry wins; fixedNote
+    // selects WHAT it plays. route dispatches the winner (synth / sample / silent).
     uint8_t     noteLow       = 0;
     uint8_t     noteHigh      = 127;
     int16_t     fixedNote     = -1;
@@ -146,15 +142,13 @@ class MidiTranslator {
     void Reset();
 
     // Number of MIDI channels currently held by synth-routed pairs, out of
-    // kMaxMidiChannels. Diagnostic for the channel pool: if this climbs to
-    // the cap over a long session, new pairs collapse onto channel 0 and
-    // some instruments go silent. Game-thread read of an audio-thread
-    // counter; intentionally unsynchronised (a stale value is fine for a UI
-    // gauge).
+    // kMaxMidiChannels. If this reaches the cap, new pairs share channel 0 and
+    // some instruments go silent. Game-thread read of an audio-thread counter,
+    // intentionally unsynchronised (a stale value is fine for a UI gauge).
     uint8_t GetChannelsInUse() const;
-    // Times the channel pool wrapped and recycled an idle pair's channel.
-    // Nonzero == the long-session path is active and healthy (no ch-0
-    // collapse). Companion to GetChannelsInUse() for the FluidSynth tab.
+    // Times the channel pool recycled an idle pair's channel; nonzero means
+    // reclamation is working (no collapse onto channel 0). Companion gauge to
+    // GetChannelsInUse() for the FluidSynth tab.
     uint32_t GetChannelReclaims() const;
 
     static constexpr int kMaxNotes        = 64;
@@ -178,21 +172,16 @@ class MidiTranslator {
     // or melodic range lights up independently of the rest of its pair.
     uint8_t GetEntrySynthActive(int idx) const;
     uint8_t GetEntryNativeActive(int idx) const;
-    // Aggregate the per-entry activity over all of a pair's entries, for
-    // tinting a SPLIT parent row from its children: a split instrument shows
-    // green if ANY child slot/range is synth-active, blue if any is
-    // native-active and none is synth-active, and stays uncoloured when no
-    // child is active. (The per-pair counts above also count the constant
-    // control-slot fall-through that has no entry, so they would keep a drum
-    // parent permanently blue -- this only sees attributed children.)
+    // Aggregate per-entry activity over all of a pair's entries, to tint a SPLIT
+    // parent row from its children: green if any child is synth-active, blue if any
+    // is native-active and none synth-active, else uncoloured. Unlike the per-pair
+    // counts above, this only sees children that attributed to an entry.
     void GetPairEntryActivity(uint8_t fontId, int16_t instOrWave, bool& anySynth,
                               bool& anyNative) const;
 
-    // DEBUG: per-pair running stats accumulated by ProcessNote. Used by the
-    // AudioEditor's per-row "[DBG]" popup to investigate octave-shift,
-    // bend magnitude, and missing-note questions. Counters are atomic;
-    // float min/max are written by the audio thread and read by the UI
-    // without locking — best-effort, a torn read is harmless cosmetic.
+    // DEBUG: per-pair running stats accumulated by ProcessNote, surfaced in the
+    // AudioEditor's per-row "[DBG]" popup. Read by the UI without locking;
+    // best-effort, a torn read is harmless cosmetic.
     struct DebugPairStats {
         uint32_t noteOns          = 0;
         uint32_t routedSynth      = 0;
@@ -205,13 +194,11 @@ class MidiTranslator {
     void           ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave);
 
     // Per-slot NoteOn histogram for the engine drum (instOrWave 0) and SFX
-    // (instOrWave 1) channels. The `semitone` byte on these channels is a
-    // slot index (Audio_GetDrum / Audio_GetSfx), not a pitch, so this records
-    // how often each slot fired — the discovery input for the drum auto-split
-    // (note-range splits, drum phase). Fills out[0..127] with per-slot counts
-    // and returns the number of distinct slots that fired. Returns 0 for any
-    // pair that isn't drum/SFX. Lock-free read of audio-thread atomics;
-    // best-effort snapshot.
+    // (instOrWave 1) channels, where the `semitone` byte is a slot index
+    // (Audio_GetDrum / Audio_GetSfx), not a pitch. Fills out[0..127] with per-slot
+    // counts and returns the number of distinct slots that fired; the discovery
+    // input for the drum auto-split. Returns 0 for non-drum/SFX pairs. Lock-free
+    // read of audio-thread atomics.
     int GetDrumSlotHistogram(uint8_t fontId, int16_t instOrWave, uint32_t out[128]) const;
 
     // ── Pack stack + entry sfontId refresh ───────────────────────────────
@@ -219,12 +206,10 @@ class MidiTranslator {
     // multi-enabled tiebreak rank — last entry in this list wins.
     void SetPackLoadOrder(const std::vector<std::string>& order);
 
-    // Refresh each entry's runtime sfontId from a flat list of
-    // (pack, sfontId, bank, program) tuples — same shape as AudioEditor's
-    // sLoadedPresets. Entries whose pack isn't in the list, or whose
-    // (bank, program) doesn't exist in the matched SF2, get sfontId=-1.
-    // The list is cached so PickPreset / ClickSynth can resolve sfontIds
-    // for newly-created entries without a callback from the UI.
+    // Refresh each entry's runtime sfontId from a flat list of (pack, sfontId,
+    // bank, program) tuples. Entries whose pack isn't listed, or whose (bank,
+    // program) isn't in the matched SF2, get sfontId=-1. Cached so PickPreset /
+    // ClickSynth can resolve sfontIds for new entries without a UI callback.
     struct LoadedPresetRef {
         int         sfontId;
         std::string packName;
@@ -292,15 +277,12 @@ class MidiTranslator {
     // default). IsDrumChannelSynth reads the flag (audio-thread safe).
     void SetDrumChannelSynth(uint8_t fontId, int16_t instOrWave, bool synth);
     bool IsDrumChannelSynth(uint8_t fontId, int16_t instOrWave) const;
-    // "Treat as drum" -- generalises the drum master from the intrinsic drum/SFX
-    // channels (instOrWave 0/1) to any melodic pair (instOrWave >= 2). A flagged
-    // pair runs the drum resolution path: each distinct incoming engine semitone
-    // becomes a slot the user maps to a GM percussion sound (fixedNote), exactly
-    // like the drum channels. Flagging it on is equivalent to the channel being
-    // in Synth mode; clearing it returns the pair to melodic routing. A small
-    // fixed pool of discovery histograms backs the flagged pairs (don't widen
-    // the static drum grid to all 256 instOrWave). IsForcedDrum reads the flag
-    // (audio-thread safe). No-op for instOrWave 0/1 (use SetDrumChannelSynth).
+    // "Treat as drum": generalises the drum master from the intrinsic drum/SFX
+    // channels (instOrWave 0/1) to any melodic pair (>= 2). A flagged pair runs the
+    // drum resolution path: each distinct incoming semitone becomes a slot mapped to
+    // a GM percussion sound (fixedNote). Flagging on == Synth mode; clearing returns
+    // the pair to melodic routing. IsForcedDrum reads the flag (audio-thread safe).
+    // No-op for instOrWave 0/1 (use SetDrumChannelSynth).
     void SetForcedDrum(uint8_t fontId, int16_t instOrWave, bool forced);
     bool IsForcedDrum(uint8_t fontId, int16_t instOrWave) const;
     // Set the kit (bank-128 pack/program) for every selected slot entry of a
@@ -310,24 +292,19 @@ class MidiTranslator {
 
     // ── Note-range split editing (melodic) ───────────────────────────────
     // SplitEntry bisects entry idx's range at `atSemitone`: idx keeps
-    // [noteLow, atSemitone-1], a copy (same preset/gain/effects/route) takes
-    // [atSemitone, noteHigh]. Returns the new sibling index, or -1 if the cut
-    // is outside the range / pool full. MergeWithNext absorbs the adjacent
-    // higher range (noteLow == this.noteHigh+1) back into idx. SetEntryNoteRange
-    // sets an entry's [lo,hi] (clamped). AutoSplitByEngineRanges splits a
-    // melodic pair's active entry into the engine's low/normal/high ranges
-    // (boundaries captured in InstrumentNames), duplicating the preset across
-    // them so each range can then be reassigned.
+    // [noteLow, atSemitone-1], a copy takes [atSemitone, noteHigh]. Returns the new
+    // sibling index, or -1 if the cut is out of range / pool full. MergeWithNext
+    // absorbs the adjacent higher range back into idx. SetEntryNoteRange sets an
+    // entry's [lo,hi]. AutoSplitByEngineRanges splits a melodic pair's active entry
+    // into the engine's low/normal/high ranges (boundaries from InstrumentNames).
     int  SplitEntry(int idx, uint8_t atSemitone);
     void MergeWithNext(int idx);
     void SetEntryNoteRange(int idx, uint8_t noteLow, uint8_t noteHigh);
     // Move the single boundary between two adjacent split ranges atomically:
-    // lowerIdx keeps [its noteLow .. boundary], upperIdx takes [boundary+1 ..
-    // its noteHigh]. The boundary is clamped so neither range becomes empty
-    // (lowerIdx.noteLow <= boundary < upperIdx.noteHigh). One chain recompute,
-    // so the audio thread never sees a transient overlap/gap. This is the only
-    // way the split UI edits ranges -- it keeps them contiguous and
-    // non-overlapping by construction, with the outer ends pinned (0 / 127).
+    // lowerIdx keeps [noteLow .. boundary], upperIdx takes [boundary+1 .. noteHigh],
+    // clamped so neither range empties. One chain recompute, so the audio thread
+    // never sees a transient overlap/gap. The only way the split UI edits ranges,
+    // keeping them contiguous and non-overlapping with the outer ends pinned.
     void SetSplitBoundary(int lowerIdx, int upperIdx, uint8_t boundary);
     void AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave);
     // Set a specific entry's melodic preset (used by a split range row's preset
@@ -375,15 +352,11 @@ class MidiTranslator {
     // ── Persistence + reset ──────────────────────────────────────────────
     void ResetAllOverrides();
     bool SaveOverridesToFile(const std::string& path) const;
-    // String overlay = pack mapping.json: new entries land with
-    // source=ModSupplied, selected=false, enabled=true.
-    //
-    // `packName`, when non-empty, is the pack's *discovered* name (the loose
-    // file stem or the archive's audio/synth/<name>/ folder). It is the
-    // authoritative owner for every entry in the file, so the mapping.json no
-    // longer has to repeat a per-entry "pack" field and survives a rename of
-    // the file/folder. When empty (legacy/direct calls), the owner falls back
-    // to the per-entry "pack", then the file's top-level "pack_name" header.
+    // String overlay = pack mapping.json: new entries land with source=ModSupplied,
+    // selected=false, enabled=true. `packName`, when non-empty, is the pack's
+    // discovered name and the authoritative owner for every entry, so mapping.json
+    // needn't repeat a per-entry "pack" field. When empty, the owner falls back to
+    // the per-entry "pack", then the file's top-level "pack_name".
     bool ApplyOverridesFromString(const std::string& json, const std::string& packName = "");
     // File overlay = user fluidsynth_overrides.json: entries land with
     // source=UserPicked. enabled / selected come from the file; missing
@@ -493,9 +466,8 @@ class MidiTranslator {
         int16_t instOrWave = -1; // -1 = unowned
     };
     ChannelOwner mChannelOwner[kMaxMidiChannels] = {};
-    // Count of times an idle pair's channel was reclaimed for a new pair.
-    // Pure diagnostic: nonzero means the pool wrapped and recycling kicked
-    // in (the long-session path that used to silently collapse onto ch 0).
+    // Count of times an idle pair's channel was reclaimed for a new pair. Pure
+    // diagnostic: nonzero means the pool wrapped and recycling kicked in.
     uint32_t mChannelReclaims = 0;
 
     std::array<uint64_t, (kMaxFontId * kMaxInstOrWave) / 64> mSeenBits{};
@@ -507,9 +479,8 @@ class MidiTranslator {
     std::map<std::pair<uint8_t, int16_t>, float> mTemporaryVolume;
     std::map<std::pair<uint8_t, int16_t>, std::string> mDisplayName;
 
-    // DEBUG: per-pair stats backing storage. Counters use relaxed atomics;
-    // float min/max are written from the audio thread and read from the UI
-    // without synchronisation (best-effort diagnostic).
+    // DEBUG: per-pair stats backing storage. Counters use relaxed atomics; read
+    // from the UI without synchronisation (best-effort diagnostic).
     struct DebugSlot {
         std::atomic<uint32_t> noteOns{0};
         std::atomic<uint32_t> routedSynth{0};
@@ -519,43 +490,36 @@ class MidiTranslator {
     };
     DebugSlot mDebugStats[kMaxFontId][kMaxInstOrWave];
 
-    // Per-slot NoteOn counts for the drum (instOrWave 0) and SFX (1) channels
-    // only — scoped to 2 instOrWaves so the table stays ~32 KB rather than the
-    // full [kMaxInstOrWave][128]. Written by the audio thread on every fresh
-    // NoteOn; read lock-free by the UI / GetDrumSlotHistogram. Index is
-    // [fontId][instOrWave (0|1)][semitone 0..127]. Each element is value-
-    // initialised to 0 via the wrapper's member initialiser (same idiom as
-    // DebugSlot's atomics, since a raw atomic array can't be brace-zeroed).
+    // Per-slot NoteOn counts for the drum (instOrWave 0) and SFX (1) channels only,
+    // scoped to 2 instOrWaves to keep the table small. Written by the audio thread
+    // on every fresh NoteOn; read lock-free by the UI / GetDrumSlotHistogram. Index
+    // is [fontId][instOrWave (0|1)][semitone 0..127].
     static constexpr int kDrumHistInst  = 2;   // instOrWave 0 (drum) + 1 (SFX)
     static constexpr int kDrumHistSlots = 128;
     struct DrumSlotHit { std::atomic<uint16_t> count{ 0 }; };
     DrumSlotHit mDrumSlotHits[kMaxFontId][kDrumHistInst][kDrumHistSlots];
 
-    // Per-pair drum channel mode (the per-instrument Native/Synth master). It
-    // is SEPARATE from per-slot `enabled` on purpose: setting a slot to Native
-    // must not flip the whole instrument. Native (false, default) => all slots
-    // play the engine drum regardless of per-slot state; Synth (true) =>
-    // per-slot enabled decides. Plain bool grid: audio thread reads it per
-    // drum note, UI writes it; a torn bool read is benign. Index [font][0|1].
+    // Per-pair drum channel mode (the per-instrument Native/Synth master), separate
+    // from per-slot `enabled` so setting a slot Native doesn't flip the instrument.
+    // Native (false, default) => all slots play the engine drum; Synth (true) =>
+    // per-slot enabled decides. Audio thread reads per note, UI writes; torn bool
+    // read is benign. Index [font][0|1].
     bool mDrumChannelSynth[kMaxFontId][kDrumHistInst] = {};
 
     // ── Forced-drum ("Treat as drum") pairs ──────────────────────────────
-    // A flagged melodic pair routes through the drum path. The per-pair grid
-    // doubles as the flag AND the discovery-histogram pool index: -1 = not
-    // forced; 0..kMaxForcedDrumPairs-1 = forced, value is the pool slot whose
-    // 128-entry histogram records the pair's incoming notes. Plain int8 grid,
-    // same lock-free idiom as mDrumChannelSynth: the audio thread reads it per
-    // note, the UI writes it, and a torn int8 read is benign. Only instOrWave
-    // >= kDrumHistInst is ever flagged (0/1 use mDrumChannelSynth). Initialised
-    // to -1 in the constructor (int8 arrays aren't zero-initialised).
+    // A flagged melodic pair routes through the drum path. The grid doubles as the
+    // flag AND the histogram-pool index: -1 = not forced; 0..kMaxForcedDrumPairs-1 =
+    // forced, value is the pool slot recording the pair's incoming notes. Audio
+    // thread reads per note, UI writes (torn int8 read benign). Only instOrWave >=
+    // kDrumHistInst is flagged. Initialised to -1 in the constructor.
     static constexpr int kMaxForcedDrumPairs = 32;
     int8_t mForcedDrumPool[kMaxFontId][kMaxInstOrWave];
     bool   mForcedDrumPoolUsed[kMaxForcedDrumPairs] = {};
     DrumSlotHit mForcedDrumHits[kMaxForcedDrumPairs][kDrumHistSlots];
 
-    // ── Ship 11: entry-based config storage ──────────────────────────────
+    // ── Entry-based config storage ────────────────────────────────────────
     std::vector<ConfigEntry> mEntries;
-    // -1 = no active entry for this pair → native plays.
+    // -1 = no active entry for this pair; native plays.
     int16_t  mActiveEntryIdx[kMaxFontId][kMaxInstOrWave];
     uint32_t mNextSeq = 1;
     std::vector<std::string> mPackLoadOrder;

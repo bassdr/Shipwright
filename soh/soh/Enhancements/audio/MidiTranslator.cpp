@@ -297,12 +297,10 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
 
-    // Per-semitone winner: the highest-pack-rank enabled+resolvable entry
-    // whose [noteLow,noteHigh] covers that engine slot. For the common
-    // unsplit pair every semitone resolves to the same single entry (or
-    // none), so the chain below collapses to length 1 / head=-1 — bit-
-    // identical to the pre-split single-winner behaviour. Disjoint splits
-    // (the UI enforces non-overlap) yield one distinct winner per range.
+    // Per-semitone winner: the highest-pack-rank enabled+resolvable entry whose
+    // [noteLow,noteHigh] covers that engine slot. For an unsplit pair every semitone
+    // resolves to the same single entry (or none), collapsing the chain to length 1.
+    // Disjoint splits (the UI enforces non-overlap) yield one winner per range.
     int winnerAt[128];
     for (int s = 0; s < 128; ++s) {
         int best = -1;
@@ -320,10 +318,9 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
             if (s < e.noteLow || s > e.noteHigh)
                 continue;
             int rank = PackRank(e.packName);
-            // Strict '>' keeps the first-seen entry on a rank tie, matching
-            // the pre-split single-winner resolver bit-for-bit. (Equal rank
-            // == same pack == an overlap, which the UI disallows, so this
-            // tiebreak only ever fires on the unsplit multi-enabled corner.)
+            // Strict '>' keeps the first-seen entry on a rank tie. (Equal rank ==
+            // same pack == an overlap, which the UI disallows, so this tiebreak
+            // only fires on the unsplit multi-enabled corner.)
             if (best < 0 || rank > bestRank) {
                 best = static_cast<int>(idx);
                 bestRank = rank;
@@ -332,9 +329,9 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
         winnerAt[s] = best;
     }
 
-    // Distinct winners in ascending-noteLow order, deduped so each entry is
-    // linked at most once (this is what guarantees the chain is acyclic —
-    // a cycle would hang the audio-thread walk).
+    // Distinct winners in ascending-noteLow order, deduped so each entry is linked
+    // at most once, which keeps the chain acyclic (the audio thread walks it by
+    // index).
     std::vector<int> winners;
     for (int s = 0; s < 128; ++s) {
         int w = winnerAt[s];
@@ -346,11 +343,10 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
     std::sort(winners.begin(), winners.end(),
               [&](int a, int b) { return mEntries[a].noteLow < mEntries[b].noteLow; });
 
-    // Reset this pair's links, relink the winners, then publish the head
-    // LAST so a concurrent audio-thread walk sees either the intact old
-    // chain or the fully-built new one (single int16_t store is the publish
-    // point; the brief reset->relink window can at worst play one note
-    // native, the same benign-transient class as the old single-index flip).
+    // Reset this pair's links, relink the winners, then publish the head LAST (the
+    // single int16_t store) so a concurrent audio-thread walk sees either the intact
+    // old chain or the fully-built new one. The brief reset->relink window can at
+    // worst play one note native.
     for (auto& e : mEntries)
         if (e.fontId == fontId && e.instOrWave == instOrWave)
             e.nextActiveSplit = -1;
@@ -427,11 +423,9 @@ int MidiTranslator::FindOrCreateEntry(uint8_t fontId, int16_t instOrWave, const 
     e.presetName = presetName;
     e.source = source;
     e.noteLow = noteLow; // noteHigh stays 127 (full range) until a split sets it
-    // Resolve sfontId immediately so the entry is eligible for
-    // resolution on the next note — without this, a fresh PickPreset
-    // creates an entry with sfontId=-1 and the resolution filter
-    // (enabled && sfontId>=0) skips it. ResolveSfontIdFromCache returns
-    // 0 for placeholder entries so they participate in resolution and
+    // Resolve sfontId immediately so the entry is eligible for resolution on the
+    // next note; otherwise the filter (enabled && sfontId>=0) skips a fresh pick.
+    // ResolveSfontIdFromCache returns 0 for placeholder entries so they resolve and
     // produce the silent NoteOn the user asked for.
     e.sfontId = ResolveSfontIdFromCache(pack, bank, program);
     mEntries.push_back(std::move(e));
@@ -474,11 +468,9 @@ void MidiTranslator::PickPreset(uint8_t fontId, int16_t instOrWave, const std::s
     if (idx < 0)
         return;
     ConfigEntry& e = mEntries[idx];
-    // Preserve gain/transpose/effects when reusing — only program/bank/
-    // pack identify the entry. presetName updates so renamed presets
-    // surface correctly. Re-resolve sfontId in case the bank changed on
-    // a reused entry (FindEntry keys on pack+program so the existing
-    // entry's bank may differ from the new pick's).
+    // Preserve gain/transpose/effects when reusing; only program/bank/pack identify
+    // the entry. presetName updates so renamed presets surface. Re-resolve sfontId
+    // in case the bank changed on a reused entry (FindEntry keys on pack+program).
     e.bank = bank;
     e.presetName = presetName;
     e.sfontId = ResolveSfontIdFromCache(pack, bank, program);
@@ -657,13 +649,10 @@ void MidiTranslator::SetForcedDrum(uint8_t fontId, int16_t instOrWave, bool forc
         if (pool >= 0 && pool < kMaxForcedDrumPairs)
             mForcedDrumPoolUsed[pool] = false;
         mForcedDrumPool[fontId][instOrWave] = -1;
-        // Drop the per-slot drum entries so the pair returns to a clean melodic
-        // row instead of lingering as a pile of scattered single-note "splits"
-        // (which can't be merged -- the slots aren't adjacent -- and have no
-        // octave/Shift editor). Disable + deselect rather than erase: erasing
-        // shifts the cached indices the audio thread reads; a deselected entry
-        // is ignored by resolution and the UI and dropped on the next save. Re-
-        // forcing rediscovers/reuses them by key.
+        // Drop the per-slot drum entries so the pair returns to a clean melodic row.
+        // Disable + deselect rather than erase: erasing shifts the cached indices
+        // the audio thread reads. A deselected entry is ignored by resolution and
+        // dropped on the next save; re-forcing rediscovers them by key.
         for (auto& e : mEntries) {
             if (e.fontId == fontId && e.instOrWave == instOrWave && e.noteLow == e.noteHigh) {
                 e.enabled = false;
@@ -703,9 +692,8 @@ void MidiTranslator::AutoSplitDrums(uint8_t fontId, int16_t instOrWave) {
         bySlot[s] = -1;
     for (size_t idx = 0; idx < mEntries.size(); idx++) {
         const ConfigEntry& e = mEntries[idx];
-        // Only reuse existing single-slot entries; full-range whole-pair
-        // entries (noteLow 0..127, from earlier non-split mapping) must not be
-        // hijacked into slot 0.
+        // Only reuse existing single-slot entries; full-range whole-pair entries
+        // (noteLow 0..127) must not be hijacked into slot 0.
         if (e.fontId == fontId && e.instOrWave == instOrWave && e.selected && e.noteLow == e.noteHigh &&
             e.noteLow < 128)
             bySlot[e.noteLow] = static_cast<int>(idx);
@@ -1201,11 +1189,10 @@ static EntryRoute RouteFromString(const std::string& s) {
     return EntryRoute::Synth;
 }
 
-// Append the note-range split fields to a serialised entry, each omitted at
-// its default so unsplit entries stay byte-equivalent to the pre-split schema
-// (v2 -> v2, additive). Shared by SaveOverridesToFile and ExportPackMapping
-// so the two writers can't drift. (noteLow is the only split field that is
-// part of the entry key; it is written unconditionally-when-nonzero here.)
+// Append the note-range split fields to a serialised entry, each omitted at its
+// default so unsplit entries serialise compactly. Shared by SaveOverridesToFile
+// and ExportPackMapping so the two writers can't drift. (noteLow is part of the
+// entry key, so it is written whenever nonzero.)
 static void WriteSplitFields(nlohmann::json& entry, const ConfigEntry& e) {
     if (e.noteLow != 0)
         entry["note_low"] = e.noteLow;
@@ -1332,19 +1319,11 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
     return out.good();
 }
 
-// Shared predicate for "ship this entry inside a pack mapping?". Same gate
-// used by ExportPackMapping and CountExportableEntries so the previewed
-// count always matches what gets written.
-//
-// We export every entry currently ENABLED and resolvable for the pack — the
-// pack's effective mapping right now — regardless of whether it came from a
-// fresh user pick (UserPicked, selected) or the pack's own loaded mapping.json
-// (ModSupplied, selected=false). Requiring `selected` here was wrong: after a
-// user deletes their fluidsynth_overrides.json and relies purely on a loaded
-// mapping.json, nothing is `selected`, yet the pack is fully configured and
-// must still be re-exportable (e.g. loose mapping -> .o2r round-trip).
-// PickPreset keeps at most one entry enabled per (pair, split), so dropping
-// the `selected` gate never double-emits a pair.
+// Shared predicate for "ship this entry inside a pack mapping?". Same gate used by
+// ExportPackMapping and CountExportableEntries so the preview count matches what
+// gets written. Exports every entry currently enabled and resolvable for the pack
+// (its effective mapping now), regardless of source or `selected`. PickPreset
+// keeps at most one entry enabled per (pair, split), so this never double-emits.
 static bool ExportEntryMatches(const ConfigEntry& e, const std::string& packNameFilter) {
     if (!e.enabled) return false;
     if (e.program < 0) return false;          // None placeholder — not shippable
@@ -1622,16 +1601,13 @@ bool MidiTranslator::ApplyOverridesFromFile(const std::string& path) {
         if (entry.contains("filter_q"))
             e.q = ClampCcOrSentinel(entry.value("filter_q", -1));
         ReadSplitFields(entry, e);
-        // File overlay = user file. Defaults align with "this is a user
-        // pick" — enabled+selected unless the file says otherwise. Old
-        // (v1) files don't carry these keys, so the defaults give the
-        // expected migration behaviour: every old entry comes back as
-        // an enabled, selected user pick.
+        // File overlay = user file. A missing key defaults to a user pick:
+        // enabled+selected unless the file says otherwise. Older files without
+        // these keys migrate to enabled, selected user picks.
         e.enabled = entry.value("enabled", true);
         e.selected = entry.value("selected", true);
-        // Promote to UserPicked even if a mod entry was created earlier
-        // in the chain with the same key — the user file is the source
-        // of truth for source attribution.
+        // Promote to UserPicked even if a mod entry already exists for this key;
+        // the user file is the source of truth for source attribution.
         e.source = EntrySource::UserPicked;
         applied++;
     }
@@ -1766,12 +1742,10 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         return true;
     }
 
-    // Engine drum (instOrWave==0) and SFX (instOrWave==1): the `semitone`
-    // byte is a slot index (Audio_GetDrum / Audio_GetSfx), not a chromatic
-    // pitch. The per-instrument master mode gates the whole channel: in Native
-    // mode every slot plays the engine drum regardless of per-slot state (the
-    // user can still see activity / mute / solo per slot). Only in Synth mode
-    // does per-slot resolution below decide synth vs native.
+    // Engine drum (instOrWave==0) and SFX (instOrWave==1): the `semitone` byte is a
+    // slot index (Audio_GetDrum / Audio_GetSfx), not a chromatic pitch. The per-
+    // instrument master mode gates the channel: in Native mode every slot plays the
+    // engine drum; only in Synth mode does per-slot resolution decide synth vs native.
     if ((instOrWave == 0 || instOrWave == 1) && !mDrumChannelSynth[fontId][instOrWave]) {
         int nativeAttrib = FindSlotEntryIdx(fontId, instOrWave, static_cast<uint8_t>(semitone & 0x7F));
         if (isFinished || velocity <= 0.0f)
@@ -1970,24 +1944,18 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     }
     synth->ControlChange(targetChannel, 11, static_cast<uint16_t>(cc11val) << 7);
 
-    // `pitchBend` is the engine's per-note pitch deviation from the nominal
-    // note, expressed as a frequency ratio (1.0 = no bend). The engine adapter
-    // (audio_playback.c) already stripped the non-pitch factors -- sample
-    // tuning, global resampleRate, and the note itself, which FluidSynth
-    // reproduces by playing midiNote -- so we hand the ratio straight to the
-    // synth and let it own the semitone conversion and the wheel-range clamp.
+    // `pitchBend` is the engine's per-note pitch deviation from the nominal note, as
+    // a frequency ratio (1.0 = no bend). audio_playback.c already stripped the non-
+    // pitch factors (sample tuning, resampleRate, and the note itself, which
+    // FluidSynth plays as midiNote), so hand the ratio straight to the synth.
 
     if (state.kind != SlotKind::Synth || state.pairFontId != fontId || state.pairInstOrWave != instOrWave ||
         midiNote != state.midiNote) {
         retireSlot();
-        // Drums: cut any voice already sounding this percussion note on the
-        // shared channel before retriggering. Percussion samples are one-shot
-        // (FluidSynth ignores NoteOff and plays them to completion), so rapid
-        // hits -- hi-hats, and the control slots that fire very often -- would
-        // otherwise stack voices on the same note and overflow the voice/event
-        // ring ("Ringbuffer full, increase synth.polyphony"). Drums don't need
-        // overlapping voices per note; melodic notes (no fixedNote) keep their
-        // polyphony untouched.
+        // Drums: cut any voice already sounding this percussion note on the shared
+        // channel before retriggering. Percussion samples are one-shot (FluidSynth
+        // ignores NoteOff), so rapid hits would otherwise stack voices and overflow
+        // the voice ring. Melodic notes (no fixedNote) keep their polyphony intact.
         if (hasFixedNote)
             synth->NoteOff(targetChannel, midiNote);
         synth->NoteOnPitchFactor(targetChannel, midiNote, noteOnVel, effectiveBend);

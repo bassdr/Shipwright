@@ -40,20 +40,13 @@ extern "C" void SOH_MidiTranslator_Reset();
 
 namespace {
 // Synth packs come from two sources, stacked at apply time in this order:
-//   1. Mod-supplied   — resources under audio/synth/<pack>/ inside any
-//                       mounted .o2r archive (the existing path).
-//   2. Loose          — bare .sf2/.sf3 files dropped into <config-dir>/synth-packs/,
-//                       with an optional sibling <basename>.json for the
-//                       mapping overlay.
-// Both sources allow an unlimited number of packs; FluidSynth's preset
-// lookup walks loaded SF2s in reverse load order, so the last enabled pack
-// wins on (bank, program) collisions — same "last-loaded wins" semantics as
-// the wider mod stack.
-//
-// SF3 = SF2 with Ogg/Vorbis-compressed samples. FluidSynth's default loader
-// reads it transparently via the same fluid_synth_sfload path (libsndfile +
-// Vorbis decode the samples at load time), so accepting SF3 is purely a
-// discovery/extension change — the load path stays byte-stream agnostic.
+//   1. Mod-supplied: resources under audio/synth/<pack>/ inside any mounted
+//                    .o2r archive.
+//   2. Loose:        bare .sf2/.sf3 files in <config-dir>/synth-packs/, with an
+//                    optional sibling <basename>.json mapping overlay.
+// FluidSynth's preset lookup walks loaded SF2s in reverse load order, so the last
+// enabled pack wins on (bank, program) collisions. SF3 is SF2 with Ogg/Vorbis-
+// compressed samples and loads transparently through the same path.
 constexpr const char* kSynthPackRoot          = "audio/synth";
 constexpr const char* kSynthPackSf2Name       = "soundfont.sf2";
 // Archive glob matching either soundfont.sf2 or soundfont.sf3. Both names are
@@ -96,31 +89,21 @@ struct BankSelectorEntry {
 };
 static std::vector<BankSelectorEntry> sBankSelectors;
 
-// Auto-save model: every UI edit that touches a persisted field commits
-// immediately to fluidsynth_overrides.json. Combined with the translator's
-// mUserModified set, this means in-memory state == on-disk state, so pack
-// toggles (which call ReapplyOverrideChain → reset → re-overlay from disk)
-// no longer lose the user's unsaved work.
-//
-// Drag/slider widgets use ImGui::IsItemDeactivatedAfterEdit() to fire one
-// save per drag session (release) instead of once per frame; click-type
-// widgets (radios, selectables, buttons) save inline.
+// Auto-save model: every UI edit that touches a persisted field commits immediately
+// to fluidsynth_overrides.json, keeping in-memory state == on-disk state (pack
+// toggles reset and re-overlay from disk, so unsaved work must not exist). Drag and
+// slider widgets save once per drag via IsItemDeactivatedAfterEdit(); clicks inline.
 void AutoSaveOverrides() {
     auto path = Ship::Context::GetPathRelativeToAppDirectory(
         "fluidsynth_overrides.json", appShortName);
     SOH::MidiTranslator::Instance().SaveOverridesToFile(path);
 }
 
-// Session-only Override-column state — never persisted.
-// sSoloedPairs: every pair the user has soloed. Empty = no solo active.
-//               When non-empty, every NON-soloed discovered pair is forced
-//               muted via the translator. Multi-row solo: clicking Solo on
-//               a second row adds it; both audible side-by-side.
-// sExplicitMutedPairs: per-row mutes set by the Mute button on Native rows.
-//                      (Synth rows use the temp-volume slider's 0.0 stop as
-//                      their mute, so they don't enter this set.) Stacks
-//                      with solo — an explicitly muted row stays silent even
-//                      while soloed.
+// Session-only Override-column state, never persisted.
+// sSoloedPairs: pairs the user has soloed; when non-empty, every non-soloed
+//   discovered pair is force-muted. Multiple rows can be soloed at once.
+// sExplicitMutedPairs: per-row mutes from the Mute button on Native rows. (Synth
+//   rows mute via the temp-volume 0.0 stop instead.) Stacks with solo.
 static std::set<std::pair<uint8_t, int16_t>> sSoloedPairs;
 static std::set<std::pair<uint8_t, int16_t>> sExplicitMutedPairs;
 
@@ -510,22 +493,13 @@ void SetStatusWarnings(std::vector<std::string> warnings) {
 // calibration to native loudness is hidden here so the UI never shows the raw
 // values. Authentic is the louder mode (reverb), so it needs the deeper trim.
 static float ComputeSynthGlobalGain(SOH::SynthMode mode) {
-    // These were ear-calibrated against native at Master 40% while synth.gain was
-    // pinned to unity. synth.gain now tracks Master (= 0.40 at the default 40),
-    // dropping every synth voice by 0.40x, so each constant is scaled to restore
-    // 2.5x of voice amplitude and land back on the original calibration -- now
-    // master-INVARIANT (native and synth both ride Master, so the balance holds
-    // at every level). The exponent differs by mode because loudness rides a
-    // different FluidSynth curve in each:
-    //   Authentic: loudness via CC11 through the Graham-Smith HALVED modulator
-    //     (480 cB => amplitude is linear in the control), so amplitude ~ C.
-    //     0.22 * 2.5 = 0.55. Never clamps (shaped <= 0.55).
-    //   Enhanced: loudness via NoteOn velocity through the STOCK concave
-    //     modulator (960 cB => amplitude ~ (vel/127)^2), so amplitude ~ C^2.
-    //     0.70 * sqrt(2.5) = 1.107. Only the loudest notes (input vel > 0.82)
-    //     clip the shaped-velocity clamp -- a minor top-end softening.
-    // See MidiTranslator.cpp ProcessNote (sqrt(vel)*C shaping) and
-    // FluidSynth::InstallLinearVelocityModulators (the 480 vs 960 cB curves).
+    // Per-mode constants that match synth loudness to the native engine. The
+    // exponent differs because loudness rides a different FluidSynth curve per mode:
+    //   Authentic: loudness via CC11 through the halved (480 cB) modulator, so
+    //     amplitude is linear in the control. Never clamps.
+    //   Enhanced: loudness via NoteOn velocity through the stock concave (960 cB)
+    //     modulator, so amplitude goes as the square; only the loudest notes clip.
+    // See MidiTranslator::ProcessNote and FluidSynth::InstallLinearVelocityModulators.
     constexpr float kGainCalAuthentic = 0.55f;
     constexpr float kGainCalEnhanced = 1.107f;
     const bool enhanced = (mode == SOH::SynthMode::Enhanced);
@@ -535,13 +509,11 @@ static float ComputeSynthGlobalGain(SOH::SynthMode mode) {
     return rel * (enhanced ? kGainCalEnhanced : kGainCalAuthentic);
 }
 
-// FluidSynth's master output gain tracks SoH's Master Volume slider so the synth
-// scales with it exactly as the native engine does — Master is applied per
-// native note in audio_playback.c, but FluidSynth renders its own PCM downstream
-// of that and never saw it before. Master is mode-NEUTRAL (a flat linear fader,
-// equal dB on both modes), which is precisely what synth.gain is, so it lives
-// here and NOT in the per-mode velocity-curve trim (ComputeSynthGlobalGain).
-// Default 40 mirrors the slider's coded default (audio_playback.c).
+// FluidSynth's master output gain tracks the Master Volume slider so the synth
+// scales exactly as the native engine does (Master is applied per native note in
+// audio_playback.c; the synth renders its own PCM downstream of that). Master is
+// mode-neutral, like synth.gain, so it lives here and NOT in the per-mode trim
+// (ComputeSynthGlobalGain). Default 40 mirrors the slider's default.
 static float SynthMasterGainFromCVar() {
     return CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
 }
@@ -574,19 +546,10 @@ bool ApplyFluidSynthFromCVars() {
 
     auto packs = EnabledPacksInOrder();
 
-    // Atomic rebuild — drop the prior synth + mix-source FIRST so the
-    // audio thread sees silence in between rather than transient state
-    // from the old synth overlapping the new one. The old shared_ptr's
-    // destructor runs synchronously once the manager and mix-source both
-    // release it, which the two SetSynth(nullptr)+SetMixSource(nullptr)
-    // calls below guarantee before we construct the replacement.
-    //
-    // This matters most when toggling pack checkboxes: without the
-    // explicit teardown, the old FluidSynth could briefly remain reachable
-    // via the AudioPlayer's mix-source callback while the new one is
-    // already loading SF2s, and confusion about "which synth loaded what
-    // in what order" becomes possible. With it, load order is exactly
-    // packs-vector order, every time.
+    // Atomic rebuild: drop the prior synth + mix-source FIRST so the audio thread
+    // sees silence in between, not the old synth overlapping the new one. The old
+    // shared_ptr destructs synchronously once both the manager and mix-source release
+    // it, which the two nullptr calls below guarantee before we build the replacement.
     audioPlayer->SetMixSource(nullptr);
     Ship::MidiSynthManager::Instance().SetSynth(nullptr);
 
@@ -600,10 +563,8 @@ bool ApplyFluidSynthFromCVars() {
         return true;
     }
 
-    // Log the intended load order — visible in the spdlog stream when
-    // the user reports "this toggle didn't load what I expected". The
-    // last entry has highest priority in FluidSynth's reverse-load-order
-    // preset lookup.
+    // Log the intended load order. The last entry has highest priority in
+    // FluidSynth's reverse-load-order preset lookup.
     {
         std::string orderLog;
         for (const auto& p : packs) {
@@ -613,38 +574,31 @@ bool ApplyFluidSynthFromCVars() {
         SPDLOG_INFO("[AudioEditor] FluidSynth: pack load order (last wins): {}", orderLog);
     }
 
-    // Run FluidSynth at the device's output rate. The float audio pipeline
-    // mixes the synth contribution into AudioPlayer::Play *after* the
-    // resampler, so the synth output skips the rate-conversion step entirely
-    // and we get whatever native quality FluidSynth produces at the device
-    // rate (typically 48 kHz). The native engine still runs at the source
-    // rate (32 kHz) and is resampled up to meet the synth at the mix step.
+    // Run FluidSynth at the device's output rate. The float pipeline mixes the synth
+    // contribution into AudioPlayer::Play *after* the resampler, so the synth output
+    // skips rate-conversion and keeps full quality at the device rate (typically
+    // 48 kHz). The native engine runs at the source rate (32 kHz) and is resampled up.
     double sampleRate = static_cast<double>(audioPlayer->GetSampleRate());
     Ship::FluidSynthConfig synthConfig;
     synthConfig.sampleRate = sampleRate;
 
-    // Mode-driven configuration. Authentic = Graham-Smith modulators + console-era
-    // reverb (per docs/Reproducing_Console_OSTs_accurately.md). Enhanced = stock
-    // SF2 modulators + a subtle reverb that lets the SF2's musical interpretation
-    // breathe through. Translator branches its NoteOn / CC11 routing on the same mode.
+    // Mode-driven configuration. Authentic = richer modulators + console-era reverb.
+    // Enhanced = stock SF2 modulators + a subtle reverb that lets the SF2's musical
+    // interpretation breathe through. The translator branches its NoteOn / CC11
+    // routing on the same mode.
     auto mode = static_cast<SOH::SynthMode>(CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0));
     synthConfig.linearVelocity = mode == SOH::SynthMode::Authentic;
 
-    // FluidSynth defaults to 256 voices. Normal gameplay with the game's native
-    // scores stays well under that, but custom/modded songs -- or live tinkering
-    // while authoring a mod -- can approach it. Bump to 512 for headroom. If it
-    // is ever hit, the log says so clearly and your will hear dropped notes,
-    // or worse, dropped NoteOffs that leave voices stuck on;
-    // raise it again if that happens.
+    // FluidSynth defaults to 256 voices. The game's native scores stay well under
+    // that, but custom/modded songs can approach it, so bump to 512 for headroom.
+    // If it is ever hit, the log says so and you may hear dropped or stuck notes.
     synthConfig.polyphony = 512;
 
-    // FluidSynth's master output gain tracks the Master Volume slider, so the
-    // synth scales with it exactly as the native engine does (Master is applied
-    // per native note in audio_playback.c; the synth renders downstream of that
-    // and otherwise never saw it). Loudness matching to native is NOT done here:
-    // that is a per-mode trim on the velocity/CC11 the translator sends on each
-    // NoteOn (ComputeSynthGlobalGain -> SetGlobalGain). The live slider keeps
-    // this in sync without a rebuild via AudioEditor_ApplySynthMasterVolume.
+    // FluidSynth's master output gain tracks the Master Volume slider, so the synth
+    // scales exactly as the native engine does (Master is applied per native note in
+    // audio_playback.c; the synth renders downstream of that). Loudness matching is a
+    // separate per-mode trim (ComputeSynthGlobalGain -> SetGlobalGain). The live
+    // slider stays in sync without a rebuild via AudioEditor_ApplySynthMasterVolume.
     synthConfig.gain = SynthMasterGainFromCVar();
     auto synth = std::make_shared<Ship::FluidSynth>(synthConfig);
 
@@ -1035,14 +989,11 @@ void DrawPreviewButton(uint16_t sequenceId, std::string sfxKey, SeqType sequence
                                                       .Tooltip("Stop Preview")
                                                       .Color(THEME_COLOR))) {
             func_800F5C2C();
-            // Abrupt stop: the engine swaps the sequence pointer without
-            // tracing each active note through Audio_NoteDisable, so
-            // FluidSynth voices for whatever was sounding become orphans
-            // in their release tail. They eventually free on their own,
-            // but cycling through many previews accumulates them faster
-            // than they drain, exhausts the voice pool, and triggers
-            // voice stealing on the next busy song. Resetting forces an
-            // immediate All Notes Off on every channel.
+            // Abrupt stop: the engine swaps the sequence pointer without tracing each
+            // active note through Audio_NoteDisable, so FluidSynth voices left
+            // sounding become orphans in their release tail. Cycling many previews
+            // accumulates them faster than they drain and exhausts the voice pool, so
+            // force an immediate All Notes Off on every channel.
             SOH_MidiTranslator_Reset();
             CVarSetInteger(CVAR_AUDIO("Playing"), 0);
         }
@@ -1432,16 +1383,11 @@ void AudioEditor::DrawElement() {
                 SohGui::mSohMenu->MenuDrawItem(randomAudioGenModes, ImGui::GetContentRegionAvail().x, THEME_COLOR);
                 SohGui::mSohMenu->MenuDrawItem(lowerOctaves, ImGui::GetContentRegionAvail().x, THEME_COLOR);
 
-                // Master switch for the Modern audio pipeline (float).
-                // Always compiled — the float pipeline works without
-                // FluidSynth. When ENABLE_FLUIDSYNTH is on, a dedicated
-                // FluidSynth tab exposes synth-pack selection and the
-                // per-instrument overrides. CVar transitions are handled
-                // by ReconcileModernAudioPipelineIfChanged at the top of
-                // DrawElement so a toggle here (or from the menu search)
-                // takes effect regardless of which tab is active.
-                // Rendered via MenuDrawItem so it matches the visual
-                // style of the other Audio Options checkboxes.
+                // Master switch for the float audio pipeline. Always compiled; the
+                // float pipeline works without FluidSynth. When ENABLE_FLUIDSYNTH is
+                // on, a dedicated FluidSynth tab exposes pack selection and overrides.
+                // CVar transitions are picked up by ReconcileModernAudioPipelineIfChanged
+                // at the top of DrawElement, so a toggle here takes effect on any tab.
                 SohGui::mSohMenu->MenuDrawItem(fluidSynthEnabled,
                                                ImGui::GetContentRegionAvail().x, THEME_COLOR);
 
@@ -1628,7 +1574,7 @@ void AudioEditor::DrawElement() {
                             }
                             if (ImGui::IsItemHovered()) {
                                 ImGui::SetTooltip(
-                                    "Graham-Smith volume curve + console-era reverb.\n"
+                                    "Console-style volume curve + console-era reverb.\n"
                                     "Translator fixes NoteOn velocity at 100 and routes the\n"
                                     "sqrt(velocity)-shaped value through CC11.");
                             }
@@ -2160,12 +2106,9 @@ void AudioEditor::DrawElement() {
                             for (int i = 0; i < nPairs; i++) {
                                 const auto& p = pairs[i];
                                 ImGui::TableNextRow();
-                                // Push the row index BEFORE any widget so every "##" suffix
-                                // in this row gets a unique ID. Previously this lived next
-                                // to the Mode column's radio buttons, but the Override and
-                                // Song columns (Solo / Unsolo button, ##tempVol DragFloat,
-                                // ##displayName InputText) draw before that point and were
-                                // colliding across rows.
+                                // Push the row index BEFORE any widget so every "##" suffix in
+                                // this row gets a unique ID (the Override and Song columns draw
+                                // widgets first, and would otherwise collide across rows).
                                 ImGui::PushID(i);
 
                                 // Activity tint: green if synth-active, blue if native-active,
@@ -2791,20 +2734,17 @@ void AudioEditor::DrawElement() {
                                     ImGui::TextUnformatted(font ? font : "(modded font)");
                                 }
 
-                                // Sample column: shows the SF2 sample names captured at
-                                // load time (L / M / H range splits, deduped when they
-                                // match). Many music-font slots have no captured name so
-                                // this column was often empty pre-Ship-3. Modders now type
-                                // their own label here; the auto name becomes the hint
-                                // (visible only when the override is empty) so a slot with
-                                // a useful auto name still reads well untouched.
+                                // Sample column: shows the SF2 sample names captured at load
+                                // time (L / M / H range splits, deduped when they match).
+                                // Modders can type their own label here; the auto name becomes
+                                // the hint (shown only when the override is empty), so slots
+                                // with no captured name still get a usable label.
                                 //
-                                // Keyed by (fontId, instOrWave) — same as before — so a
-                                // different fontId using the same instOrWave can carry a
-                                // different name. The hint is built fresh each frame from
-                                // the SF2 sample dataset, the override comes from the
-                                // translator's sparse mDisplayName map and is persisted
-                                // alongside the rest of the row.
+                                // Keyed by (fontId, instOrWave), so a different fontId reusing
+                                // the same instOrWave can carry a different name. The hint is
+                                // built fresh each frame from the SF2 sample dataset; the
+                                // override comes from the translator's mDisplayName map and is
+                                // persisted with the rest of the row.
                                 ImGui::TableSetColumnIndex(sampleCol);
                                 {
                                     // Build the "auto" sample-name label that doubles as
@@ -2897,7 +2837,7 @@ void AudioEditor::DrawElement() {
                                 } else {
                                     ImGui::Text("%d (0x%02X)", (int)p.instOrWave, (unsigned)(uint8_t)p.instOrWave);
                                 }
-                                // Debug stats on hover (the old [DBG] popup, now a mouseover).
+                                // Debug stats on hover (the [DBG] popup, shown on mouseover).
                                 if (ImGui::IsItemHovered()) {
                                     auto s = SOH::MidiTranslator::Instance().GetDebugStats(p.fontId, p.instOrWave);
                                     ImGui::SetTooltip(
@@ -3150,9 +3090,8 @@ void AudioEditor::DrawElement() {
                                     if (activeEntry->packName.empty()) {
                                         std::strcpy(prgPreview, "(None)");
                                     } else if (activeEntry->bank == 128) {
-                                        // GM percussion currently falls back to native;
-                                        // the picked entry is preserved so a future
-                                        // per-slot routing path can use it.
+                                        // GM percussion falls back to native; the picked
+                                        // entry is preserved for per-slot routing.
                                         std::snprintf(prgPreview, sizeof(prgPreview),
                                                       "(drums -> native) P%d: %s",
                                                       activeEntry->program,
@@ -3211,11 +3150,10 @@ void AudioEditor::DrawElement() {
 
                                     if (!filterActive &&
                                         ImGui::Selectable(defaultLabel, activeEntry == nullptr)) {
-                                        // "Default" in the new model = disable every enabled
-                                        // entry for this pair (ClickNative). selected flags
-                                        // are preserved so the user can click Synth to
-                                        // restore. Picking a real preset below promotes it
-                                        // to selected; the user has to explicitly switch.
+                                        // "Default" disables every enabled entry for this pair
+                                        // (ClickNative). selected flags are preserved so the
+                                        // user can click Synth to restore. Picking a real preset
+                                        // below promotes it to selected.
                                         SOH::MidiTranslator::Instance().ClickNative(
                                             p.fontId, p.instOrWave);
                                         AutoSaveOverrides();
@@ -3287,7 +3225,7 @@ void AudioEditor::DrawElement() {
                                 }
 
                                 // Advanced effects popup (Reverb/Chorus/Cutoff/Q) for the
-                                // active entry, replacing the four old effect columns.
+                                // active entry.
                                 ImGui::TableSetColumnIndex(advCol);
                                 ImGui::BeginDisabled(effectiveIsNative);
                                 drawAdvPopup(activeIdx);

@@ -337,25 +337,17 @@ void Audio_ProcessNotes(void) {
                         }
                     }
                 }
-                // Pass the pre-ADSR velocity rather than subAttrs.velocity which has
-                // already been multiplied by the ADSR scale. The envelope ramps from
-                // near-zero on attack, so subAttrs.velocity is often tiny (vel=4-12)
-                // at the moment ProcessNote fires — nearly inaudible in FluidSynth.
-                // FluidSynth handles its own volume envelope; we want the raw "how
-                // hard was the key struck" value here.
+                // FluidSynth runs its own volume envelope, so pass the raw key-strike
+                // velocity, not subAttrs.velocity (already ADSR-scaled and near-zero
+                // during attack).
                 float noteVelocity = 1.0f;
                 if (layer != NO_LAYER) {
                     noteVelocity = layer->noteVelocity;
                 }
-                // Pitch bend = how far the final resampling ratio sits from the
-                // nominal pitch of the integer note FluidSynth will play
-                // (gNoteFrequencies[semitone] * sample tuning * resampleRate).
-                // The portamento glide and vibrato ride on noteFreqScale, NOT on
-                // the separate vibrato/portamento fields, so it has to come from
-                // the final frequency. Dividing by the nominal cancels the
-                // sample tuning and the global resampleRate -- the non-pitch
-                // factors that would otherwise detune every note -- leaving
-                // exactly the continuous pitch modulation to send as a wheel.
+                // Vibrato and portamento ride on the resampling ratio, not on separate
+                // fields, so derive the pitch-bend wheel value from the final frequency.
+                // Dividing by the nominal note frequency cancels sample tuning and the
+                // resample rate, leaving only the continuous pitch modulation.
                 float pitchBend = 1.0f;
                 if (layer != NO_LAYER && layer->sound != NULL && semitone < 0x80 && subAttrs.frequency > 0.0f) {
                     f32 nominal = gNoteFrequencies[semitone] * layer->sound->tuning * resampRate;
@@ -368,8 +360,8 @@ void Audio_ProcessNotes(void) {
                     instOrWave, semitone, (bool)noteSubEu->bitField0.finished, chanIdx,
                     gAudioContext.audioBufferParameters.resampleRate, pitchBend);
                 if (handledByFluidSynth) {
-                    // FluidSynth owns this note — silence the native side so the
-                    // two synthesis paths don't sum into a doubled signal.
+                    // FluidSynth owns this note; silence the native side so the two
+                    // synthesis paths don't sum into a doubled signal.
                     noteSubEu->bitField0.enabled = false;
                 }
             }

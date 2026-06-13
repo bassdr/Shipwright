@@ -838,10 +838,9 @@ void OTRGlobals::Initialize() {
     context->InitAudio({ .SampleRate = 48000,
                          .SourceSampleRate = 32000,
                          .SampleLength = 1024,
-                         // 4096 frames at 32 kHz (~128 ms) gives enough reservoir for frame
-                         // jitter and slow-frame spikes without perceptible audio latency.
-                         // Matches banteg's fix in Shipwright#6594. GetDesiredBuffered() scales
-                         // this to the output rate (6144 frames at 48 kHz) automatically.
+                         // 4096 frames at 32 kHz (~128 ms) is enough reservoir to ride out
+                         // frame jitter and slow-frame spikes without audible latency.
+                         // GetDesiredBuffered() rescales this to the output rate automatically.
                          .DesiredBuffered = 4096 });
 
     SPDLOG_INFO("Starting Ship of Harkinian version {} (Branch: {} | Commit: {})", (char*)gBuildVersion,
@@ -1027,9 +1026,9 @@ int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
 std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 
-// Re-installs the modern (float) pipeline + FluidSynth mix source on the current
-// AudioPlayer. Registered with Audio as the "player initialised" hook so a
-// backend switch (which builds a fresh player) restores it in one place.
+// Re-installs the float pipeline and FluidSynth mix source on the current
+// AudioPlayer. Registered as the player-initialised hook so a backend switch,
+// which builds a fresh player, restores it in one place.
 void AudioEditor_ReapplyModernAudioPipeline();
 
 void OTRAudio_Thread() {
@@ -1038,28 +1037,24 @@ void OTRAudio_Thread() {
 #define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
 #define NUM_AUDIO_CHANNELS 2
 
-    // The audio thread runs one of two paths per produced buffer, switched by
-    // Audio::IsUsingFloatPipeline() -- the single source of truth, flipped when
-    // FluidSynth is enabled or disabled:
+    // Each produced buffer takes one of two paths, switched by
+    // Audio::IsUsingFloatPipeline(), which flips when FluidSynth is toggled:
     //
-    // S16 LEGACY PATH (no synth, or synth disabled):
-    //   Native engine writes s16 directly into audio_buffer; AudioPlayer
-    //   takes the byte buffer untouched. No mix step. Byte-exact with the
-    //   pre-PR behaviour libultraship consumers always had.
+    // Legacy s16 path (synth disabled): the native engine writes s16 straight
+    //   into the buffer and AudioPlayer takes it untouched, with no mix step.
     //
-    // FLOAT HD PATH (FluidSynth enabled):
-    //   Native s16 → float (conversion only, no per-sample mix here). The
-    //   AudioPlayer resamples, calls its MixSource hook (FluidSynth render
-    //   at the device's output rate, bypassing the resampler), soft-clips
-    //   the sum, surround-decodes, and hands the result to the backend.
+    // Float path (FluidSynth enabled): native s16 is converted to float; the
+    //   AudioPlayer resamples, calls its MixSource hook (FluidSynth renders at
+    //   the output rate, bypassing the resampler), soft-clips the sum,
+    //   surround-decodes, and hands the result to the backend.
 
-    // Single producer routine used by both the wake-driven and pre-buffer
-    // loops. Captures the per-iteration sample count from the caller.
+    // Single producer routine shared by the wake-driven and pre-buffer loops.
+    // Takes the per-iteration sample count from the caller.
     auto produce_and_play = [&](u32 num_audio_samples) {
         const u32 total_frames = num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
         const u32 total_samples = total_frames * NUM_AUDIO_CHANNELS;
 
-        // 3 is the maximum authentic frame divisor.
+        // 3 is the maximum frame divisor.
         static thread_local s16 native_s16[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
         static thread_local float native_f32[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
 
@@ -1078,35 +1073,23 @@ void OTRAudio_Thread() {
         }
     };
 
-    // Self-pump cadence. The gfx thread wakes us once per rendered frame
-    // (Graph_ProcessGfxCommands sets audio.processing), but a single long
-    // frame -- the classic repro is the first pause-menu open, which loads
-    // assets and can stall the gfx thread for hundreds of ms -- would
-    // otherwise leave us asleep while the backend's queue (~128 ms reservoir,
-    // DesiredBuffered) drains to silence. So we also wake on a short timeout
-    // and top the reservoir up off the audio clock, independent of the gfx
-    // frame rate. The N64 sequencer advancing on its own clock is already
-    // documented as safe (see the pre-buffer loop below); doing so is in fact
-    // closer to the console, where the audio task ran off the scheduler rather
-    // than gated on rendering. A timeout wake when the reservoir is already
-    // full just re-checks AudioPlayer_Buffered() and returns -- negligible CPU.
+    // The gfx thread wakes us once per rendered frame, but a single long frame
+    // (e.g. asset loading) would leave us asleep while the backend queue drains
+    // to silence, so we also wake on a short timeout to top up the reservoir.
     constexpr auto kSelfPumpInterval = std::chrono::milliseconds(5);
 
-    // The N64 audio engine (gAudioContext: command queues, ABI buffers) is set
-    // up during boot on the game thread; AudioMgr_CreateNextAudioBuffer derefs
-    // it with no readiness guard. The original code never produced before the
-    // gfx thread set audio.processing, which only happens once the game has
-    // reached its render loop -- i.e. after audio init. The self-pump timeout
-    // must preserve that ordering, so it only kicks in AFTER the first real
-    // gfx wake has primed us; before that we wait indefinitely like before.
+    // AudioMgr_CreateNextAudioBuffer has no readiness guard, and the audio engine
+    // is only set up once the game reaches its render loop and first sets
+    // audio.processing. So the self-pump timeout stays disabled until that first
+    // gfx wake primes us; before then we wait indefinitely.
     bool primed = false;
 
     while (audio.running) {
         {
             std::unique_lock<std::mutex> Lock(audio.mutex);
             if (!primed) {
-                // Pre-init: block until the gfx thread drives the first buffer
-                // (engine guaranteed ready by then), exactly as before.
+                // Pre-init: block until the first gfx wake drives a buffer; the
+                // engine is guaranteed ready by then.
                 while (!audio.processing && audio.running) {
                     audio.cv_to_thread.wait(Lock);
                 }
@@ -1121,8 +1104,8 @@ void OTRAudio_Thread() {
                 break;
             }
 
-            // A real gfx wake (processing set) means the game is rendering and
-            // the audio engine is up; from here the self-pump path is safe.
+            // A real gfx wake (processing set) means the engine is up; from
+            // here the self-pump path is safe.
             if (audio.processing) {
                 primed = true;
             }
@@ -1133,11 +1116,9 @@ void OTRAudio_Thread() {
             int samples_left = AudioPlayer_Buffered();
             u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
 
-            // Producer guard (banteg/Shipwright#6594): skip advancing the audio
-            // engine if the backend ring cannot accept the smallest next burst.
-            // Generating PCM that DoPlay() would refuse creates a discontinuity
-            // audible as a click. The pre-buffer loop below will catch up once
-            // the backend drains enough.
+            // Skip advancing the audio engine if the backend ring can't accept the
+            // smallest next burst: PCM that DoPlay() would refuse creates a click.
+            // The pre-buffer loop below catches up once the backend drains enough.
             if (AudioPlayer_Buffered() + SAMPLES_LOW * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
                 audio.processing = false;
             } else {
@@ -1146,11 +1127,10 @@ void OTRAudio_Thread() {
             }
         }
 
-        // Pre-buffer: fill the reservoir while the backend can accept more,
-        // without waiting for the next frame signal. This absorbs load spikes.
-        // Safe for BGM — the N64 sequencer advances independently of gameplay.
-        // The producer guard (same as above) prevents advancing the audio engine
-        // when the backend ring is already at capacity.
+        // Pre-buffer: fill the reservoir while the backend can accept more, without
+        // waiting for the next frame signal, to absorb load spikes. Safe because the
+        // music sequencer advances on its own clock. The producer guard (as above)
+        // avoids advancing the engine when the backend ring is at capacity.
         while (audio.running && AudioPlayer_Buffered() < AudioPlayer_GetDesiredBuffered()) {
             if (AudioPlayer_Buffered() + SAMPLES_LOW * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
                 break;
@@ -1159,11 +1139,9 @@ void OTRAudio_Thread() {
             u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
             produce_and_play(num_audio_samples);
 
-            // A sink that never retains what we just produced (the Null backend
-            // discards; a wedged device stays at 0) would otherwise spin here
-            // forever -- rendering audio every iteration (with FluidSynth, pegging
-            // a core) and starving the gfx thread, which blocks on audio.processing.
-            // Stop pre-buffering against such a sink.
+            // A sink that never retains what we produce (the Null backend discards;
+            // a wedged device stays at 0) would spin here forever, rendering every
+            // iteration and starving the gfx thread. Stop pre-buffering against it.
             if (AudioPlayer_Buffered() <= samples_left) {
                 break;
             }
@@ -1175,9 +1153,8 @@ void OTRAudio_Init() {
     // Precache all our samples, sequences, etc...
     ResourceMgr_LoadDirectory("audio");
 
-    // Whenever Audio (re)builds the AudioPlayer -- e.g. on a backend switch -- the
-    // fresh player comes up without the FluidSynth mix source. Re-install it here,
-    // in one place, instead of every call site that can trigger a rebuild.
+    // A (re)built AudioPlayer -- e.g. after a backend switch -- comes up without the
+    // FluidSynth mix source, so re-install it here whenever the player is initialised.
     Ship::Context::GetRawInstance()->GetAudio()->SetOnAudioPlayerInitialized(
         []() { AudioEditor_ReapplyModernAudioPipeline(); });
 

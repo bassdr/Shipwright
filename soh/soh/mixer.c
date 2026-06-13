@@ -93,8 +93,8 @@ static inline int32_t clamp32(int64_t v) {
 }
 
 
-/* clamp: saturate a float accumulator to S16 range before final conversion.
- * Used by the F32 mixing paths to avoid intermediate S16 truncation. */
+/* Saturate a float accumulator to s16 range, rounding once at conversion.
+ * Used by the float mixing paths to avoid intermediate s16 truncation. */
 static inline int16_t clamp(double v) {
     if (v > INT16_MAX) return INT16_MAX;
     if (v < INT16_MIN) return INT16_MIN;
@@ -265,19 +265,9 @@ void aResampleImpl(uint8_t flags, uint16_t pitch, RESAMPLE_STATE state) {
     pitch_accumulator = (uint16_t)tmp[4];
     memcpy(in, tmp, 4 * sizeof(int16_t));
 
-    /* Double-precision FIR accumulation.
-     *
-     * Original code rounded each tap independently before summation:
-     *
-     *     ((x * c + 0x4000) >> 15)
-     *
-     * which introduces four separate quantization steps per output sample.
-     *
-     * This version accumulates all four taps in double precision and performs
-     * a single final rounding during clamp(), reducing quantization noise and
-     * improving interpolation accuracy, especially for low-volume signals and
-     * slow pitch changes.
-     */
+    /* Accumulate all four FIR taps in double precision and round once in clamp(),
+     * instead of rounding each tap, cutting quantization noise on low-volume
+     * signals and slow pitch changes. */
     do {
         for (i = 0; i < 8; i++) {
             tbl = resample_table[pitch_accumulator * 64 >> 16];
@@ -331,19 +321,9 @@ void aEnvMixerImpl(uint16_t in_addr, uint16_t n_samples, bool swap_reverb, bool 
     uint16_t vol_wet = rspa.vol_wet;
     const uint16_t rate_wet = rspa.rate_wet;
 
-    /* Double-precision envelope and wet/dry mixing.
-     *
-     * Original code truncated each scaled sample immediately after:
-     *
-     *     (sample * volume) >> 16
-     *
-     * before accumulation into the destination buffers.
-     *
-     * This version keeps envelope scaling and wet/dry mixing in double
-     * precision until the final clamp(), preserving fractional precision
-     * across volume ramps and reducing cumulative quantization noise during
-     * multi-voice mixing.
-     */
+    /* Keep envelope scaling and wet/dry mixing in double precision until the final
+     * clamp(), preserving fractional precision across volume ramps and reducing
+     * cumulative quantization noise during multi-voice mixing. */
     const double kScale = 1.0 / 65536.0;
 
     do {

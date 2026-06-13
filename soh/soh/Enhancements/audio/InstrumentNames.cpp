@@ -19,10 +19,7 @@ struct SlotSamples {
 
 struct State {
     std::mutex mutex;
-    // Keyed by (fontId, instId) directly. The map is small (~38 fonts ×
-    // ≤16 instruments × a few short strings — well under 10 KB), so
-    // ordered map's O(log n) cost is invisible and we skip writing a hash
-    // specialisation for std::pair.
+    // Keyed by (fontId, instId). Small enough that std::map's cost is irrelevant.
     std::map<std::pair<uint8_t, int16_t>, SlotSamples> entries;
 };
 

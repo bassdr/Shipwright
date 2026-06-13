@@ -24,15 +24,14 @@ void AudioEditor_ResetAll();
 void AudioEditor_ResetGroup(SeqType group);
 void AudioEditor_LockAll();
 void AudioEditor_UnlockAll();
-// Re-installs the modern (float) audio pipeline and FluidSynth mix source on the
-// current AudioPlayer when the modern pipeline is enabled. Registered with Audio
-// (see OTRAudio_Init) as the "player initialised" hook so a backend switch, which
-// builds a fresh AudioPlayer, restores it in one place.
+// Re-installs the float pipeline and FluidSynth mix source on the current
+// AudioPlayer when the float pipeline is enabled. Registered (see OTRAudio_Init)
+// as the player-initialised hook so a backend switch, which builds a fresh
+// AudioPlayer, restores it in one place.
 void AudioEditor_ReapplyModernAudioPipeline();
 // Pushes the current Master Volume CVar onto the running FluidSynth's master
-// gain so the synth tracks the slider in lockstep with the native engine. Cheap
-// (no synth rebuild) and a no-op when no synth is installed; call from the
-// Master Volume slider's handler.
+// gain so the synth tracks the slider. A no-op when no synth is installed; call
+// from the Master Volume slider's handler.
 void AudioEditor_ApplySynthMasterVolume();
 
 extern "C" {

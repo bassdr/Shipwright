@@ -3,11 +3,10 @@
 #include <cstring>
 #include <spdlog/spdlog.h>
 
-// Forward-declared engine runtime state — populated by audio_load.c during
-// startup, used here so GetFontName can return the real per-(ROM-version,
-// mod-stack) font label instead of the compile-time kFontNames snapshot.
-// Each entry is a stable string like "audio/fonts/06_Title_Theme" (vanilla)
-// or "custom/fonts/MyFont" (modded). Empty (nullptr) before audio_load runs.
+// Forward-declared engine runtime state, populated by audio_load.c at startup, so
+// GetFontName can return the real per-build font label instead of the compile-time
+// kFontNames snapshot. Each entry is a path like "audio/fonts/..." (built-in) or
+// "custom/fonts/MyFont" (modded); nullptr before audio_load runs.
 extern "C" char** fontMap;
 extern "C" size_t fontMapSize;
 
@@ -67,22 +66,13 @@ static constexpr GmPreset U = { 0, kUnmapped, 0 };
 
 // ---------------------------------------------------------------------------
 // Per-font friendly names, indexed by fontId. Used by the bypass UI to label
-// discovered (fontId, instOrWave) pairs as "Title Theme · 12" instead of a
-// raw integer pair. Names mirror Audio.xml's <Soundfont Name="…" Index="N"/>
-// entries, with the "NN_" prefix stripped and underscores turned into spaces.
+// discovered (fontId, instOrWave) pairs with a name instead of a raw integer
+// pair. Names mirror Audio.xml's <Soundfont Name="..." Index="N"/> entries, with
+// the "NN_" prefix stripped and underscores turned into spaces.
 //
-// Critically: there is NO per-slot instrument-name table. The engine reads
-// `sf->instruments[instId]` PER FONT, and each font has its own instruments
-// array in its own order — there is no shared "bank 1" layout. An earlier
-// version of this file shipped a kBank1Names[] table guessing one font's
-// slot layout applied to all fonts; that was misleading (the names matched
-// what you saw in the UI but not what you actually heard for fonts other
-// than the one the names were copied from). The 2026-05-30 audit replaced
-// it with the per-font name list below.
-//
-// If the user wants per-slot names in the future, they'd need either a
-// real per-font asset extraction (the binary sf->instruments has no name
-// metadata) or a hand-curated table they trust their ears on.
+// There is no per-slot instrument-name table: the engine reads
+// sf->instruments[instId] per font, each font having its own instruments array
+// in its own order, so there is no shared bank layout to name.
 // ---------------------------------------------------------------------------
 // clang-format off
 
@@ -132,17 +122,14 @@ static_assert(sizeof(kFontNames) / sizeof(kFontNames[0]) == kBuiltinFontCount,
 // clang-format on
 
 // ---------------------------------------------------------------------------
-// Lookup — called from MidiTranslator::ProcessNote.
-//
-// After the 2026-05-30 cleanup, this function returns the unmapped sentinel
-// for everything melodic — the JSON layer (built-in defaults + user
-// overrides) drives all program assignments via mProgramOverride. The only
-// thing left here is the structural shape: synthetic waves, SFX-only
-// fonts, and the true-drum trigger (instOrWave == 0) stay unmapped so the
-// engine's native synth plays them.
+// Lookup, called from MidiTranslator::ProcessNote. Returns the unmapped sentinel
+// for everything melodic; the JSON layer (defaults + user overrides) drives
+// program assignments via mProgramOverride. Only structural cases stay here:
+// synthetic waves, SFX-only fonts, and the true-drum trigger stay unmapped so the
+// native synth plays them.
 // ---------------------------------------------------------------------------
 inline GmPreset GetGmPreset(uint8_t fontId, int16_t instOrWave) {
-    // Synthetic waveforms (square, triangle…) — no SF2 equivalent.
+    // Synthetic waveforms (square, triangle...): no SF2 equivalent.
     if (instOrWave >= 0x80 && instOrWave < 0xC0)
         return U;
     if (instOrWave < 0)
@@ -156,11 +143,9 @@ inline GmPreset GetGmPreset(uint8_t fontId, int16_t instOrWave) {
     if (fontId == 2)
         return U;
 
-    // True drum trigger — the engine fetches Audio_GetDrum(fontId, semitone)
-    // from a per-font drum bank. Firing GM percussion as a blanket fallback
-    // produced audible NoteOn click artifacts (envelope startup runs before
-    // CC11 attenuation lands). Default unmapped so native handles it; a
-    // future PR can install a per-font (fontId, drumSlot) → GM note table.
+    // True drum trigger: the engine fetches Audio_GetDrum(fontId, semitone) from a
+    // per-font drum bank. Leave unmapped so the native path handles it; a blanket
+    // GM percussion fallback clicks on note attack.
     if (instOrWave == 0)
         return U;
 
@@ -172,35 +157,29 @@ inline GmPreset GetGmPreset(uint8_t fontId, int16_t instOrWave) {
 
 // ---------------------------------------------------------------------------
 // Friendly label for a fontId. The bypass UI combines this with the raw
-// instOrWave index to render "Title Theme · 12" — there is no reliable
-// per-slot instrument name (see the kFontNames comment above for the audit
-// that retired kBank1Names). Returns nullptr for fontIds outside the
-// builtin range (typically modded fonts).
+// instOrWave index; there is no reliable per-slot instrument name (see the
+// kFontNames comment). Returns nullptr for fontIds outside the built-in range
+// (typically modded fonts).
 // ---------------------------------------------------------------------------
 inline const char* GetFontName(uint8_t fontId) {
-    // Prefer the runtime fontMap (real data — tracks the actual loaded
-    // assets, including modded fonts and any ROM-version variations).
-    // Strips the directory prefix so the bypass UI shows just the friendly
-    // segment: "audio/fonts/06_Title_Theme" -> "06_Title_Theme",
-    // "custom/fonts/MyPack" -> "MyPack". Pointer is stable: fontMap
-    // entries are allocated once during audio_load and never reallocated.
+    // Prefer the runtime fontMap, which tracks the actually loaded assets
+    // (including modded fonts). Strip the directory prefix so the UI shows just
+    // the final segment ("audio/fonts/Foo" -> "Foo"). Pointers are stable: entries
+    // are allocated once during audio_load and never reallocated.
     if (fontMap != nullptr && fontId < fontMapSize && fontMap[fontId] != nullptr) {
         const char* path = fontMap[fontId];
         const char* slash = std::strrchr(path, '/');
         return slash ? slash + 1 : path;
     }
-    // Fallback to the compile-time table for very-early-startup calls
-    // before audio_load has populated fontMap. Only the built-in font
-    // range is covered; modded fonts haven't been mounted at that point
-    // anyway.
+    // Fallback to the compile-time table for very-early-startup calls before
+    // audio_load populates fontMap; only built-in fonts exist at that point anyway.
     if (fontId < kBuiltinFontCount)
         return kFontNames[fontId];
     return nullptr;
 }
 
-// Legacy convenience that some non-UI callers may still use; returns the
-// same string as GetFontName for consistency. The instOrWave argument is
-// retained so call sites don't need to change shape but is unused.
+// Convenience returning the same string as GetFontName. The instOrWave argument
+// is unused, kept so call sites don't change shape.
 inline const char* GetInstrumentName(uint8_t fontId, int16_t /*instOrWave*/) {
     return GetFontName(fontId);
 }

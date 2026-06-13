@@ -87,10 +87,10 @@ binds the row to the pack that owns it.
 Two radio buttons at the top of the active-pack controls:
 
 - **Authentic** - replaces the SF2's default velocity / CC7 / CC11
-  attenuation modulators with halved-amount versions ("Graham-Smith"
-  curve, per [ANMP](https://github.com/derselbst/ANMP)). Fixes NoteOn
-  velocity at 100 and routes the shaped value through CC11. Pairs with a
-  console-era reverb preset. Default.
+  attenuation modulators with halved-amount versions (curve adapted from
+  [ANMP](https://github.com/derselbst/ANMP)). Fixes NoteOn velocity at 100
+  and routes the shaped value through CC11. Pairs with a console-era reverb
+  preset. Default.
 - **Enhanced** - stock SF2 modulators; sends the shaped value as NoteOn
   velocity so the SF2 author's own dynamics apply. Pairs with a subtle
   reverb. Use this with musically-curated banks (orchestral, SC-55,
@@ -131,8 +131,8 @@ Columns:
 | Column   | What it does                                                                                  |
 |----------|----------------------------------------------------------------------------------------------|
 | Override | Session-only **Solo** (S) / **Mute** (M) buttons. Warm/red palette = *not saved*.            |
-| Song     | Engine font name (e.g. "Fairy Fountain"). Read-only.                                          |
-| Sample   | Editable label - type a name like "Hyrule Field strings". Hint shows the auto-detected SF2 sample name; hover for the engine's Low/Mid/High samples. |
+| Song     | Engine font name (e.g. "Main Theme"). Read-only.                                              |
+| Sample   | Editable label - type a name like "Lush strings". Hint shows the auto-detected SF2 sample name; hover for the engine's Low/Mid/High samples. |
 | Inst     | Engine slot id; `0 (Drum)` / `1 (SFX)` are special. Holds the **Split** / **L/M/H** / **As Drum** (and, for drum rows, **Slots**) buttons; hover for NoteOn stats. |
 | Mode     | **Native** (engine synth) vs **Synth** (FluidSynth).                                          |
 | Gain     | Per-instrument synth volume (0..4x).                                                          |
@@ -257,7 +257,7 @@ Archive form (for distribution - what **Export .o2r** builds for you):
 ```
 
 The `<pack-name>` segment is the user-visible identifier - a short ASCII
-slug like `OoT-HD-Orchestra` or `FluidR3-Default`.
+slug like `HD-Orchestra` or `FluidR3-Default`.
 
 ### Authoring loop
 
@@ -329,7 +329,7 @@ pack-enable and are never written back to the user file.
       "bank": 0,
       "program": 46,
       "preset_name": "Orchestral Harp",
-      "display_name": "Hyrule Field strings",
+      "display_name": "Lush strings",
       "gain": 0.85,
       "transpose": 0,
       "reverb": 64,
@@ -501,8 +501,8 @@ author hits them as "this row refuses to behave".
 
 - [derselbst/**ANMP**](https://github.com/derselbst/ANMP) - the closest
   analog: a FluidSynth-based player for sequenced console-era music.
-  Originator of the Graham-Smith volume curve.
-- [**ANMP**'s wiki](https://github.com/derselbst/ANMP/wiki), in
-  particular [Reproducing N64 OSTs
+  Originator of the halved-attenuation volume curve used by Authentic mode.
+- [**ANMP**'s wiki](https://github.com/derselbst/ANMP/wiki), in particular
+  its [Reproducing console OSTs
   accurately](https://github.com/derselbst/ANMP/wiki/Reproducing-N64-OSTs-accurately)
-  - reverb-preset research that informs the Authentic mode default.
+  page - reverb-preset research that informs the Authentic mode default.
