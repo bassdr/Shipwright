@@ -1433,10 +1433,9 @@ void AudioLoad_Init(void* heap, size_t heapSize) {
 
         // Sequence ids are carried in 16 bits; fail gracefully past the limit.
         if (seqNum > 0xFFFF) {
-            Messagebox_ShowErrorBox(
-                "Too Many Sequences",
-                "The number of custom sequences exceeds the supported limit (65535). Some custom "
-                "music will not be available. Please reduce the size of your music pack(s).");
+            Messagebox_ShowErrorBox("Too Many Sequences",
+                                    "The number of custom sequences exceeds the supported limit (65535). Some custom "
+                                    "music will not be available. Please reduce the size of your music pack(s).");
             LUSLOG_ERROR("Custom sequence limit (0xFFFF) exceeded; remaining custom sequences skipped.");
             break;
         }
