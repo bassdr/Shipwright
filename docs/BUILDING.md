@@ -175,8 +175,8 @@ You can use a `flake.nix` file to instantly setup a development environment usin
             # Runtime dependencies
             zenity
           ] ++ [
-            # Version of clang-format used by decomp
-            pinned-pkgs.clang_14
+            # Version of clang-format used by decomp (see .clang-format-version)
+            pinned-pkgs.clang_19
           ];
           shellHook = ''
             echo "Shipwright development environment loaded"

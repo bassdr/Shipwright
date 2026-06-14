@@ -4,6 +4,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# This workflow checks out untrusted PR head code, so it stays read-only.
+# Posting suggestions on pull requests from forks (whose token here is
+# read-only) is done by the trusted clang-format-suggestions.yml companion.
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   clang-format:
     runs-on: ubuntu-latest
@@ -11,11 +19,43 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 2
-      - name: Install clang-format
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format-14
+      # uv runs the pinned clang-format wheel (see .clang-format-version), so CI
+      # and contributors all use the exact same binary regardless of OS.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
       - name: Run clang-format
+        run: ./run-clang-format.sh
+      # Save the formatting diff and PR metadata so the companion workflow can
+      # post suggestions on fork PRs, where the token here cannot write.
+      - name: Capture formatting diff
+        id: capture
         run: |
-          ./run-clang-format.sh
-          git diff --exit-code
+          git diff > clang-format.patch
+          if [ -s clang-format.patch ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Save suggestion payload
+        if: steps.capture.outputs.changed == 'true'
+        run: |
+          mkdir -p clang-format-suggestions
+          mv clang-format.patch clang-format-suggestions/
+          echo "${{ github.event.number }}" > clang-format-suggestions/pr-number.txt
+          echo "${{ github.event.pull_request.head.sha }}" > clang-format-suggestions/head-sha.txt
+          echo "${{ github.event.pull_request.head.repo.full_name }}" > clang-format-suggestions/head-repo.txt
+      - name: Upload suggestion payload
+        if: steps.capture.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-format-suggestions
+          path: clang-format-suggestions/
+      # Post each needed change as a review suggestion ("Apply suggestion") and
+      # fail the check on any formatting issue in changed lines. On fork PRs the
+      # token is read-only, so reviewdog falls back to annotations here and the
+      # companion workflow posts the real suggestions.
+      - name: Suggest formatting fixes
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: clang-format
+          fail_level: any

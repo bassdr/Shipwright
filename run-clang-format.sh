@@ -21,9 +21,16 @@
 # -print0
 # separate paths with NUL bytes, avoiding issues with spaces in paths
 #
-# | xargs -0 clang-format-14 -i -verbose
+# | xargs -0 $CLANG_FORMAT -i --verbose
 # use xargs to take each path we've found
 # and pass it as an argument to clang-format
 # verbose to print files being formatted and X out of Y status
 
-find soh -type f \( -name "*.c" -o -name "*.cpp" -o \( \( -name "*.h" -o -name "*.hpp" \) ! -path "soh/src/*" ! -path "soh/include/*" \) \) ! -path "soh/assets/*" -print0 | xargs -0 clang-format-14 -i --verbose
+# Pin the clang-format version (its output is not stable across major versions).
+# Default to the pinned PyPI wheel via uvx so every machine and CI run the same
+# binary; override CLANG_FORMAT to use a system clang-format instead, e.g.
+#   CLANG_FORMAT=clang-format-19 ./run-clang-format.sh
+CLANG_FORMAT_VERSION="$(cat "$(dirname "$0")/.clang-format-version")"
+CLANG_FORMAT="${CLANG_FORMAT:-uvx clang-format@${CLANG_FORMAT_VERSION}}"
+
+find soh -type f \( -name "*.c" -o -name "*.cpp" -o \( \( -name "*.h" -o -name "*.hpp" \) ! -path "soh/src/*" ! -path "soh/include/*" \) \) ! -path "soh/assets/*" -print0 | xargs -0 $CLANG_FORMAT -i --verbose
