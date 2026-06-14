@@ -195,6 +195,22 @@ jobs:
         cmake ..
         make
         sudo make install
+    - name: Install latest SDL3
+      # Ubuntu 22.04 has no libsdl3-dev. SDL3 supplies the optional SDL3 audio backend,
+      # which is loaded at runtime; its headers/config are needed at build time.
+      run: |
+        export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+        if [ ! -d "deps/SDL3-3.4.10" ]; then
+          wget https://github.com/libsdl-org/SDL/releases/download/release-3.4.10/SDL3-3.4.10.tar.gz
+          tar -xzf SDL3-3.4.10.tar.gz -C deps
+        fi
+        # SoH uses SDL3 for audio only. SDL_VIDEO=OFF avoids the X11/Wayland dev-package
+        # hard requirements (e.g. XTEST) the runner lacks; SDL_UNIX_CONSOLE_BUILD=ON lets
+        # SDL3 configure without any video backend (otherwise it refuses to build on Unix).
+        cmake -S deps/SDL3-3.4.10 -B deps/SDL3-3.4.10/build -DCMAKE_BUILD_TYPE=Release -DSDL_VIDEO=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
+        cmake --build deps/SDL3-3.4.10/build -j 10
+        sudo cmake --install deps/SDL3-3.4.10/build
+        sudo cp -av /usr/local/lib/libSDL3* /lib/x86_64-linux-gnu/
     - name: Install libzip without crypto
       run: |
         export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"

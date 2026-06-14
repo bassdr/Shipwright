@@ -111,6 +111,7 @@ dnf install gcc gcc-c++ git cmake ninja-build lsb_release SDL2-devel SDL2_net-de
 # or using clang
 dnf install clang git cmake ninja-build lsb_release SDL2-devel SDL2_net-devel libpng-devel libzip-devel libzip-tools nlohmann-json-devel tinyxml2-devel spdlog-devel opusfile-devel libvorbis-devel
 ```
+_Optional: install SDL3 (`libsdl3-dev` on Debian 13+/Ubuntu 24.10+, `sdl3` on Arch, `SDL3-devel` on Fedora 40+) to enable the SDL3 audio backend. It is compiled in only when SDL3 development files are present; without them the backend is simply left out._
 #### Nix
 You can use a `flake.nix` file to instantly setup a development environment using [Nix](https://nixos.org/). Write this `flake.nix` file in the root directory:
 
@@ -243,6 +244,8 @@ cmake --build build-cmake --target ExtractAssetHeaders
 
 ## macOS
 Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+
+_Optional: also install SDL3 (`sdl3` via homebrew, `SDL3` via MacPorts) to enable the SDL3 audio backend; it is compiled in only when present._
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
