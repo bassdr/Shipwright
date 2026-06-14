@@ -90,26 +90,26 @@ C:\Program Files\CMake\bin\cmake.exe --build build-cmake --target ExtractAssetHe
 #### Debian/Ubuntu
 ```sh
 # using gcc
-apt-get install gcc g++ git cmake ninja-build lsb-release libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev libtinyxml2-dev libspdlog-dev libopengl-dev libopusfile-dev libvorbis-dev
+apt-get install gcc g++ git cmake ninja-build lsb-release libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev libtinyxml2-dev libspdlog-dev libopengl-dev libopusfile-dev libvorbis-dev libfluidsynth-dev pkg-config
 
 # or using clang
-apt-get install clang git cmake ninja-build lsb-release libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev libtinyxml2-dev libspdlog-dev libopengl-dev libopusfile-dev libvorbis-dev
+apt-get install clang git cmake ninja-build lsb-release libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev libtinyxml2-dev libspdlog-dev libopengl-dev libopusfile-dev libvorbis-dev libfluidsynth-dev pkg-config
 ```
 #### Arch
 ```sh
 # using gcc
-pacman -S gcc git cmake ninja lsb-release sdl2 libpng libzip nlohmann-json tinyxml2 spdlog sdl2_net opusfile libvorbis
+pacman -S gcc git cmake ninja lsb-release sdl2 libpng libzip nlohmann-json tinyxml2 spdlog sdl2_net opusfile libvorbis fluidsynth
 
 # or using clang
-pacman -S clang git cmake ninja lsb-release sdl2 libpng libzip nlohmann-json tinyxml2 spdlog sdl2_net opusfile libvorbis
+pacman -S clang git cmake ninja lsb-release sdl2 libpng libzip nlohmann-json tinyxml2 spdlog sdl2_net opusfile libvorbis fluidsynth
 ```
 #### Fedora
 ```sh
 # using gcc
-dnf install gcc gcc-c++ git cmake ninja-build lsb_release SDL2-devel SDL2_net-devel libpng-devel libzip-devel libzip-tools nlohmann-json-devel tinyxml2-devel spdlog-devel opusfile-devel libvorbis-devel
+dnf install gcc gcc-c++ git cmake ninja-build lsb_release SDL2-devel SDL2_net-devel libpng-devel libzip-devel libzip-tools nlohmann-json-devel tinyxml2-devel spdlog-devel opusfile-devel libvorbis-devel fluidsynth-devel
 
 # or using clang
-dnf install clang git cmake ninja-build lsb_release SDL2-devel SDL2_net-devel libpng-devel libzip-devel libzip-tools nlohmann-json-devel tinyxml2-devel spdlog-devel opusfile-devel libvorbis-devel
+dnf install clang git cmake ninja-build lsb_release SDL2-devel SDL2_net-devel libpng-devel libzip-devel libzip-tools nlohmann-json-devel tinyxml2-devel spdlog-devel opusfile-devel libvorbis-devel fluidsynth-devel
 ```
 #### Nix
 You can use a `flake.nix` file to instantly setup a development environment using [Nix](https://nixos.org/). Write this `flake.nix` file in the root directory:
@@ -171,6 +171,7 @@ You can use a `flake.nix` file to instantly setup a development environment usin
             libopus.dev
             opusfile
             opusfile.dev
+            fluidsynth
 
             # Runtime dependencies
             zenity
@@ -205,6 +206,7 @@ git submodule update --init
 # Add `-DCMAKE_BUILD_TYPE:STRING=Release` if you're packaging
 # Add `-DSUPPRESS_WARNINGS=0` to prevent suppression of warnings from LUS and decomp (src) files. set to 1 to re-enable suppression
 # Add `-DPython3_EXECUTABLE=$(which python3)` if you are using non-standard Python installations such as PyEnv
+# Add `-DENABLE_FLUIDSYNTH=OFF` to build without the FluidSynth synth backend (on by default; drops the fluidsynth dependency)
 cmake -H. -Bbuild-cmake -GNinja
 
 # Generate soh.o2r
@@ -242,7 +244,7 @@ cmake --build build-cmake --target ExtractAssetHeaders
 ```
 
 ## macOS
-Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis, fluid-synth` (can be installed via [homebrew](https://brew.sh/), macports, etc)
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
@@ -257,11 +259,12 @@ cd ShipWright
 git submodule update --init
 
 # Install development dependencies (assuming homebrew)
-brew install sdl2 sdl2_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis
+brew install sdl2 sdl2_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis fluid-synth
 
 # Generate Ninja project
 # Add `-DCMAKE_BUILD_TYPE:STRING=Release` if you're packaging
 # Add `-DSUPPRESS_WARNINGS=0` to prevent suppression of warnings from LUS and decomp (src) files. set to 1 to re-enable suppression
+# Add `-DENABLE_FLUIDSYNTH=OFF` to build without the FluidSynth synth backend (on by default; drops the fluidsynth dependency)
 cmake -H. -Bbuild-cmake -GNinja
 
 # Generate soh.o2r
@@ -311,13 +314,15 @@ cmake -H. -Bbuild-cmake -GNinja
 # Extract assets & generate OTR (run this anytime you need to regenerate OTR)
 cmake --build build-cmake --target ExtractAssets
 # Setup cmake project for building for Switch
-cmake -H. -Bbuild-switch -GNinja -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/Switch.cmake
+cmake -H. -Bbuild-switch -GNinja -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/Switch.cmake -DENABLE_FLUIDSYNTH=OFF
 # Build project and generate nro
 cmake --build build-switch --target soh_nro
 
 # Now you can run the executable in ./build-switch/soh/soh.nro
 # To develop the project open the repository in VSCode (or your preferred editor)
 ```
+
+_Note: FluidSynth is disabled above because devkitpro doesn't ship it. To use the synth backend, build a fluidsynth for the platform (e.g. [fluidsynth-lite](https://github.com/rsn8887/fluidsynth-lite)) and drop `-DENABLE_FLUIDSYNTH=OFF`._
 
 ## Wii U
 1. Requires that your build machine is setup with the tools necessary for your platform above
@@ -332,13 +337,15 @@ cmake -H. -Bbuild-cmake -GNinja
 # Extract assets & generate OTR (run this anytime you need to regenerate OTR)
 cmake --build build-cmake --target ExtractAssets
 # Setup cmake project for building for Wii U
-cmake -H. -Bbuild-wiiu -GNinja -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/WiiU.cmake # -DCMAKE_BUILD_TYPE:STRING=Release (if you're packaging)
+cmake -H. -Bbuild-wiiu -GNinja -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/WiiU.cmake -DENABLE_FLUIDSYNTH=OFF # -DCMAKE_BUILD_TYPE:STRING=Release (if you're packaging)
 # Build project and generate rpx
 cmake --build build-wiiu --target soh # --target soh_wuhb (for building .wuhb)
 
 # Now you can run the executable in ./build-wiiu/soh/soh.rpx or the Wii U Homebrew Bundle in ./build-wiiu/soh/soh.wuhb
 # To develop the project open the repository in VSCode (or your preferred editor)
 ```
+
+_Note: As with Switch, FluidSynth is disabled above (not shipped by devkitpro); drop `-DENABLE_FLUIDSYNTH=OFF` once you've built a fluidsynth for the platform._
 
 # Compatible Roms
 See [`supportedHashes.json`](supportedHashes.json)
