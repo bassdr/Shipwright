@@ -111,10 +111,11 @@ jobs:
         name: soh.o2r
         path: build-cmake/soh
     - name: Build FluidSynth
-      # The MacPorts fluidsynth port hard-depends on portaudio, which fails to build
-      # universal on the runner and which SoH does not use. Build FluidSynth from
-      # source instead, against MacPorts glib2, with the optional drivers off but
-      # libsndfile kept on (it is built with Ogg/Vorbis, required for SF3 SoundFonts).
+      # The MacPorts fluidsynth port hard-depends on portaudio and glib2, both of which
+      # fail their universal build on the runner (and portaudio is unused by SoH). Build
+      # FluidSynth from source with osal=cpp11 (drops the glib dependency entirely, using
+      # the C++ standard library instead) and the optional drivers off. libsndfile is kept
+      # on (built with Ogg/Vorbis, required for SF3 SoundFonts).
       run: |
         git clone --depth 1 --branch v2.5.5 https://github.com/FluidSynth/fluidsynth.git fluidsynth-src
         cmake -S fluidsynth-src -B fluidsynth-src/build -GNinja \
@@ -122,6 +123,7 @@ jobs:
           -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
           -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/fluidsynth-install" \
           -DBUILD_SHARED_LIBS=ON \
+          -Dosal=cpp11 \
           -Denable-framework=off \
           -Denable-libsndfile=on \
           -Denable-portaudio=off -Denable-readline=off \

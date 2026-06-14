@@ -21,12 +21,11 @@ ports:
     select: [ universal ]
   - name: libvorbis
     select: [ universal ]
-  # FluidSynth itself is built from source in the macOS job (see generate-builds.yml):
-  # the MacPorts fluidsynth port hard-depends on portaudio, which fails to build
-  # universal on the runner and which SoH does not use. glib2 is FluidSynth's only
-  # mandatory dependency; libsndfile (built with Ogg/Vorbis) is required to decode
-  # SF3 (Vorbis-compressed) SoundFonts.
-  - name: glib2
-    select: [ universal ]
+  # FluidSynth itself is built from source in the macOS job (see generate-builds.yml)
+  # with osal=cpp11, which drops its glib dependency. The MacPorts fluidsynth port
+  # would otherwise hard-depend on portaudio (fails to build universal, unused by SoH)
+  # and glib2 (also fails its universal build on the runner). libsndfile, built with
+  # Ogg/Vorbis, is the only remaining dependency; it is required to decode SF3
+  # (Vorbis-compressed) SoundFonts.
   - name: libsndfile
     select: [ universal ]
