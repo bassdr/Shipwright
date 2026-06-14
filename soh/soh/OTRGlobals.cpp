@@ -49,6 +49,7 @@
 #include "util.h"
 
 #include <fast/Fast3dGui.h>
+#include <fast/debug/GfxDebugger.h>
 
 #if not defined(__SWITCH__) && not defined(__WIIU__)
 #include "Extractor/Extract.h"
@@ -838,10 +839,13 @@ void OTRGlobals::Initialize() {
     context->InitAudio({ .SampleRate = 48000,
                          .SourceSampleRate = 32000,
                          .SampleLength = 1024,
-                         // 4096 frames at 32 kHz (~128 ms) is enough reservoir to ride out
-                         // frame jitter and slow-frame spikes without audible latency.
-                         // GetDesiredBuffered() rescales this to the output rate automatically.
+                         // 4096 frames at 32 kHz (~128 ms) gives enough reservoir for frame
+                         // jitter and slow-frame spikes without perceptible audio latency.
                          .DesiredBuffered = 4096 });
+
+    // The menu is set up before audio is initialized, so its list of available audio backends has to be
+    // populated here rather than in Menu::InitElement (where the window backends are handled).
+    SohGui::GetSohMenu()->UpdateAudioBackendObjects();
 
     SPDLOG_INFO("Starting Ship of Harkinian version {} (Branch: {} | Commit: {})", (char*)gBuildVersion,
                 (char*)gGitBranch, (char*)gGitCommitHash);
@@ -1048,13 +1052,13 @@ void OTRAudio_Thread() {
     //   the output rate, bypassing the resampler), soft-clips the sum,
     //   surround-decodes, and hands the result to the backend.
 
-    // Single producer routine shared by the wake-driven and pre-buffer loops.
-    // Takes the per-iteration sample count from the caller.
+    // Single producer routine used by both the wake-driven and pre-buffer
+    // loops. Captures the per-iteration sample count from the caller.
     auto produce_and_play = [&](u32 num_audio_samples) {
         const u32 total_frames = num_audio_samples * AUDIO_FRAMES_PER_UPDATE;
         const u32 total_samples = total_frames * NUM_AUDIO_CHANNELS;
 
-        // 3 is the maximum frame divisor.
+        // 3 is the maximum authentic frame divisor.
         static thread_local s16 native_s16[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
         static thread_local float native_f32[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
 
@@ -1078,21 +1082,20 @@ void OTRAudio_Thread() {
     // to silence, so we also wake on a short timeout to top up the reservoir.
     constexpr auto kSelfPumpInterval = std::chrono::milliseconds(5);
 
-    // AudioMgr_CreateNextAudioBuffer has no readiness guard, and the audio engine
-    // is only set up once the game reaches its render loop and first sets
-    // audio.processing. So the self-pump timeout stays disabled until that first
-    // gfx wake primes us; before then we wait indefinitely.
+    // The self-pump timeout must wait that the game has reached its render
+    // loop, to avoid accessing uninitialized variables.
     bool primed = false;
 
     while (audio.running) {
         {
             std::unique_lock<std::mutex> Lock(audio.mutex);
             if (!primed) {
-                // Pre-init: block until the first gfx wake drives a buffer; the
-                // engine is guaranteed ready by then.
+                // Pre-init: block until the gfx thread drives the first buffer
+                // (engine guaranteed ready by then), exactly as before.
                 while (!audio.processing && audio.running) {
                     audio.cv_to_thread.wait(Lock);
                 }
+                primed = true;
             } else if (!audio.processing && audio.running) {
                 // Primed: wait for the next gfx wake, but no longer than
                 // kSelfPumpInterval so a stalled gfx thread can't starve the
@@ -1102,12 +1105,6 @@ void OTRAudio_Thread() {
 
             if (!audio.running) {
                 break;
-            }
-
-            // A real gfx wake (processing set) means the engine is up; from
-            // here the self-pump path is safe.
-            if (audio.processing) {
-                primed = true;
             }
         }
 
@@ -1885,13 +1882,6 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
 
     last_fps = fps;
     last_update_rate = R_UPDATE_RATE;
-
-    {
-        std::unique_lock<std::mutex> Lock(audio.mutex);
-        while (audio.processing) {
-            audio.cv_from_thread.wait(Lock);
-        }
-    }
 
     bool curAltAssets = CVarGetInteger(CVAR_SETTING("AltAssets"), 1);
     if (prevAltAssets != curAltAssets) {
