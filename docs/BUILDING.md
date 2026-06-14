@@ -246,6 +246,8 @@ cmake --build build-cmake --target ExtractAssetHeaders
 ## macOS
 Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis, fluid-synth` (can be installed via [homebrew](https://brew.sh/), macports, etc)
 
+_The homebrew `fluid-synth` formula pulls in libsndfile with Ogg/Vorbis, so SF3 (compressed) SoundFonts work out of the box. FluidSynth is optional; disable it with `-DENABLE_FLUIDSYNTH=OFF`._
+
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
 _Note: If you're using Visual Studio Code, the [CMake Tools plugin](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools) makes it very easy to just press run and debug._
