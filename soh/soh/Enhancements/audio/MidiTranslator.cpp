@@ -1681,7 +1681,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     }
     // Helper for the route-decision counters below. Only counts on a fresh
     // NoteOn so per-frame continuation calls don't inflate the totals.
-    auto bumpRoute = [&](std::atomic<uint32_t> DebugSlot::* counter) {
+    auto bumpRoute = [&](std::atomic<uint32_t> DebugSlot::*counter) {
         if (wasIdleStart && BypassIndexValid(fontId, instOrWave))
             (mDebugStats[fontId][instOrWave].*counter).fetch_add(1, std::memory_order_relaxed);
     };
