@@ -101,7 +101,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     endif()
 
     vcpkg_bootstrap()
-    vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile fluidsynth)
+    # fluidsynth[sndfile] pulls libsndfile with Ogg/Vorbis, required to decode SF3 SoundFonts.
+    vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile fluidsynth[sndfile])
     if (CMAKE_C_COMPILER_LAUNCHER MATCHES "ccache|sccache")
         set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
     endif()

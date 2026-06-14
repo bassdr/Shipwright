@@ -110,9 +110,27 @@ jobs:
       with:
         name: soh.o2r
         path: build-cmake/soh
+    - name: Build FluidSynth
+      # The MacPorts fluidsynth port hard-depends on portaudio, which fails to build
+      # universal on the runner and which SoH does not use. Build FluidSynth from
+      # source instead, against MacPorts glib2, with the optional drivers off but
+      # libsndfile kept on (it is built with Ogg/Vorbis, required for SF3 SoundFonts).
+      run: |
+        git clone --depth 1 --branch v2.5.5 https://github.com/FluidSynth/fluidsynth.git fluidsynth-src
+        cmake -S fluidsynth-src -B fluidsynth-src/build -GNinja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+          -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/fluidsynth-install" \
+          -DBUILD_SHARED_LIBS=ON \
+          -Denable-framework=off \
+          -Denable-libsndfile=on \
+          -Denable-portaudio=off -Denable-readline=off \
+          -Denable-dbus=off -Denable-jack=off -Denable-sdl3=off -Denable-pulseaudio=off
+        cmake --build fluidsynth-src/build
+        cmake --install fluidsynth-src/build
     - name: Build SoH
       run: |
-        cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DBUILD_REMOTE_CONTROL=1
+        cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_PREFIX_PATH="${{ github.workspace }}/fluidsynth-install" -DBUILD_REMOTE_CONTROL=1
         cmake --build build-cmake -j
         (cd build-cmake && cpack)
 
