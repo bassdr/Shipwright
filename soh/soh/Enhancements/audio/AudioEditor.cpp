@@ -47,23 +47,23 @@ namespace {
 // FluidSynth's preset lookup walks loaded SF2s in reverse load order, so the last
 // enabled pack wins on (bank, program) collisions. SF3 is SF2 with Ogg/Vorbis-
 // compressed samples and loads transparently through the same path.
-constexpr const char* kSynthPackRoot          = "audio/synth";
-constexpr const char* kSynthPackSf2Name       = "soundfont.sf2";
+constexpr const char* kSynthPackRoot = "audio/synth";
+constexpr const char* kSynthPackSf2Name = "soundfont.sf2";
 // Archive glob matching either soundfont.sf2 or soundfont.sf3. Both names are
 // the same length, so the suffix-stripping below can keep using
 // kSynthPackSf2Name for the length math.
-constexpr const char* kSynthPackSfGlob        = "soundfont.sf[23]";
-constexpr const char* kSynthPackJsonName      = "mapping.json";
+constexpr const char* kSynthPackSfGlob = "soundfont.sf[23]";
+constexpr const char* kSynthPackJsonName = "mapping.json";
 constexpr const char* kLooseSynthPacksDirName = "synth-packs";
 
 struct SynthPackEntry {
     enum class Source { Archive, Loose };
-    std::string name;          // display name + key used in the disabled-set CSV
-    Source      source;
+    std::string name; // display name + key used in the disabled-set CSV
+    Source source;
     // Archive: virtual resource paths inside the archive.
     // Loose:   absolute filesystem paths.
     std::string sf2Path;
-    std::string mappingPath;   // empty if no mapping json is available
+    std::string mappingPath; // empty if no mapping json is available
 };
 
 // One row per (sfontId, bank, program) tuple across every loaded SF2.
@@ -72,10 +72,10 @@ struct SynthPackEntry {
 // phdr chunk via fluid_preset_get_name (FluidSynth side) so the UI shows
 // what the SF2 author called the preset, not just a numeric (bank, prog).
 struct LoadedPresetEntry {
-    int         sfontId;
+    int sfontId;
     std::string packName;
-    int         bank;
-    int         program;
+    int bank;
+    int program;
     std::string name;
 };
 static std::vector<LoadedPresetEntry> sLoadedPresets;
@@ -83,9 +83,9 @@ static std::vector<LoadedPresetEntry> sLoadedPresets;
 // Derived from sLoadedPresets — unique (sfontId, bank) tuples in load
 // order. Drives the Bank/Pack combo. Kept in step with sLoadedPresets.
 struct BankSelectorEntry {
-    int         sfontId;
+    int sfontId;
     std::string packName;
-    int         bank;
+    int bank;
 };
 static std::vector<BankSelectorEntry> sBankSelectors;
 
@@ -94,8 +94,7 @@ static std::vector<BankSelectorEntry> sBankSelectors;
 // toggles reset and re-overlay from disk, so unsaved work must not exist). Drag and
 // slider widgets save once per drag via IsItemDeactivatedAfterEdit(); clicks inline.
 void AutoSaveOverrides() {
-    auto path = Ship::Context::GetPathRelativeToAppDirectory(
-        "fluidsynth_overrides.json", appShortName);
+    auto path = Ship::Context::GetPathRelativeToAppDirectory("fluidsynth_overrides.json", appShortName);
     SOH::MidiTranslator::Instance().SaveOverridesToFile(path);
 }
 
@@ -119,7 +118,7 @@ static std::set<std::tuple<uint8_t, int16_t, uint8_t>> sExplicitMutedSlots;
 // time it opens, and sExportStatus carries the last write result so the
 // user can re-open and re-confirm without losing the path.
 static char sExportPackName[128] = "";
-static char sExportStatus[512]   = "";
+static char sExportStatus[512] = "";
 
 // Returns every pack the user could enable: archive-supplied first (alpha
 // sorted), then loose-folder SF2s (alpha sorted). Packs are not filtered
@@ -136,12 +135,13 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
         std::vector<SynthPackEntry> arc;
         arc.reserve(matches->size());
         for (const auto& path : *matches) {
-            if (path.size() <= prefixLen + suffixLen) continue;
+            if (path.size() <= prefixLen + suffixLen)
+                continue;
             std::string name = path.substr(prefixLen, path.size() - prefixLen - suffixLen);
             SynthPackEntry e;
-            e.name        = name;
-            e.source      = SynthPackEntry::Source::Archive;
-            e.sf2Path     = path;
+            e.name = name;
+            e.source = SynthPackEntry::Source::Archive;
+            e.sf2Path = path;
             e.mappingPath = std::string(kSynthPackRoot) + "/" + name + "/" + kSynthPackJsonName;
             arc.push_back(std::move(e));
         }
@@ -151,35 +151,36 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
         // ListFiles returns one entry per archive that contains the file,
         // and we only want one row in the UI.
         arc.erase(std::unique(arc.begin(), arc.end(),
-                              [](const SynthPackEntry& a, const SynthPackEntry& b) {
-                                  return a.name == b.name;
-                              }),
+                              [](const SynthPackEntry& a, const SynthPackEntry& b) { return a.name == b.name; }),
                   arc.end());
-        for (auto& e : arc) result.push_back(std::move(e));
+        for (auto& e : arc)
+            result.push_back(std::move(e));
     }
 
     // ── Loose folder ─────────────────────────────────────────────────
     // The folder is created lazily — its absence is the normal first-run
     // state and not an error. We never write to the folder; the user owns it.
-    std::string looseDirStr = Ship::Context::GetPathRelativeToAppDirectory(
-        kLooseSynthPacksDirName, appShortName);
+    std::string looseDirStr = Ship::Context::GetPathRelativeToAppDirectory(kLooseSynthPacksDirName, appShortName);
     std::filesystem::path looseDir(looseDirStr);
     std::error_code ec;
     if (std::filesystem::is_directory(looseDir, ec)) {
         std::vector<SynthPackEntry> loose;
         for (const auto& entry : std::filesystem::directory_iterator(looseDir, ec)) {
-            if (ec) break;
-            if (!entry.is_regular_file(ec)) continue;
+            if (ec)
+                break;
+            if (!entry.is_regular_file(ec))
+                continue;
             auto ext = entry.path().extension().string();
             // Case-insensitive .sf2/.sf3 match — Windows users often have .SF2 etc.
             std::string extLower = ext;
             std::transform(extLower.begin(), extLower.end(), extLower.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (extLower != ".sf2" && extLower != ".sf3") continue;
+            if (extLower != ".sf2" && extLower != ".sf3")
+                continue;
 
             SynthPackEntry e;
-            e.name    = entry.path().stem().string();
-            e.source  = SynthPackEntry::Source::Loose;
+            e.name = entry.path().stem().string();
+            e.source = SynthPackEntry::Source::Loose;
             e.sf2Path = entry.path().string();
             std::filesystem::path jsonPath = entry.path();
             jsonPath.replace_extension(".json");
@@ -190,7 +191,8 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
         }
         std::sort(loose.begin(), loose.end(),
                   [](const SynthPackEntry& a, const SynthPackEntry& b) { return a.name < b.name; });
-        for (auto& e : loose) result.push_back(std::move(e));
+        for (auto& e : loose)
+            result.push_back(std::move(e));
     }
 
     return result;
@@ -219,10 +221,11 @@ std::set<std::string> ParseDisabledPacksCSV() {
     size_t start = 0;
     while (start <= csv.size()) {
         size_t comma = csv.find(',', start);
-        std::string name = csv.substr(start, comma == std::string::npos ? std::string::npos
-                                                                        : comma - start);
-        if (!name.empty()) result.insert(std::move(name));
-        if (comma == std::string::npos) break;
+        std::string name = csv.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (!name.empty())
+            result.insert(std::move(name));
+        if (comma == std::string::npos)
+            break;
         start = comma + 1;
     }
     return result;
@@ -231,7 +234,8 @@ std::set<std::string> ParseDisabledPacksCSV() {
 void WriteDisabledPacksCSV(const std::set<std::string>& disabled) {
     std::string csv;
     for (const auto& n : disabled) {
-        if (!csv.empty()) csv += ",";
+        if (!csv.empty())
+            csv += ",";
         csv += n;
     }
     CVarSetString(CVAR_AUDIO("FluidSynthDisabledPacks"), csv.c_str());
@@ -243,8 +247,10 @@ bool IsPackDisabled(const std::string& name) {
 
 void SetPackDisabled(const std::string& name, bool disabled) {
     auto cur = ParseDisabledPacksCSV();
-    if (disabled) cur.insert(name);
-    else          cur.erase(name);
+    if (disabled)
+        cur.insert(name);
+    else
+        cur.erase(name);
     WriteDisabledPacksCSV(cur);
 }
 
@@ -256,7 +262,8 @@ void SetPackDisabled(const std::string& name, bool disabled) {
 std::vector<uint8_t> ReadPackFile(const SynthPackEntry& entry, bool wantSf2) {
     std::vector<uint8_t> bytes;
     const std::string& path = wantSf2 ? entry.sf2Path : entry.mappingPath;
-    if (path.empty()) return bytes;
+    if (path.empty())
+        return bytes;
 
     if (entry.source == SynthPackEntry::Source::Archive) {
         auto archives = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
@@ -265,18 +272,21 @@ std::vector<uint8_t> ReadPackFile(const SynthPackEntry& entry, bool wantSf2) {
             return bytes;
         }
         const uint8_t* data = reinterpret_cast<const uint8_t*>(file->Buffer->data()) + file->BufferOffset;
-        const size_t   size = file->Buffer->size() - file->BufferOffset;
+        const size_t size = file->Buffer->size() - file->BufferOffset;
         bytes.assign(data, data + size);
     } else {
         std::ifstream in(path, std::ios::binary);
-        if (!in.is_open()) return bytes;
+        if (!in.is_open())
+            return bytes;
         in.seekg(0, std::ios::end);
         std::streamoff len = in.tellg();
-        if (len <= 0) return bytes;
+        if (len <= 0)
+            return bytes;
         in.seekg(0, std::ios::beg);
         bytes.resize(static_cast<size_t>(len));
         in.read(reinterpret_cast<char*>(bytes.data()), len);
-        if (!in) bytes.clear();
+        if (!in)
+            bytes.clear();
     }
     return bytes;
 }
@@ -291,7 +301,8 @@ std::vector<SynthPackEntry> EnabledPacksInOrder() {
     std::vector<SynthPackEntry> out;
     out.reserve(all.size());
     for (auto& e : all) {
-        if (!disabled.count(PackKey(e))) out.push_back(std::move(e));
+        if (!disabled.count(PackKey(e)))
+            out.push_back(std::move(e));
     }
     return out;
 }
@@ -312,12 +323,15 @@ bool ExportPackO2r(const std::string& packName, std::string& outMsg) {
     // 1. Locate the source soundfont for this pack (the .sf2/.sf3 the entries
     //    were authored against) and read its bytes.
     std::vector<uint8_t> sfBytes;
-    std::string          sfExt = ".sf2";
+    std::string sfExt = ".sf2";
     {
         const auto all = EnumerateSynthPacks();
         const SynthPackEntry* match = nullptr;
         for (const auto& e : all) {
-            if (e.name == packName) { match = &e; break; }
+            if (e.name == packName) {
+                match = &e;
+                break;
+            }
         }
         if (!match) {
             outMsg = "No discovered pack named '" + packName +
@@ -334,17 +348,16 @@ bool ExportPackO2r(const std::string& packName, std::string& outMsg) {
             std::string ext = match->sf2Path.substr(dot);
             std::transform(ext.begin(), ext.end(), ext.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (ext == ".sf2" || ext == ".sf3") sfExt = ext;
+            if (ext == ".sf2" || ext == ".sf3")
+                sfExt = ext;
         }
     }
 
     // 2. Build the mapping.json in memory.
     int nEntries = 0;
-    std::string mappingJson =
-        SOH::MidiTranslator::Instance().BuildPackMappingJson(packName, nEntries);
+    std::string mappingJson = SOH::MidiTranslator::Instance().BuildPackMappingJson(packName, nEntries);
     if (nEntries <= 0) {
-        outMsg = "No exportable entries for '" + packName +
-                 "'. Pick presets for it (enabled + selected) first.";
+        outMsg = "No exportable entries for '" + packName + "'. Pick presets for it (enabled + selected) first.";
         return false;
     }
 
@@ -363,8 +376,8 @@ bool ExportPackO2r(const std::string& packName, std::string& outMsg) {
     }
     const std::string base = std::string("audio/synth/") + packName + "/";
     std::vector<uint8_t> jsonBytes(mappingJson.begin(), mappingJson.end());
-    bool ok = archive->WriteFile(base + "mapping.json", jsonBytes) &&
-              archive->WriteFile(base + "soundfont" + sfExt, sfBytes);
+    bool ok =
+        archive->WriteFile(base + "mapping.json", jsonBytes) && archive->WriteFile(base + "soundfont" + sfExt, sfBytes);
     archive->Close();
     if (!ok) {
         outMsg = "Failed writing into " + o2rPath + " (see log).";
@@ -414,9 +427,11 @@ void ApplyBaselineOnly(const std::vector<SynthPackEntry>& packs) {
     SOH::MidiTranslator::Instance().ResetAllOverrides();
 
     for (const auto& pack : packs) {
-        if (pack.mappingPath.empty()) continue; // SF2-only pack is valid
+        if (pack.mappingPath.empty())
+            continue; // SF2-only pack is valid
         auto bytes = ReadPackFile(pack, /*wantSf2=*/false);
-        if (bytes.empty()) continue;
+        if (bytes.empty())
+            continue;
         std::string json(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         // pack.name is the authoritative owner (loose stem / archive folder),
         // so the mapping.json doesn't need a per-entry "pack" and a renamed
@@ -464,8 +479,8 @@ void ResetToPackBaseline() {
 // reconcile paths, read by the tab UI. Plain-string status keeps the
 // state model trivial; isError just toggles the colour.
 struct PipelineStatus {
-    std::string              message;
-    bool                     isError = false;
+    std::string message;
+    bool isError = false;
     // Per-pack skip reasons ("<name>: <reason>"). A pack that fails to load
     // for any reason is skipped (the others still load); each skip is recorded
     // here and rendered amber under the main status line so a partial failure
@@ -503,9 +518,8 @@ static float ComputeSynthGlobalGain(SOH::SynthMode mode) {
     constexpr float kGainCalAuthentic = 0.55f;
     constexpr float kGainCalEnhanced = 1.107f;
     const bool enhanced = (mode == SOH::SynthMode::Enhanced);
-    const float rel = CVarGetFloat(enhanced ? CVAR_AUDIO("FluidSynthGainEnhanced")
-                                            : CVAR_AUDIO("FluidSynthGainAuthentic"),
-                                   1.0f);
+    const float rel =
+        CVarGetFloat(enhanced ? CVAR_AUDIO("FluidSynthGainEnhanced") : CVAR_AUDIO("FluidSynthGainAuthentic"), 1.0f);
     return rel * (enhanced ? kGainCalEnhanced : kGainCalAuthentic);
 }
 
@@ -568,7 +582,8 @@ bool ApplyFluidSynthFromCVars() {
     {
         std::string orderLog;
         for (const auto& p : packs) {
-            if (!orderLog.empty()) orderLog += " -> ";
+            if (!orderLog.empty())
+                orderLog += " -> ";
             orderLog += p.name;
         }
         SPDLOG_INFO("[AudioEditor] FluidSynth: pack load order (last wins): {}", orderLog);
@@ -605,8 +620,8 @@ bool ApplyFluidSynthFromCVars() {
     // Stack every enabled pack's SF2 in discovery order. FluidSynth walks
     // loaded sfonts in reverse on preset lookup, so the LAST loaded pack
     // wins on (bank, program) collisions — matches the mod stack precedence.
-    size_t      totalBytes  = 0;
-    size_t      loadedPacks = 0;
+    size_t totalBytes = 0;
+    size_t loadedPacks = 0;
     // One "<name>: <reason>" entry per pack we couldn't load. Loading is
     // best-effort: any pack that fails is skipped and the rest still load.
     std::vector<std::string> skipped;
@@ -633,8 +648,8 @@ bool ApplyFluidSynthFromCVars() {
         idToPackName[id] = pack.name;
         totalBytes += bytes.size();
         loadedPacks++;
-        SPDLOG_INFO("[AudioEditor] FluidSynth: loaded soundfont from pack '{}' ({} bytes, id={})",
-                    pack.name, bytes.size(), id);
+        SPDLOG_INFO("[AudioEditor] FluidSynth: loaded soundfont from pack '{}' ({} bytes, id={})", pack.name,
+                    bytes.size(), id);
     }
 
     if (loadedPacks == 0) {
@@ -654,12 +669,12 @@ bool ApplyFluidSynthFromCVars() {
         sLoadedPresets.reserve(raw.size());
         for (auto& r : raw) {
             LoadedPresetEntry e;
-            e.sfontId  = r.sfontId;
-            auto it    = idToPackName.find(r.sfontId);
+            e.sfontId = r.sfontId;
+            auto it = idToPackName.find(r.sfontId);
             e.packName = (it != idToPackName.end()) ? it->second : "(unknown)";
-            e.bank     = r.bank;
-            e.program  = r.program;
-            e.name     = std::move(r.name);
+            e.bank = r.bank;
+            e.program = r.program;
+            e.name = std::move(r.name);
             sLoadedPresets.push_back(std::move(e));
         }
         // Unique (sfontId, bank) tuples preserving the load-order of sfonts.
@@ -669,23 +684,26 @@ bool ApplyFluidSynthFromCVars() {
         for (const auto& p : sLoadedPresets) {
             bool exists = false;
             for (const auto& b : sBankSelectors) {
-                if (b.sfontId == p.sfontId && b.bank == p.bank) { exists = true; break; }
+                if (b.sfontId == p.sfontId && b.bank == p.bank) {
+                    exists = true;
+                    break;
+                }
             }
             if (!exists) {
                 sBankSelectors.push_back({ p.sfontId, p.packName, p.bank });
             }
         }
-        SPDLOG_INFO("[AudioEditor] FluidSynth: {} presets across {} (sfont, bank) groups",
-                    sLoadedPresets.size(), sBankSelectors.size());
+        SPDLOG_INFO("[AudioEditor] FluidSynth: {} presets across {} (sfont, bank) groups", sLoadedPresets.size(),
+                    sBankSelectors.size());
     }
 
     // Refresh entry resolution against the new SF2 stack. Both inputs
     // (entry sfontIds and the pack load order) changed here.
     RefreshEntryResolution(packs);
 
-    SetStatus(std::to_string(loadedPacks) + " pack" + (loadedPacks == 1 ? "" : "s") +
-              " loaded (" + std::to_string(totalBytes / (1024 * 1024)) + " MiB total, " +
-              std::to_string(sLoadedPresets.size()) + " presets).");
+    SetStatus(std::to_string(loadedPacks) + " pack" + (loadedPacks == 1 ? "" : "s") + " loaded (" +
+              std::to_string(totalBytes / (1024 * 1024)) + " MiB total, " + std::to_string(sLoadedPresets.size()) +
+              " presets).");
     // Some packs loaded, but not all -- surface the skipped ones too so a
     // partial failure isn't silent on screen.
     SetStatusWarnings(skipped);
@@ -1388,8 +1406,7 @@ void AudioEditor::DrawElement() {
                 // on, a dedicated FluidSynth tab exposes pack selection and overrides.
                 // CVar transitions are picked up by ReconcileModernAudioPipelineIfChanged
                 // at the top of DrawElement, so a toggle here takes effect on any tab.
-                SohGui::mSohMenu->MenuDrawItem(fluidSynthEnabled,
-                                               ImGui::GetContentRegionAvail().x, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(fluidSynthEnabled, ImGui::GetContentRegionAvail().x, THEME_COLOR);
 
                 // (FluidSynth pack selection, mode/volume, and the
                 // per-instrument override table live in the dedicated
@@ -1418,10 +1435,9 @@ void AudioEditor::DrawElement() {
                     // menu / docs don't have to flip back to Audio Options to
                     // enable it. The CVar transition is picked up by the
                     // top-of-DrawElement reconcile on the next frame.
-                    ImGui::TextWrapped(
-                        "The Modern audio pipeline is required to use FluidSynth. "
-                        "Enable it to load a synth pack and route engine instruments "
-                        "through it.");
+                    ImGui::TextWrapped("The Modern audio pipeline is required to use FluidSynth. "
+                                       "Enable it to load a synth pack and route engine instruments "
+                                       "through it.");
                     ImGui::Spacing();
                     if (ImGui::Button("Enable Modern Pipeline", ImVec2(220, 0))) {
                         CVarSetInteger(CVAR_AUDIO("ModernAudioPipeline"), 1);
@@ -1435,8 +1451,7 @@ void AudioEditor::DrawElement() {
                     if (!sLastStatus.message.empty()) {
                         const ImVec4 green(0.40f, 0.85f, 0.45f, 1.0f);
                         const ImVec4 red(0.95f, 0.45f, 0.45f, 1.0f);
-                        ImGui::TextColored(sLastStatus.isError ? red : green, "%s",
-                                           sLastStatus.message.c_str());
+                        ImGui::TextColored(sLastStatus.isError ? red : green, "%s", sLastStatus.message.c_str());
                     }
                     // Per-pack skip reasons from the last apply -- amber, one
                     // line each, wrapped so long reasons stay readable.
@@ -1471,28 +1486,26 @@ void AudioEditor::DrawElement() {
                     auto disabledSet = ParseDisabledPacksCSV();
                     int enabledCount = 0;
                     for (const auto& e : packs) {
-                        if (!disabledSet.count(PackKey(e))) enabledCount++;
+                        if (!disabledSet.count(PackKey(e)))
+                            enabledCount++;
                     }
 
-                    ImGui::Text("Synth packs (%d enabled / %d discovered)",
-                                enabledCount, (int)packs.size());
+                    ImGui::Text("Synth packs (%d enabled / %d discovered)", enabledCount, (int)packs.size());
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Rescan##fluidsynthPacks")) {
                         packs = EnumerateSynthPacks();
                     }
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip(
-                            "Re-enumerate audio/synth/* across mounted .o2r archives\n"
-                            "and <config-dir>/synth-packs/*.sf2 / *.sf3. Use after\n"
-                            "dropping a new SF2/SF3 or mod without restarting.");
+                        ImGui::SetTooltip("Re-enumerate audio/synth/* across mounted .o2r archives\n"
+                                          "and <config-dir>/synth-packs/*.sf2 / *.sf3. Use after\n"
+                                          "dropping a new SF2/SF3 or mod without restarting.");
                     }
 
                     if (packs.empty()) {
-                        ImGui::TextDisabled(
-                            "No synth packs discovered.\n"
-                            "Drop an SF2/SF3 into <config-dir>/synth-packs/ (optionally\n"
-                            "with a sibling .json mapping) or install a mod that\n"
-                            "ships audio/synth/<pack>/soundfont.sf2 (or .sf3).");
+                        ImGui::TextDisabled("No synth packs discovered.\n"
+                                            "Drop an SF2/SF3 into <config-dir>/synth-packs/ (optionally\n"
+                                            "with a sibling .json mapping) or install a mod that\n"
+                                            "ships audio/synth/<pack>/soundfont.sf2 (or .sf3).");
                     } else {
                         // Bordered child so the list reads as a unit when
                         // many packs are discovered. Height clamps to a
@@ -1500,23 +1513,22 @@ void AudioEditor::DrawElement() {
                         // visible; users can scroll inside.
                         const float rowH = ImGui::GetTextLineHeightWithSpacing();
                         float listH = rowH * (float)std::min<int>(packs.size(), 10) + 12.0f;
-                        if (ImGui::BeginChild("##synthPackList",
-                                              ImVec2(420.0f, listH),
-                                              ImGuiChildFlags_Border)) {
+                        if (ImGui::BeginChild("##synthPackList", ImVec2(420.0f, listH), ImGuiChildFlags_Border)) {
                             for (size_t i = 0; i < packs.size(); i++) {
                                 const auto& e = packs[i];
                                 bool enabled = !disabledSet.count(PackKey(e));
                                 ImGui::PushID((int)i);
                                 if (ImGui::Checkbox("##packCheck", &enabled)) {
                                     SetPackDisabled(PackKey(e), !enabled);
-                                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()
+                                    Ship::Context::GetRawInstance()
+                                        ->GetWindow()
+                                        ->GetGui()
                                         ->SaveConsoleVariablesNextFrame();
                                     ReapplyOverrideChain();
                                     ApplyFluidSynthFromCVars();
                                 }
                                 ImGui::SameLine();
-                                const char* badge =
-                                    (e.source == SynthPackEntry::Source::Archive) ? "[mod]" : "[loose]";
+                                const char* badge = (e.source == SynthPackEntry::Source::Archive) ? "[mod]" : "[loose]";
                                 ImGui::TextDisabled("%-7s", badge);
                                 ImGui::SameLine();
                                 ImGui::TextUnformatted(e.name.c_str());
@@ -1524,17 +1536,15 @@ void AudioEditor::DrawElement() {
                                     if (e.mappingPath.empty()) {
                                         ImGui::SetTooltip("%s\n(soundfont only - no mapping.json)", e.sf2Path.c_str());
                                     } else {
-                                        ImGui::SetTooltip("%s\nmapping: %s",
-                                                          e.sf2Path.c_str(), e.mappingPath.c_str());
+                                        ImGui::SetTooltip("%s\nmapping: %s", e.sf2Path.c_str(), e.mappingPath.c_str());
                                     }
                                 }
                                 ImGui::PopID();
                             }
                         }
                         ImGui::EndChild();
-                        ImGui::TextDisabled(
-                            "Order = discovery order (mods first, then synth-packs/).\n"
-                            "Later packs win on (bank, program) collisions.");
+                        ImGui::TextDisabled("Order = discovery order (mods first, then synth-packs/).\n"
+                                            "Later packs win on (bank, program) collisions.");
                     }
 
                     if (enabledCount == 0) {
@@ -1544,9 +1554,8 @@ void AudioEditor::DrawElement() {
                         // bypass table) are still relevant only when at
                         // least one pack is active.
                         ImGui::Spacing();
-                        ImGui::TextDisabled(
-                            "No synth packs enabled. The Modern audio pipeline is\n"
-                            "active on its own (no instrument timbre change).");
+                        ImGui::TextDisabled("No synth packs enabled. The Modern audio pipeline is\n"
+                                            "active on its own (no instrument timbre change).");
                     } else {
                         ImGui::Separator();
 
@@ -1555,9 +1564,9 @@ void AudioEditor::DrawElement() {
                         // active, so editing volume targets that mode's trim.
                         {
                             int gmode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
-                            SohGui::mSohMenu->MenuDrawItem(
-                                gmode == 1 ? fluidSynthGainEnhanced : fluidSynthGainAuthentic,
-                                ImGui::GetContentRegionAvail().x, THEME_COLOR);
+                            SohGui::mSohMenu->MenuDrawItem(gmode == 1 ? fluidSynthGainEnhanced
+                                                                      : fluidSynthGainAuthentic,
+                                                           ImGui::GetContentRegionAvail().x, THEME_COLOR);
                             // Push live so dragging the slider updates loudness immediately
                             // (the translator no longer reads the CVar on the audio path).
                             SOH::MidiTranslator::Instance().SetGlobalGain(
@@ -1573,10 +1582,9 @@ void AudioEditor::DrawElement() {
                                 Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                             }
                             if (ImGui::IsItemHovered()) {
-                                ImGui::SetTooltip(
-                                    "Console-style volume curve + console-era reverb.\n"
-                                    "Translator fixes NoteOn velocity at 100 and routes the\n"
-                                    "sqrt(velocity)-shaped value through CC11.");
+                                ImGui::SetTooltip("Console-style volume curve + console-era reverb.\n"
+                                                  "Translator fixes NoteOn velocity at 100 and routes the\n"
+                                                  "sqrt(velocity)-shaped value through CC11.");
                             }
                             ImGui::SameLine();
                             if (ImGui::RadioButton("Enhanced##synthMode", mode == 1)) {
@@ -1584,12 +1592,11 @@ void AudioEditor::DrawElement() {
                                 Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                             }
                             if (ImGui::IsItemHovered()) {
-                                ImGui::SetTooltip(
-                                    "Stock SF2 default modulators + subtle reverb.\n"
-                                    "Translator sends the sqrt(velocity)-shaped value as\n"
-                                    "NoteOn velocity so the SF2's own concave attenuation\n"
-                                    "modulator shapes dynamics. Good with musically-curated\n"
-                                    "banks (MuseScore, SC-55, orchestral packs).");
+                                ImGui::SetTooltip("Stock SF2 default modulators + subtle reverb.\n"
+                                                  "Translator sends the sqrt(velocity)-shaped value as\n"
+                                                  "NoteOn velocity so the SF2's own concave attenuation\n"
+                                                  "modulator shapes dynamics. Good with musically-curated\n"
+                                                  "banks (MuseScore, SC-55, orchestral packs).");
                             }
 
                             int nowMode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
@@ -1611,24 +1618,25 @@ void AudioEditor::DrawElement() {
                         {
                             auto activeSynth = Ship::MidiSynthManager::Instance().GetActiveSynth();
                             uint32_t voiceActive = activeSynth ? activeSynth->GetActiveVoiceCount() : 0u;
-                            uint32_t voiceLimit  = activeSynth ? activeSynth->GetPolyphonyLimit()  : 0u;
+                            uint32_t voiceLimit = activeSynth ? activeSynth->GetPolyphonyLimit() : 0u;
                             float ratio = voiceLimit > 0 ? float(voiceActive) / float(voiceLimit) : 0.0f;
                             ImVec4 colour(0.70f, 0.70f, 0.70f, 1.0f); // disabled grey baseline
-                            if (ratio >= 0.80f)      colour = ImVec4(1.00f, 0.40f, 0.40f, 1.0f); // red
-                            else if (ratio >= 0.60f) colour = ImVec4(1.00f, 0.85f, 0.30f, 1.0f); // amber
+                            if (ratio >= 0.80f)
+                                colour = ImVec4(1.00f, 0.40f, 0.40f, 1.0f); // red
+                            else if (ratio >= 0.60f)
+                                colour = ImVec4(1.00f, 0.85f, 0.30f, 1.0f); // amber
                             if (voiceLimit > 0) {
-                                ImGui::TextColored(colour, "FluidSynth voices: %u / %u",
-                                                   (unsigned)voiceActive, (unsigned)voiceLimit);
+                                ImGui::TextColored(colour, "FluidSynth voices: %u / %u", (unsigned)voiceActive,
+                                                   (unsigned)voiceLimit);
                             } else {
                                 ImGui::TextDisabled("FluidSynth voices: -");
                             }
                             if (ImGui::IsItemHovered()) {
-                                ImGui::SetTooltip(
-                                    "Active voices held by FluidSynth out of its polyphony\n"
-                                    "limit (default 256). When this approaches the limit,\n"
-                                    "new NoteOns steal old voices and dense passages cut.\n"
-                                    "If 'cuts' line up with values well below the limit,\n"
-                                    "the bottleneck is audio-thread CPU, not voices.");
+                                ImGui::SetTooltip("Active voices held by FluidSynth out of its polyphony\n"
+                                                  "limit (default 256). When this approaches the limit,\n"
+                                                  "new NoteOns steal old voices and dense passages cut.\n"
+                                                  "If 'cuts' line up with values well below the limit,\n"
+                                                  "the bottleneck is audio-thread CPU, not voices.");
                             }
 
                             // ── Channel pool readout ─────────────────────────
@@ -1638,18 +1646,17 @@ void AudioEditor::DrawElement() {
                             // "reclaims" just counts how often a quiet pair handed
                             // its channel to a new one.
                             {
-                                uint32_t chUsed     = SOH::MidiTranslator::Instance().GetChannelsInUse();
-                                uint32_t chMax      = SOH::MidiTranslator::kMaxMidiChannels;
+                                uint32_t chUsed = SOH::MidiTranslator::Instance().GetChannelsInUse();
+                                uint32_t chMax = SOH::MidiTranslator::kMaxMidiChannels;
                                 uint32_t chReclaims = SOH::MidiTranslator::Instance().GetChannelReclaims();
-                                ImGui::TextDisabled("Synth channels: %u / %u  (reclaims: %u)",
-                                                    (unsigned)chUsed, (unsigned)chMax, (unsigned)chReclaims);
+                                ImGui::TextDisabled("Synth channels: %u / %u  (reclaims: %u)", (unsigned)chUsed,
+                                                    (unsigned)chMax, (unsigned)chReclaims);
                                 if (ImGui::IsItemHovered()) {
-                                    ImGui::SetTooltip(
-                                        "MIDI channels held by synth-routed instrument pairs\n"
-                                        "out of the 64-channel pool. At the cap, the pool\n"
-                                        "recycles the channel of a pair that has gone quiet\n"
-                                        "for the new pair; 'reclaims' counts how often that\n"
-                                        "happened. Sitting at 64 is normal on a long session.");
+                                    ImGui::SetTooltip("MIDI channels held by synth-routed instrument pairs\n"
+                                                      "out of the 64-channel pool. At the cap, the pool\n"
+                                                      "recycles the channel of a pair that has gone quiet\n"
+                                                      "for the new pair; 'reclaims' counts how often that\n"
+                                                      "happened. Sitting at 64 is normal on a long session.");
                                 }
                             }
                             // Throttled log so we can correlate user-reported cuts
@@ -1658,8 +1665,8 @@ void AudioEditor::DrawElement() {
                             static double sLastVoiceWarnTime = -10.0;
                             const double now = ImGui::GetTime();
                             if (voiceLimit > 0 && ratio >= 0.80f && (now - sLastVoiceWarnTime) > 1.0) {
-                                SPDLOG_WARN("[FluidSynth] high voice usage: {} / {} ({:.0f}%)",
-                                            voiceActive, voiceLimit, ratio * 100.0);
+                                SPDLOG_WARN("[FluidSynth] high voice usage: {} / {} ({:.0f}%)", voiceActive, voiceLimit,
+                                            ratio * 100.0);
                                 sLastVoiceWarnTime = now;
                             }
                         }
@@ -1682,11 +1689,10 @@ void AudioEditor::DrawElement() {
                             AutoSaveOverrides();
                         }
                         if (ImGui::IsItemHovered()) {
-                            ImGui::SetTooltip(
-                                "Drop every personal override and restore the active pack's\n"
-                                "defaults (Mode, Gain, Trans, Preset, effects). Discovered\n"
-                                "list is left alone. The change is persisted to disk\n"
-                                "automatically.");
+                            ImGui::SetTooltip("Drop every personal override and restore the active pack's\n"
+                                              "defaults (Mode, Gain, Trans, Preset, effects). Discovered\n"
+                                              "list is left alone. The change is persisted to disk\n"
+                                              "automatically.");
                         }
                         ImGui::SameLine();
                         if (ImGui::SmallButton("Export pack...##bypassExport")) {
@@ -1705,7 +1711,10 @@ void AudioEditor::DrawElement() {
                             std::string best;
                             int bestN = 0;
                             for (const auto& kv : tally) {
-                                if (kv.second > bestN) { best = kv.first; bestN = kv.second; }
+                                if (kv.second > bestN) {
+                                    best = kv.first;
+                                    bestN = kv.second;
+                                }
                             }
                             std::strncpy(sExportPackName, best.c_str(), sizeof(sExportPackName) - 1);
                             sExportPackName[sizeof(sExportPackName) - 1] = '\0';
@@ -1713,35 +1722,30 @@ void AudioEditor::DrawElement() {
                             ImGui::OpenPopup("Export pack mapping");
                         }
                         if (ImGui::IsItemHovered()) {
-                            ImGui::SetTooltip(
-                                "Publish the pairs you picked for one pack. Only entries\n"
-                                "currently enabled AND selected for the named pack are\n"
-                                "exported; runtime fields (enabled/selected/sfontId) are\n"
-                                "stripped. The pack name is written once in a 'pack_name'\n"
-                                "header, not on every entry.\n\n"
-                                "Two outputs:\n"
-                                "  .o2r     - soundfont + mapping zipped into mods/<pack>.o2r\n"
-                                "             (the shareable mod; loads on next launch).\n"
-                                "  JSON only - mapping to synth-packs/<pack>.json, beside\n"
-                                "             your loose soundfont (picked up on Rescan).");
+                            ImGui::SetTooltip("Publish the pairs you picked for one pack. Only entries\n"
+                                              "currently enabled AND selected for the named pack are\n"
+                                              "exported; runtime fields (enabled/selected/sfontId) are\n"
+                                              "stripped. The pack name is written once in a 'pack_name'\n"
+                                              "header, not on every entry.\n\n"
+                                              "Two outputs:\n"
+                                              "  .o2r     - soundfont + mapping zipped into mods/<pack>.o2r\n"
+                                              "             (the shareable mod; loads on next launch).\n"
+                                              "  JSON only - mapping to synth-packs/<pack>.json, beside\n"
+                                              "             your loose soundfont (picked up on Rescan).");
                         }
                         // Export popup: pack-name input + entry-count preview + Export.
                         ImVec2 popupCenter = ImGui::GetMainViewport()->GetCenter();
                         ImGui::SetNextWindowPos(popupCenter, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-                        if (ImGui::BeginPopupModal("Export pack mapping", nullptr,
-                                                   ImGuiWindowFlags_AlwaysAutoResize)) {
-                            ImGui::TextWrapped(
-                                "Publishes only entries that are currently enabled AND\n"
-                                "selected for the named pack. The pack name (below) must\n"
-                                "match the soundfont's name so the two stay paired.");
+                        if (ImGui::BeginPopupModal("Export pack mapping", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::TextWrapped("Publishes only entries that are currently enabled AND\n"
+                                               "selected for the named pack. The pack name (below) must\n"
+                                               "match the soundfont's name so the two stay paired.");
                             ImGui::Separator();
 
                             ImGui::SetNextItemWidth(280.0f);
-                            ImGui::InputText("Pack name##exportPackName",
-                                             sExportPackName, sizeof(sExportPackName));
+                            ImGui::InputText("Pack name##exportPackName", sExportPackName, sizeof(sExportPackName));
                             std::string filter = sExportPackName;
-                            int previewN =
-                                SOH::MidiTranslator::Instance().CountExportableEntries(filter);
+                            int previewN = SOH::MidiTranslator::Instance().CountExportableEntries(filter);
                             ImGui::Text("Entries to export: %d", previewN);
 
                             bool canExport = previewN > 0 && !filter.empty();
@@ -1770,8 +1774,8 @@ void AudioEditor::DrawElement() {
                                     std::snprintf(sExportStatus, sizeof(sExportStatus),
                                                   "Export FAILED. See log for details.");
                                 } else {
-                                    std::snprintf(sExportStatus, sizeof(sExportStatus),
-                                                  "Wrote %d entries to:\n%s", n, dest.c_str());
+                                    std::snprintf(sExportStatus, sizeof(sExportStatus), "Wrote %d entries to:\n%s", n,
+                                                  dest.c_str());
                                 }
                             }
                             if (ImGui::IsItemHovered()) {
@@ -1793,8 +1797,10 @@ void AudioEditor::DrawElement() {
                         }
                         const float viewportH = ImGui::GetMainViewport()->Size.y;
                         float bypassTableHeight = viewportH * 0.65f;
-                        if (bypassTableHeight < 400.0f) bypassTableHeight = 400.0f;
-                        if (bypassTableHeight > 900.0f) bypassTableHeight = 900.0f;
+                        if (bypassTableHeight < 400.0f)
+                            bypassTableHeight = 400.0f;
+                        if (bypassTableHeight > 900.0f)
+                            bypassTableHeight = 900.0f;
                         // Column-id helper. Postincrement each named slot so
                         // adding/removing columns shifts the rest automatically. The
                         // saved variables (modeCol, presetCol, ...) are the only IDs
@@ -1802,18 +1808,18 @@ void AudioEditor::DrawElement() {
                         // edit here, not a hunt-and-replace.
                         uint8_t col = 0;
                         const uint8_t overrideCol = col++;
-                        const uint8_t songCol     = col++;
-                        const uint8_t sampleCol   = col++;
-                        const uint8_t instCol     = col++;
-                        const uint8_t modeCol     = col++;
-                        const uint8_t gainCol     = col++;
-                        const uint8_t shiftCol    = col++;
-                        const uint8_t presetCol   = col++;
+                        const uint8_t songCol = col++;
+                        const uint8_t sampleCol = col++;
+                        const uint8_t instCol = col++;
+                        const uint8_t modeCol = col++;
+                        const uint8_t gainCol = col++;
+                        const uint8_t shiftCol = col++;
+                        const uint8_t presetCol = col++;
                         // Adv: per-entry advanced popup (Reverb/Chorus/Cutoff/Q). Font and
                         // Source columns were folded into the Song / Preset tooltips; the four
                         // effect columns were folded into this one popup.
-                        const uint8_t advCol      = col++;
-                        const uint8_t kColCount   = col;
+                        const uint8_t advCol = col++;
+                        const uint8_t kColCount = col;
 
                         if (ImGui::BeginTable("##bypassTable", kColCount,
                                               ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
@@ -1829,18 +1835,18 @@ void AudioEditor::DrawElement() {
                             // wants the song-family label readable at a glance, while the
                             // Sample column's editable rename mostly sits idle and only
                             // expands when typed into.
-                            ImGui::TableSetupColumn("Song",     ImGuiTableColumnFlags_WidthStretch, 1.6f);
-                            ImGui::TableSetupColumn("Sample",   ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                            ImGui::TableSetupColumn("Inst",     ImGuiTableColumnFlags_WidthFixed, 96.0f);
-                            ImGui::TableSetupColumn("Mode",     ImGuiTableColumnFlags_WidthFixed, 150.0f);
-                            ImGui::TableSetupColumn("Gain",     ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                            ImGui::TableSetupColumn("Song", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+                            ImGui::TableSetupColumn("Sample", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("Inst", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                            ImGui::TableSetupColumn("Mode", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+                            ImGui::TableSetupColumn("Gain", ImGuiTableColumnFlags_WidthFixed, 130.0f);
                             ImGui::TableSetupColumn(transSemis ? "Shift (st)" : "Shift (oct)",
-                                                                ImGuiTableColumnFlags_WidthFixed, 85.0f);
-                            ImGui::TableSetupColumn("Preset",   ImGuiTableColumnFlags_WidthFixed, 280.0f);
+                                                    ImGuiTableColumnFlags_WidthFixed, 85.0f);
+                            ImGui::TableSetupColumn("Preset", ImGuiTableColumnFlags_WidthFixed, 280.0f);
                             // Adv: a per-entry popup with the effect sends + filter
                             // (Reverb/Chorus/Cutoff/Q). Replaces the four narrow columns that
                             // pushed the table off-screen on smaller monitors.
-                            ImGui::TableSetupColumn("Adv",      ImGuiTableColumnFlags_WidthFixed, 52.0f);
+                            ImGui::TableSetupColumn("Adv", ImGuiTableColumnFlags_WidthFixed, 52.0f);
                             ImGui::TableSetupScrollFreeze(0, 2);
 
                             ImGui::TableNextRow();
@@ -1850,9 +1856,9 @@ void AudioEditor::DrawElement() {
                             // and every temp volume). Persisted overrides (Gain, Shift,
                             // Preset, effect CCs) are untouched — those have their own
                             // "Reset all" button above the table.
-                            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.35f, 0.20f, 0.05f, 1.00f));
+                            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.35f, 0.20f, 0.05f, 1.00f));
                             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.55f, 0.20f, 1.0f));
-                            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(1.00f, 0.65f, 0.30f, 1.0f));
+                            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.00f, 0.65f, 0.30f, 1.0f));
                             if (ImGui::SmallButton("Clear##overrideClear")) {
                                 sSoloedPairs.clear();
                                 sExplicitMutedPairs.clear();
@@ -1864,36 +1870,33 @@ void AudioEditor::DrawElement() {
                             }
                             ImGui::PopStyleColor(3);
                             if (ImGui::IsItemHovered()) {
-                                ImGui::SetTooltip(
-                                    "Clear every session-only override across the table:\n"
-                                    "  - Soloed rows (all unsoloed)\n"
-                                    "  - Mute toggles on Native rows\n"
-                                    "  - Temp volume sliders on Synth rows\n"
-                                    "Persisted overrides (Gain, Shift, Preset, effect CCs) are\n"
-                                    "untouched - use 'Reset all' above the table for those.");
+                                ImGui::SetTooltip("Clear every session-only override across the table:\n"
+                                                  "  - Soloed rows (all unsoloed)\n"
+                                                  "  - Mute toggles on Native rows\n"
+                                                  "  - Temp volume sliders on Synth rows\n"
+                                                  "Persisted overrides (Gain, Shift, Preset, effect CCs) are\n"
+                                                  "untouched - use 'Reset all' above the table for those.");
                             }
                             ImGui::TableSetColumnIndex(shiftCol);
                             {
                                 bool transUnit = transSemis;
                                 if (ImGui::Checkbox("Semitone##transUnit", &transUnit)) {
-                                    CVarSetInteger(CVAR_AUDIO("FluidSynthTransSemitones"),
-                                                   transUnit ? 1 : 0);
+                                    CVarSetInteger(CVAR_AUDIO("FluidSynthTransSemitones"), transUnit ? 1 : 0);
                                     Ship::Context::GetRawInstance()
                                         ->GetWindow()
                                         ->GetGui()
                                         ->SaveConsoleVariablesNextFrame();
                                 }
                                 if (ImGui::IsItemHovered()) {
-                                    ImGui::SetTooltip(
-                                        "Display the Shift column in semitones (+/-24 fine)\n"
-                                        "instead of octaves (+/-8 wide). Underlying value is\n"
-                                        "the same; column label and DragInt range switch.");
+                                    ImGui::SetTooltip("Display the Shift column in semitones (+/-24 fine)\n"
+                                                      "instead of octaves (+/-8 wide). Underlying value is\n"
+                                                      "the same; column label and DragInt range switch.");
                                 }
                             }
 
                             ImGui::TableHeadersRow();
 
-                            const ImU32 kSynthTint  = IM_COL32(80, 160,  80, 80);
+                            const ImU32 kSynthTint = IM_COL32(80, 160, 80, 80);
                             const ImU32 kNativeTint = IM_COL32(80, 120, 200, 80);
 
                             // Per-entry "Adv" button + popup holding the effect sends + filter
@@ -1958,18 +1961,21 @@ void AudioEditor::DrawElement() {
                                     return;
                                 }
                                 int transStored = SOH::MidiTranslator::Instance().GetEntry(idx).transpose;
-                                int curOctaves   = transStored / 12;
+                                int curOctaves = transStored / 12;
                                 int curRemainder = transStored - curOctaves * 12;
                                 int displayValue, displayMin, displayMax;
                                 if (transSemis) {
-                                    displayValue = transStored; displayMin = -24; displayMax = 24;
+                                    displayValue = transStored;
+                                    displayMin = -24;
+                                    displayMax = 24;
                                 } else {
-                                    displayValue = curOctaves;  displayMin = -8;  displayMax = 8;
+                                    displayValue = curOctaves;
+                                    displayMin = -8;
+                                    displayMax = 8;
                                 }
                                 const bool hasRemainder = (!transSemis && curRemainder != 0);
                                 if (hasRemainder)
-                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg,
-                                                           IM_COL32(220, 150, 60, 70));
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(220, 150, 60, 70));
                                 char fmt[32];
                                 if (transSemis)
                                     std::strcpy(fmt, "%+d st");
@@ -1991,10 +1997,9 @@ void AudioEditor::DrawElement() {
                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                     AutoSaveOverrides();
                                 if (ImGui::IsItemHovered())
-                                    ImGui::SetTooltip(
-                                        "Shift this range's notes (%+d st stored). Toggle Semitone\n"
-                                        "precision in the header for +/-24 st fine control.",
-                                        transStored);
+                                    ImGui::SetTooltip("Shift this range's notes (%+d st stored). Toggle Semitone\n"
+                                                      "precision in the header for +/-24 st fine control.",
+                                                      transStored);
                             };
                             (void)drawShiftEditor;
 
@@ -2004,9 +2009,8 @@ void AudioEditor::DrawElement() {
                             auto soloMuteToggle = [&](const char* sLbl, const char* mLbl, bool solo, bool mute,
                                                       const std::function<void(bool)>& setSolo,
                                                       const std::function<void(bool)>& setMute) {
-                                ImGui::PushStyleColor(ImGuiCol_Button,
-                                                      solo ? ImVec4(0.85f, 0.45f, 0.10f, 1.0f)
-                                                           : ImVec4(0.32f, 0.20f, 0.07f, 1.0f));
+                                ImGui::PushStyleColor(ImGuiCol_Button, solo ? ImVec4(0.85f, 0.45f, 0.10f, 1.0f)
+                                                                            : ImVec4(0.32f, 0.20f, 0.07f, 1.0f));
                                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.55f, 0.20f, 1.0f));
                                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.00f, 0.65f, 0.30f, 1.0f));
                                 if (ImGui::SmallButton(sLbl))
@@ -2016,9 +2020,8 @@ void AudioEditor::DrawElement() {
                                     ImGui::SetTooltip("Solo (session-only, not saved). Plays only soloed\n"
                                                       "rows; everything else is muted.");
                                 ImGui::SameLine();
-                                ImGui::PushStyleColor(ImGuiCol_Button,
-                                                      mute ? ImVec4(0.80f, 0.12f, 0.12f, 1.0f)
-                                                           : ImVec4(0.32f, 0.10f, 0.08f, 1.0f));
+                                ImGui::PushStyleColor(ImGuiCol_Button, mute ? ImVec4(0.80f, 0.12f, 0.12f, 1.0f)
+                                                                            : ImVec4(0.32f, 0.10f, 0.08f, 1.0f));
                                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.90f, 0.30f, 0.20f, 1.0f));
                                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.00f, 0.40f, 0.30f, 1.0f));
                                 if (ImGui::SmallButton(mLbl))
@@ -2032,20 +2035,34 @@ void AudioEditor::DrawElement() {
                                 soloMuteToggle(
                                     "S##psolo", "M##pmute", sSoloedPairs.count(key) > 0,
                                     sExplicitMutedPairs.count(key) > 0,
-                                    [&](bool on) { if (on) sSoloedPairs.insert(key); else sSoloedPairs.erase(key); },
                                     [&](bool on) {
-                                        if (on) sExplicitMutedPairs.insert(key);
-                                        else sExplicitMutedPairs.erase(key);
+                                        if (on)
+                                            sSoloedPairs.insert(key);
+                                        else
+                                            sSoloedPairs.erase(key);
+                                    },
+                                    [&](bool on) {
+                                        if (on)
+                                            sExplicitMutedPairs.insert(key);
+                                        else
+                                            sExplicitMutedPairs.erase(key);
                                     });
                             };
                             auto drawSlotSoloMute = [&](const std::tuple<uint8_t, int16_t, uint8_t>& key) {
                                 soloMuteToggle(
                                     "S##ssolo", "M##smute", sSoloedSlots.count(key) > 0,
                                     sExplicitMutedSlots.count(key) > 0,
-                                    [&](bool on) { if (on) sSoloedSlots.insert(key); else sSoloedSlots.erase(key); },
                                     [&](bool on) {
-                                        if (on) sExplicitMutedSlots.insert(key);
-                                        else sExplicitMutedSlots.erase(key);
+                                        if (on)
+                                            sSoloedSlots.insert(key);
+                                        else
+                                            sSoloedSlots.erase(key);
+                                    },
+                                    [&](bool on) {
+                                        if (on)
+                                            sExplicitMutedSlots.insert(key);
+                                        else
+                                            sExplicitMutedSlots.erase(key);
                                     });
                             };
                             (void)drawPairSoloMute;
@@ -2066,8 +2083,7 @@ void AudioEditor::DrawElement() {
                                     const auto& q = pairs[i];
                                     auto key = std::make_pair(q.fontId, q.instOrWave);
                                     bool isDrum = (q.instOrWave == 0 || q.instOrWave == 1) ||
-                                                  SOH::MidiTranslator::Instance().IsForcedDrum(q.fontId,
-                                                                                               q.instOrWave);
+                                                  SOH::MidiTranslator::Instance().IsForcedDrum(q.fontId, q.instOrWave);
                                     bool pairHasSoloedSlot = false;
                                     if (isDrum) {
                                         for (const auto& t : sSoloedSlots)
@@ -2085,15 +2101,13 @@ void AudioEditor::DrawElement() {
                                     // muted (the pair-mute short-circuits before per-slot).
                                     if (isDrum && !effPair) {
                                         std::vector<int> idxs;
-                                        SOH::MidiTranslator::Instance().GetEntriesForPair(q.fontId, q.instOrWave,
-                                                                                          idxs);
+                                        SOH::MidiTranslator::Instance().GetEntriesForPair(q.fontId, q.instOrWave, idxs);
                                         for (int ei : idxs) {
                                             const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
                                             if (!ce.selected || ce.noteLow != ce.noteHigh)
                                                 continue;
                                             auto st = std::make_tuple(q.fontId, q.instOrWave, ce.noteLow);
-                                            bool slotSolo =
-                                                sSoloedSlots.count(st) > 0 || sSoloedPairs.count(key) > 0;
+                                            bool slotSolo = sSoloedSlots.count(st) > 0 || sSoloedPairs.count(key) > 0;
                                             bool effSlot = (anySolo && !slotSolo) || sExplicitMutedSlots.count(st) > 0;
                                             if (effSlot)
                                                 SOH::MidiTranslator::Instance().SetTemporarySlotMute(
@@ -2134,8 +2148,7 @@ void AudioEditor::DrawElement() {
                                 // Native/Synth, a Kit dropdown); expanding reveals one child
                                 // row per drum slot (per-slot Solo/Mute, Mode, Drum Sound).
                                 // Diverts before the melodic body and continues.
-                                bool forcedDrum =
-                                    SOH::MidiTranslator::Instance().IsForcedDrum(p.fontId, p.instOrWave);
+                                bool forcedDrum = SOH::MidiTranslator::Instance().IsForcedDrum(p.fontId, p.instOrWave);
                                 if (p.instOrWave == 0 || p.instOrWave == 1 || forcedDrum) {
                                     auto pairKey = std::make_pair(p.fontId, p.instOrWave);
                                     const char* fontName = SOH::GetFontName(p.fontId);
@@ -2146,10 +2159,9 @@ void AudioEditor::DrawElement() {
                                     // never flip the instrument. A forced-drum pair has no
                                     // separate master: the "Treat as drum" flag IS its Synth
                                     // mode (clearing it reverts the pair to melodic).
-                                    bool channelSynth =
-                                        forcedDrum ? true
-                                                   : SOH::MidiTranslator::Instance().IsDrumChannelSynth(
-                                                         p.fontId, p.instOrWave);
+                                    bool channelSynth = forcedDrum ? true
+                                                                   : SOH::MidiTranslator::Instance().IsDrumChannelSynth(
+                                                                         p.fontId, p.instOrWave);
 
                                     // Parent tint aggregates the slots: green if any slot is
                                     // synth-active, blue if any is native-active and none synth,
@@ -2158,15 +2170,16 @@ void AudioEditor::DrawElement() {
                                     // with no entry to attribute to.)
                                     {
                                         bool anySynth = false, anyNative = false;
-                                        SOH::MidiTranslator::Instance().GetPairEntryActivity(
-                                            p.fontId, p.instOrWave, anySynth, anyNative);
+                                        SOH::MidiTranslator::Instance().GetPairEntryActivity(p.fontId, p.instOrWave,
+                                                                                             anySynth, anyNative);
                                         setRowTint(anySynth, anyNative);
                                     }
 
                                     // Override: expand arrow (first), then channel Solo + Mute.
                                     ImGui::TableSetColumnIndex(overrideCol);
                                     bool treeOpen = ImGui::TreeNodeEx(
-                                        "##drumtree", ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_AllowItemOverlap, "");
+                                        "##drumtree",
+                                        ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_AllowItemOverlap, "");
                                     ImGui::SameLine();
                                     drawPairSoloMute(pairKey);
 
@@ -2181,11 +2194,11 @@ void AudioEditor::DrawElement() {
                                         ImGui::TextUnformatted(p.instOrWave == 0 ? "Drum" : "SFX");
                                     if (ImGui::IsItemHovered()) {
                                         auto s = SOH::MidiTranslator::Instance().GetDebugStats(p.fontId, p.instOrWave);
-                                        const char* kind = forcedDrum ? "forced-drum"
-                                                                      : (p.instOrWave == 0 ? "drum" : "SFX");
+                                        const char* kind =
+                                            forcedDrum ? "forced-drum" : (p.instOrWave == 0 ? "drum" : "SFX");
                                         ImGui::SetTooltip("font %u, %s channel\nNoteOns %u (synth %u / native %u)",
-                                                          (unsigned)p.fontId, kind,
-                                                          s.noteOns, s.routedSynth, s.routedNative);
+                                                          (unsigned)p.fontId, kind, s.noteOns, s.routedSynth,
+                                                          s.routedNative);
                                     }
                                     // Slots discovery lives in the Inst column (next to the
                                     // channel), matching where melodic Split/L-M-H sit.
@@ -2199,11 +2212,10 @@ void AudioEditor::DrawElement() {
                                         AutoSaveOverrides();
                                     }
                                     if (ImGui::IsItemHovered())
-                                        ImGui::SetTooltip(
-                                            "Discover drum slots: create one entry per slot heard\n"
-                                            "(%d so far). Play the song first, then expand to map\n"
-                                            "each slot to a GM percussion sound.",
-                                            distinct);
+                                        ImGui::SetTooltip("Discover drum slots: create one entry per slot heard\n"
+                                                          "(%d so far). Play the song first, then expand to map\n"
+                                                          "each slot to a GM percussion sound.",
+                                                          distinct);
 
                                     // Mode: for the intrinsic drum/SFX channels, Native / Synth
                                     // for the whole channel. A forced-drum pair has no separate
@@ -2247,8 +2259,8 @@ void AudioEditor::DrawElement() {
                                         // forced-drum pair back to melodic.
                                         if (ImGui::Selectable("None (native)", !channelSynth)) {
                                             if (forcedDrum)
-                                                SOH::MidiTranslator::Instance().SetForcedDrum(
-                                                    p.fontId, p.instOrWave, false);
+                                                SOH::MidiTranslator::Instance().SetForcedDrum(p.fontId, p.instOrWave,
+                                                                                              false);
                                             else
                                                 SOH::MidiTranslator::Instance().SetDrumChannelSynth(
                                                     p.fontId, p.instOrWave, false);
@@ -2259,28 +2271,29 @@ void AudioEditor::DrawElement() {
                                             if (lp.bank != 128)
                                                 continue;
                                             char lbl[112];
-                                            std::snprintf(lbl, sizeof lbl, "%s / %s##kit_%d_%d",
-                                                          lp.packName.c_str(), lp.name.c_str(), lp.sfontId, lp.program);
+                                            std::snprintf(lbl, sizeof lbl, "%s / %s##kit_%d_%d", lp.packName.c_str(),
+                                                          lp.name.c_str(), lp.sfontId, lp.program);
                                             bool sel = channelSynth && dActive && dActive->bank == 128 &&
-                                                       dActive->packName == lp.packName && dActive->program == lp.program;
+                                                       dActive->packName == lp.packName &&
+                                                       dActive->program == lp.program;
                                             if (ImGui::Selectable(lbl, sel)) {
                                                 // Synth first (auto-splits slots if none exist),
                                                 // then apply the picked kit to those slots.
-                                                SOH::MidiTranslator::Instance().SetDrumChannelSynth(
-                                                    p.fontId, p.instOrWave, true);
+                                                SOH::MidiTranslator::Instance().SetDrumChannelSynth(p.fontId,
+                                                                                                    p.instOrWave, true);
                                                 SOH::MidiTranslator::Instance().SetDrumKit(
                                                     p.fontId, p.instOrWave, lp.packName, (int16_t)lp.program, lp.name);
                                                 AutoSaveOverrides();
                                             }
-                                            if (sel) ImGui::SetItemDefaultFocus();
+                                            if (sel)
+                                                ImGui::SetItemDefaultFocus();
                                         }
                                         ImGui::EndCombo();
                                     }
 
                                     if (treeOpen) {
                                         std::vector<int> idxs;
-                                        SOH::MidiTranslator::Instance().GetEntriesForPair(
-                                            p.fontId, p.instOrWave, idxs);
+                                        SOH::MidiTranslator::Instance().GetEntriesForPair(p.fontId, p.instOrWave, idxs);
                                         std::vector<int> slots;
                                         for (int ei : idxs) {
                                             const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
@@ -2300,8 +2313,7 @@ void AudioEditor::DrawElement() {
                                             ImGui::TextDisabled("(no slots - set Synth or click Slots)");
                                         }
                                         for (int ei : slots) {
-                                            const SOH::ConfigEntry& ce =
-                                                SOH::MidiTranslator::Instance().GetEntry(ei);
+                                            const SOH::ConfigEntry& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
                                             ImGui::TableNextRow();
                                             ImGui::PushID(ei);
 
@@ -2312,8 +2324,7 @@ void AudioEditor::DrawElement() {
                                                 ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kNativeTint);
 
                                             // Override: per-slot Solo / Mute.
-                                            auto slotKey =
-                                                std::make_tuple(p.fontId, p.instOrWave, ce.noteLow);
+                                            auto slotKey = std::make_tuple(p.fontId, p.instOrWave, ce.noteLow);
                                             ImGui::TableSetColumnIndex(overrideCol);
                                             drawSlotSoloMute(slotKey);
 
@@ -2341,8 +2352,8 @@ void AudioEditor::DrawElement() {
                                                                   "instrument to Synth to edit slots.");
                                             ImGui::SameLine();
                                             if (ImGui::RadioButton("Synth##smode", ce.enabled)) {
-                                                SOH::MidiTranslator::Instance().SetEntryRoute(
-                                                    ei, SOH::EntryRoute::Synth);
+                                                SOH::MidiTranslator::Instance().SetEntryRoute(ei,
+                                                                                              SOH::EntryRoute::Synth);
                                                 SOH::MidiTranslator::Instance().SetEntryEnabled(ei, true);
                                                 AutoSaveOverrides();
                                             }
@@ -2359,8 +2370,8 @@ void AudioEditor::DrawElement() {
                                             else if (ce.bank == 128) {
                                                 const char* nm = SOH::GmPercussionName(ce.fixedNote);
                                                 if (nm[0])
-                                                    std::snprintf(preview, sizeof preview, "%d %s",
-                                                                  (int)ce.fixedNote, nm);
+                                                    std::snprintf(preview, sizeof preview, "%d %s", (int)ce.fixedNote,
+                                                                  nm);
                                                 else
                                                     std::snprintf(preview, sizeof preview, "note %d",
                                                                   (int)ce.fixedNote);
@@ -2376,28 +2387,29 @@ void AudioEditor::DrawElement() {
                                                     ImGui::SetKeyboardFocusHere();
                                                 }
                                                 ImGui::SetNextItemWidth(-FLT_MIN);
-                                                ImGui::InputTextWithHint("##soundFilter", "Filter sounds",
-                                                                         soundFilter, sizeof soundFilter);
+                                                ImGui::InputTextWithHint("##soundFilter", "Filter sounds", soundFilter,
+                                                                         sizeof soundFilter);
                                                 ImGui::Separator();
                                                 auto containsCi = [](const char* hay, const char* needle) -> bool {
-                                                    if (!needle || !*needle) return true;
+                                                    if (!needle || !*needle)
+                                                        return true;
                                                     auto lc = [](char c) {
                                                         return (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
                                                     };
                                                     std::string h, n;
-                                                    for (const char* q = hay; *q; ++q) h += lc(*q);
-                                                    for (const char* q = needle; *q; ++q) n += lc(*q);
+                                                    for (const char* q = hay; *q; ++q)
+                                                        h += lc(*q);
+                                                    for (const char* q = needle; *q; ++q)
+                                                        n += lc(*q);
                                                     return h.find(n) != std::string::npos;
                                                 };
                                                 bool filterActive = soundFilter[0] != '\0';
-                                                if (!filterActive &&
-                                                    ImGui::Selectable("None (native)", !ce.enabled)) {
+                                                if (!filterActive && ImGui::Selectable("None (native)", !ce.enabled)) {
                                                     SOH::MidiTranslator::Instance().SetEntryEnabled(ei, false);
                                                     AutoSaveOverrides();
                                                 }
                                                 if (ce.bank == 128) {
-                                                    for (int n = SOH::kGmPercussionLo; n <= SOH::kGmPercussionHi;
-                                                         ++n) {
+                                                    for (int n = SOH::kGmPercussionLo; n <= SOH::kGmPercussionHi; ++n) {
                                                         const char* nm = SOH::GmPercussionName(n);
                                                         if (filterActive && !containsCi(nm, soundFilter))
                                                             continue;
@@ -2412,7 +2424,8 @@ void AudioEditor::DrawElement() {
                                                             SOH::MidiTranslator::Instance().SetEntryEnabled(ei, true);
                                                             AutoSaveOverrides();
                                                         }
-                                                        if (sel) ImGui::SetItemDefaultFocus();
+                                                        if (sel)
+                                                            ImGui::SetItemDefaultFocus();
                                                     }
                                                 }
                                                 ImGui::EndCombo();
@@ -2423,7 +2436,8 @@ void AudioEditor::DrawElement() {
                                                 float g = ce.gain == 0.0f ? 1.0f : ce.gain;
                                                 ImGui::SetNextItemWidth(-1.0f);
                                                 if (ImGui::DragFloat("##slotgain", &g, 0.01f, 0.0f, 4.0f, "%.2f"))
-                                                    SOH::MidiTranslator::Instance().SetEntryGain(ei, g < 0.0f ? 0.0f : g);
+                                                    SOH::MidiTranslator::Instance().SetEntryGain(ei,
+                                                                                                 g < 0.0f ? 0.0f : g);
                                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                                     AutoSaveOverrides();
                                             }
@@ -2434,8 +2448,8 @@ void AudioEditor::DrawElement() {
                                                 ImGui::SetNextItemWidth(-1.0f);
                                                 int pitch = ce.fixedNote < 0 ? 60 : ce.fixedNote;
                                                 if (ImGui::DragInt("##pitch", &pitch, 1.0f, 0, 127))
-                                                    SOH::MidiTranslator::Instance().SetEntryFixedNote(
-                                                        ei, (int16_t)pitch);
+                                                    SOH::MidiTranslator::Instance().SetEntryFixedNote(ei,
+                                                                                                      (int16_t)pitch);
                                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                                     AutoSaveOverrides();
                                             }
@@ -2482,8 +2496,8 @@ void AudioEditor::DrawElement() {
                                         // synth-active, blue if any is native-active and none synth.
                                         {
                                             bool anySynth = false, anyNative = false;
-                                            SOH::MidiTranslator::Instance().GetPairEntryActivity(
-                                                p.fontId, p.instOrWave, anySynth, anyNative);
+                                            SOH::MidiTranslator::Instance().GetPairEntryActivity(p.fontId, p.instOrWave,
+                                                                                                 anySynth, anyNative);
                                             setRowTint(anySynth, anyNative);
                                         }
 
@@ -2543,9 +2557,9 @@ void AudioEditor::DrawElement() {
                                                 // range's low mirrors the previous range's high+1 and
                                                 // can't be set independently.
                                                 const bool isFirst = (k == 0);
-                                                const bool isLast  = (k + 1 == ranges.size());
-                                                const int  prevIdx = isFirst ? -1 : ranges[k - 1];
-                                                const int  nextIdx = isLast ? -1 : ranges[k + 1];
+                                                const bool isLast = (k + 1 == ranges.size());
+                                                const int prevIdx = isFirst ? -1 : ranges[k - 1];
+                                                const int nextIdx = isLast ? -1 : ranges[k + 1];
                                                 ImGui::TableSetColumnIndex(instCol);
                                                 // Low edge (== previous range's high + 1). Editing it moves
                                                 // the boundary shared with the previous range.
@@ -2611,8 +2625,8 @@ void AudioEditor::DrawElement() {
                                                     float g = ce.gain == 0.0f ? 1.0f : ce.gain;
                                                     ImGui::SetNextItemWidth(-1.0f);
                                                     if (ImGui::DragFloat("##rgain", &g, 0.01f, 0.0f, 4.0f, "%.2f"))
-                                                        SOH::MidiTranslator::Instance().SetEntryGain(
-                                                            ei, g < 0.0f ? 0.0f : g);
+                                                        SOH::MidiTranslator::Instance().SetEntryGain(ei, g < 0.0f ? 0.0f
+                                                                                                                  : g);
                                                     if (ImGui::IsItemDeactivatedAfterEdit())
                                                         AutoSaveOverrides();
                                                 }
@@ -2625,8 +2639,8 @@ void AudioEditor::DrawElement() {
                                                 else if (ce.packName.empty())
                                                     std::snprintf(rprev, sizeof rprev, "(none)");
                                                 else
-                                                    std::snprintf(rprev, sizeof rprev, "%s: %s",
-                                                                  ce.packName.c_str(), ce.presetName.c_str());
+                                                    std::snprintf(rprev, sizeof rprev, "%s: %s", ce.packName.c_str(),
+                                                                  ce.presetName.c_str());
                                                 ImGui::SetNextItemWidth(-FLT_MIN);
                                                 if (ImGui::BeginCombo("##rpreset", rprev,
                                                                       ImGuiComboFlags_HeightLargest)) {
@@ -2640,13 +2654,16 @@ void AudioEditor::DrawElement() {
                                                                              rFilter, sizeof rFilter);
                                                     ImGui::Separator();
                                                     auto ciHas = [](const std::string& hay, const char* n) {
-                                                        if (!n || !*n) return true;
+                                                        if (!n || !*n)
+                                                            return true;
                                                         auto lc = [](char c) {
                                                             return (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
                                                         };
                                                         std::string h, nn;
-                                                        for (char c : hay) h += lc(c);
-                                                        for (const char* q = n; *q; ++q) nn += lc(*q);
+                                                        for (char c : hay)
+                                                            h += lc(c);
+                                                        for (const char* q = n; *q; ++q)
+                                                            nn += lc(*q);
                                                         return h.find(nn) != std::string::npos;
                                                     };
                                                     bool fActive = rFilter[0] != '\0';
@@ -2678,7 +2695,8 @@ void AudioEditor::DrawElement() {
                                                                 lp.name);
                                                             AutoSaveOverrides();
                                                         }
-                                                        if (sel) ImGui::SetItemDefaultFocus();
+                                                        if (sel)
+                                                            ImGui::SetItemDefaultFocus();
                                                     }
                                                     ImGui::EndCombo();
                                                 }
@@ -2754,40 +2772,41 @@ void AudioEditor::DrawElement() {
                                     {
                                         auto names = SOH::GetInstrumentSampleNames(p.fontId, p.instOrWave);
                                         if (!names.empty()) {
-                                            const char* lowName    = SOH::StripSamplePathPrefix(names.low);
+                                            const char* lowName = SOH::StripSamplePathPrefix(names.low);
                                             const char* normalName = SOH::StripSamplePathPrefix(names.normal);
-                                            const char* highName   = SOH::StripSamplePathPrefix(names.high);
+                                            const char* highName = SOH::StripSamplePathPrefix(names.high);
                                             auto isSame = [](const char* a, const char* b) {
                                                 return *a && *b && std::strcmp(a, b) == 0;
                                             };
                                             const bool lEmpty = names.low.empty();
                                             const bool nEmpty = names.normal.empty();
                                             const bool hEmpty = names.high.empty();
-                                            const bool allMatch =
-                                                (lEmpty || nEmpty || isSame(lowName, normalName)) &&
-                                                (nEmpty || hEmpty || isSame(normalName, highName)) &&
-                                                (lEmpty || hEmpty || isSame(lowName, highName));
+                                            const bool allMatch = (lEmpty || nEmpty || isSame(lowName, normalName)) &&
+                                                                  (nEmpty || hEmpty || isSame(normalName, highName)) &&
+                                                                  (lEmpty || hEmpty || isSame(lowName, highName));
                                             if (allMatch) {
-                                                const char* shown = !nEmpty ? normalName
-                                                                  : !lEmpty ? lowName
-                                                                            : highName;
+                                                const char* shown = !nEmpty ? normalName : !lEmpty ? lowName : highName;
                                                 char tag[5] = "(";
                                                 int t = 1;
-                                                if (!lEmpty) tag[t++] = 'L';
-                                                if (!nEmpty) tag[t++] = 'M';
-                                                if (!hEmpty) tag[t++] = 'H';
+                                                if (!lEmpty)
+                                                    tag[t++] = 'L';
+                                                if (!nEmpty)
+                                                    tag[t++] = 'M';
+                                                if (!hEmpty)
+                                                    tag[t++] = 'H';
                                                 tag[t++] = ')';
-                                                tag[t]   = '\0';
+                                                tag[t] = '\0';
                                                 std::snprintf(autoBuf, sizeof(autoBuf), "%s %s", shown, tag);
                                             } else {
                                                 size_t pos = 0;
                                                 auto append = [&](const char* prefix, const char* val) {
-                                                    if (!*val) return;
-                                                    int written = std::snprintf(autoBuf + pos, sizeof(autoBuf) - pos,
-                                                                                "%s%s:%s",
-                                                                                pos == 0 ? "" : " ",
-                                                                                prefix, val);
-                                                    if (written > 0) pos += static_cast<size_t>(written);
+                                                    if (!*val)
+                                                        return;
+                                                    int written =
+                                                        std::snprintf(autoBuf + pos, sizeof(autoBuf) - pos, "%s%s:%s",
+                                                                      pos == 0 ? "" : " ", prefix, val);
+                                                    if (written > 0)
+                                                        pos += static_cast<size_t>(written);
                                                 };
                                                 append("L", SOH::StripSamplePathPrefix(names.low));
                                                 append("M", SOH::StripSamplePathPrefix(names.normal));
@@ -2804,10 +2823,11 @@ void AudioEditor::DrawElement() {
                                     buf[sizeof(buf) - 1] = '\0';
                                     ImGui::SetNextItemWidth(-FLT_MIN);
                                     if (ImGui::InputTextWithHint("##displayName", hint, buf, sizeof(buf))) {
-                                        SOH::MidiTranslator::Instance().SetDisplayName(
-                                            p.fontId, p.instOrWave, std::string(buf));
+                                        SOH::MidiTranslator::Instance().SetDisplayName(p.fontId, p.instOrWave,
+                                                                                       std::string(buf));
                                     }
-                                    if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
+                                    if (ImGui::IsItemDeactivatedAfterEdit())
+                                        AutoSaveOverrides();
                                     if (ImGui::IsItemHovered()) {
                                         // Always show the engine's three per-range samples,
                                         // whether or not a custom label is set. The custom
@@ -2815,14 +2835,13 @@ void AudioEditor::DrawElement() {
                                         // pitch range; the tooltip is where the user reads
                                         // back the raw mapping.
                                         auto names = SOH::GetInstrumentSampleNames(p.fontId, p.instOrWave);
-                                        const char* lowName    = SOH::StripSamplePathPrefix(names.low);
+                                        const char* lowName = SOH::StripSamplePathPrefix(names.low);
                                         const char* normalName = SOH::StripSamplePathPrefix(names.normal);
-                                        const char* highName   = SOH::StripSamplePathPrefix(names.high);
-                                        ImGui::SetTooltip(
-                                            "Hi:  %s\nMid: %s\nLow: %s",
-                                            (highName   && *highName)   ? highName   : "(empty)",
-                                            (normalName && *normalName) ? normalName : "(empty)",
-                                            (lowName    && *lowName)    ? lowName    : "(empty)");
+                                        const char* highName = SOH::StripSamplePathPrefix(names.high);
+                                        ImGui::SetTooltip("Hi:  %s\nMid: %s\nLow: %s",
+                                                          (highName && *highName) ? highName : "(empty)",
+                                                          (normalName && *normalName) ? normalName : "(empty)",
+                                                          (lowName && *lowName) ? lowName : "(empty)");
                                     }
                                 }
 
@@ -2840,13 +2859,13 @@ void AudioEditor::DrawElement() {
                                 // Debug stats on hover (the [DBG] popup, shown on mouseover).
                                 if (ImGui::IsItemHovered()) {
                                     auto s = SOH::MidiTranslator::Instance().GetDebugStats(p.fontId, p.instOrWave);
-                                    ImGui::SetTooltip(
-                                        "font %u, inst %d (0x%02X)\n"
-                                        "NoteOns %u  (synth %u / native %u / mute %u)\n"
-                                        "last semitone %u (MIDI %u)",
-                                        (unsigned)p.fontId, (int)p.instOrWave, (unsigned)(uint8_t)p.instOrWave,
-                                        s.noteOns, s.routedSynth, s.routedNative, s.routedMute,
-                                        (unsigned)s.lastSemitone, (unsigned)(s.lastSemitone + 21u));
+                                    ImGui::SetTooltip("font %u, inst %d (0x%02X)\n"
+                                                      "NoteOns %u  (synth %u / native %u / mute %u)\n"
+                                                      "last semitone %u (MIDI %u)",
+                                                      (unsigned)p.fontId, (int)p.instOrWave,
+                                                      (unsigned)(uint8_t)p.instOrWave, s.noteOns, s.routedSynth,
+                                                      s.routedNative, s.routedMute, (unsigned)s.lastSemitone,
+                                                      (unsigned)(s.lastSemitone + 21u));
                                 }
                                 // Split entry points (own line under the inst id so they're
                                 // visible and don't fight the narrow column). Manual "Split"
@@ -2867,16 +2886,15 @@ void AudioEditor::DrawElement() {
                                     if (rng.hasRange && !(rng.rangeLo == 0 && rng.rangeHi >= 127)) {
                                         ImGui::SameLine();
                                         if (ImGui::SmallButton("L/M/H##autosplitmel")) {
-                                            SOH::MidiTranslator::Instance().AutoSplitByEngineRanges(
-                                                p.fontId, p.instOrWave);
+                                            SOH::MidiTranslator::Instance().AutoSplitByEngineRanges(p.fontId,
+                                                                                                    p.instOrWave);
                                             AutoSaveOverrides();
                                         }
                                         if (ImGui::IsItemHovered())
-                                            ImGui::SetTooltip(
-                                                "Split into the engine's low / normal / high sample\n"
-                                                "ranges (boundaries %d / %d), duplicating the current\n"
-                                                "preset so each range can be reassigned.",
-                                                (int)rng.rangeLo, (int)rng.rangeHi);
+                                            ImGui::SetTooltip("Split into the engine's low / normal / high sample\n"
+                                                              "ranges (boundaries %d / %d), duplicating the current\n"
+                                                              "preset so each range can be reassigned.",
+                                                              (int)rng.rangeLo, (int)rng.rangeHi);
                                     }
                                 }
                                 // "Treat as drum": route this melodic instrument through the
@@ -2889,11 +2907,10 @@ void AudioEditor::DrawElement() {
                                     AutoSaveOverrides();
                                 }
                                 if (ImGui::IsItemHovered())
-                                    ImGui::SetTooltip(
-                                        "Treat this instrument as a drum/percussion channel.\n"
-                                        "Each distinct note it plays becomes a slot you map to\n"
-                                        "a GM drum sound. Play the song first, then expand the\n"
-                                        "row and click Slots to discover the notes.");
+                                    ImGui::SetTooltip("Treat this instrument as a drum/percussion channel.\n"
+                                                      "Each distinct note it plays becomes a slot you map to\n"
+                                                      "a GM drum sound. Play the song first, then expand the\n"
+                                                      "row and click Slots to discover the notes.");
                                 ImGui::TableSetColumnIndex(modeCol);
                                 // Native click disables every enabled entry for this pair
                                 // (keeps their selected flag so ClickSynth can restore).
@@ -2902,14 +2919,12 @@ void AudioEditor::DrawElement() {
                                 // entry (mod-only-row case), last resort is a muted
                                 // "None" placeholder. See MidiTranslator::ClickSynth.
                                 if (ImGui::RadioButton("Native##bypass", effectiveIsNative)) {
-                                    SOH::MidiTranslator::Instance().ClickNative(
-                                        p.fontId, p.instOrWave);
+                                    SOH::MidiTranslator::Instance().ClickNative(p.fontId, p.instOrWave);
                                     AutoSaveOverrides();
                                 }
                                 ImGui::SameLine();
                                 if (ImGui::RadioButton("Synth##bypass", !effectiveIsNative)) {
-                                    SOH::MidiTranslator::Instance().ClickSynth(
-                                        p.fontId, p.instOrWave);
+                                    SOH::MidiTranslator::Instance().ClickSynth(p.fontId, p.instOrWave);
                                     AutoSaveOverrides();
                                 }
 
@@ -2921,12 +2936,11 @@ void AudioEditor::DrawElement() {
                                 auto disabledTooltipIfNative = [&]() {
                                     if (effectiveIsNative &&
                                         ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                                        ImGui::SetTooltip(
-                                            "No active entry on this row. Gain / Shift /\n"
-                                            "effects edit the resolved entry's fields, so\n"
-                                            "they have nothing to operate on. Pick a preset\n"
-                                            "below or click Synth to restore the most\n"
-                                            "recent pick.");
+                                        ImGui::SetTooltip("No active entry on this row. Gain / Shift /\n"
+                                                          "effects edit the resolved entry's fields, so\n"
+                                                          "they have nothing to operate on. Pick a preset\n"
+                                                          "below or click Synth to restore the most\n"
+                                                          "recent pick.");
                                     }
                                 };
 
@@ -2936,11 +2950,11 @@ void AudioEditor::DrawElement() {
                                 ImGui::SetNextItemWidth(120.0f);
                                 if (ImGui::SliderFloat("##gain", &gainShown, 0.0f, 4.0f, "%.2f")) {
                                     if (activeIdx >= 0) {
-                                        SOH::MidiTranslator::Instance().SetEntryGain(
-                                            activeIdx, gainShown);
+                                        SOH::MidiTranslator::Instance().SetEntryGain(activeIdx, gainShown);
                                     }
                                 }
-                                if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
+                                if (ImGui::IsItemDeactivatedAfterEdit())
+                                    AutoSaveOverrides();
                                 disabledTooltipIfNative();
 
                                 ImGui::TableSetColumnIndex(shiftCol);
@@ -2951,18 +2965,18 @@ void AudioEditor::DrawElement() {
                                 // toward-zero (the language default for int /) keeps the
                                 // remainder's sign matched to the input — e.g. -13 → -1 oct,
                                 // -1 st (NOT -2 oct, +11 st).
-                                int curOctaves   = transStored / 12;
+                                int curOctaves = transStored / 12;
                                 int curRemainder = transStored - curOctaves * 12;
                                 int displayValue;
                                 int displayMin, displayMax;
                                 if (transSemis) {
                                     displayValue = transStored;
-                                    displayMin   = -24;
-                                    displayMax   =  24;
+                                    displayMin = -24;
+                                    displayMax = 24;
                                 } else {
                                     displayValue = curOctaves;
-                                    displayMin   = -8;
-                                    displayMax   =  8;
+                                    displayMin = -8;
+                                    displayMax = 8;
                                 }
 
                                 // Tint the cell orange when in octave mode AND there's a
@@ -2972,8 +2986,7 @@ void AudioEditor::DrawElement() {
                                 // clash with the row's synth/native tint.
                                 const bool hasRemainder = (!transSemis && curRemainder != 0);
                                 if (hasRemainder) {
-                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg,
-                                                           IM_COL32(220, 150, 60, 70));
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(220, 150, 60, 70));
                                 }
 
                                 // Build a format string that includes the remainder hint in
@@ -2989,8 +3002,7 @@ void AudioEditor::DrawElement() {
                                 }
 
                                 ImGui::SetNextItemWidth(-FLT_MIN);
-                                if (ImGui::DragInt("##trans", &displayValue, 0.1f,
-                                                   displayMin, displayMax, fmt)) {
+                                if (ImGui::DragInt("##trans", &displayValue, 0.1f, displayMin, displayMax, fmt)) {
                                     displayValue = std::clamp(displayValue, displayMin, displayMax);
                                     int newSemis;
                                     if (transSemis) {
@@ -3010,28 +3022,26 @@ void AudioEditor::DrawElement() {
                                             activeIdx, static_cast<int8_t>(newSemis));
                                     }
                                 }
-                                if (ImGui::IsItemDeactivatedAfterEdit()) AutoSaveOverrides();
+                                if (ImGui::IsItemDeactivatedAfterEdit())
+                                    AutoSaveOverrides();
                                 if (ImGui::IsItemHovered()) {
                                     if (transSemis) {
-                                        ImGui::SetTooltip(
-                                            "Shift this pair's notes by +/-24 semitones (fine).\n"
-                                            "Stored value: %+d st. 0 = no shift. Drums skip this column.",
-                                            (int)transStored);
+                                        ImGui::SetTooltip("Shift this pair's notes by +/-24 semitones (fine).\n"
+                                                          "Stored value: %+d st. 0 = no shift. Drums skip this column.",
+                                                          (int)transStored);
                                     } else if (hasRemainder) {
-                                        ImGui::SetTooltip(
-                                            "Shift this pair's notes by +/-8 octaves (whole-scale).\n"
-                                            "Stored value: %+d st = %+d oct %+d st leftover.\n"
-                                            "The leftover semitone offset is preserved when you\n"
-                                            "drag here - octaves move by +/-12 around it. Enable\n"
-                                            "Semitone precision above to edit the leftover.\n"
-                                            "(Cell tinted to flag the leftover.)",
-                                            (int)transStored, curOctaves, curRemainder);
+                                        ImGui::SetTooltip("Shift this pair's notes by +/-8 octaves (whole-scale).\n"
+                                                          "Stored value: %+d st = %+d oct %+d st leftover.\n"
+                                                          "The leftover semitone offset is preserved when you\n"
+                                                          "drag here - octaves move by +/-12 around it. Enable\n"
+                                                          "Semitone precision above to edit the leftover.\n"
+                                                          "(Cell tinted to flag the leftover.)",
+                                                          (int)transStored, curOctaves, curRemainder);
                                     } else {
-                                        ImGui::SetTooltip(
-                                            "Shift this pair's notes by +/-8 octaves (whole-scale).\n"
-                                            "Stored value: %+d st. 0 = no shift. Enable Semitone\n"
-                                            "precision above for +/-24 st fine control.",
-                                            (int)transStored);
+                                        ImGui::SetTooltip("Shift this pair's notes by +/-8 octaves (whole-scale).\n"
+                                                          "Stored value: %+d st. 0 = no shift. Enable Semitone\n"
+                                                          "precision above for +/-24 st fine control.",
+                                                          (int)transStored);
                                     }
                                 }
                                 disabledTooltipIfNative();
@@ -3048,13 +3058,12 @@ void AudioEditor::DrawElement() {
                                 const SOH::ConfigEntry* fallbackSaved = nullptr;
                                 if (!activeEntry) {
                                     std::vector<int> idxs;
-                                    SOH::MidiTranslator::Instance().GetEntriesForPair(
-                                        p.fontId, p.instOrWave, idxs);
+                                    SOH::MidiTranslator::Instance().GetEntriesForPair(p.fontId, p.instOrWave, idxs);
                                     uint32_t bestSeq = 0;
                                     for (int i2 : idxs) {
-                                        const SOH::ConfigEntry& e =
-                                            SOH::MidiTranslator::Instance().GetEntry(i2);
-                                        if (!e.selected) continue;
+                                        const SOH::ConfigEntry& e = SOH::MidiTranslator::Instance().GetEntry(i2);
+                                        if (!e.selected)
+                                            continue;
                                         if (!fallbackSaved || e.lastEnabledSeq >= bestSeq) {
                                             fallbackSaved = &e;
                                             bestSeq = e.lastEnabledSeq;
@@ -3074,13 +3083,11 @@ void AudioEditor::DrawElement() {
                                 if (defaultGmForMode.program == SOH::kUnmapped) {
                                     std::strcpy(defaultLabel, "Default: None");
                                 } else if (defaultGmForMode.bank == 128) {
-                                    std::snprintf(defaultLabel, sizeof(defaultLabel),
-                                                  "Default: drum kit %u, slot %u",
+                                    std::snprintf(defaultLabel, sizeof(defaultLabel), "Default: drum kit %u, slot %u",
                                                   (unsigned)defaultGmForMode.program,
                                                   (unsigned)defaultGmForMode.drumNote);
                                 } else {
-                                    std::snprintf(defaultLabel, sizeof(defaultLabel),
-                                                  "Default: %u: %s",
+                                    std::snprintf(defaultLabel, sizeof(defaultLabel), "Default: %u: %s",
                                                   (unsigned)defaultGmForMode.program,
                                                   SOH::kGmProgramNames[defaultGmForMode.program]);
                                 }
@@ -3092,78 +3099,64 @@ void AudioEditor::DrawElement() {
                                     } else if (activeEntry->bank == 128) {
                                         // GM percussion falls back to native; the picked
                                         // entry is preserved for per-slot routing.
-                                        std::snprintf(prgPreview, sizeof(prgPreview),
-                                                      "(drums -> native) P%d: %s",
-                                                      activeEntry->program,
-                                                      activeEntry->presetName.c_str());
+                                        std::snprintf(prgPreview, sizeof(prgPreview), "(drums -> native) P%d: %s",
+                                                      activeEntry->program, activeEntry->presetName.c_str());
                                     } else {
-                                        std::snprintf(prgPreview, sizeof(prgPreview),
-                                                      "P%d: %s",
-                                                      activeEntry->program,
+                                        std::snprintf(prgPreview, sizeof(prgPreview), "P%d: %s", activeEntry->program,
                                                       activeEntry->presetName.c_str());
                                     }
                                 } else if (fallbackSaved && fallbackSaved->sfontId >= 0) {
                                     // Pack still loaded; user just clicked Native. Show
                                     // the saved preset name so the user remembers what
                                     // Synth-click would restore.
-                                    std::snprintf(prgPreview, sizeof(prgPreview),
-                                                  "(off) P%d: %s",
-                                                  fallbackSaved->program,
-                                                  fallbackSaved->presetName.c_str());
+                                    std::snprintf(prgPreview, sizeof(prgPreview), "(off) P%d: %s",
+                                                  fallbackSaved->program, fallbackSaved->presetName.c_str());
                                 } else if (fallbackSaved) {
-                                    std::snprintf(prgPreview, sizeof(prgPreview),
-                                                  "(B%d P%d not loaded)",
-                                                  fallbackSaved->bank,
-                                                  fallbackSaved->program);
+                                    std::snprintf(prgPreview, sizeof(prgPreview), "(B%d P%d not loaded)",
+                                                  fallbackSaved->bank, fallbackSaved->program);
                                 } else {
                                     std::strcpy(prgPreview, defaultLabel);
                                 }
                                 ImGui::SetNextItemWidth(-FLT_MIN);
-                                if (ImGui::BeginCombo("##prgCombo", prgPreview,
-                                                      ImGuiComboFlags_HeightLargest)) {
+                                if (ImGui::BeginCombo("##prgCombo", prgPreview, ImGuiComboFlags_HeightLargest)) {
                                     static char prgFilter[64] = "";
                                     if (ImGui::IsWindowAppearing()) {
                                         prgFilter[0] = '\0';
                                         ImGui::SetKeyboardFocusHere();
                                     }
                                     ImGui::SetNextItemWidth(-FLT_MIN);
-                                    ImGui::InputTextWithHint(
-                                        "##prgFilter", "Filter (preset or pack name)",
-                                        prgFilter, sizeof(prgFilter));
+                                    ImGui::InputTextWithHint("##prgFilter", "Filter (preset or pack name)", prgFilter,
+                                                             sizeof(prgFilter));
                                     ImGui::Separator();
 
                                     const bool filterActive = prgFilter[0] != '\0';
-                                    auto containsCi = [](const std::string& hay,
-                                                         const char* needle) -> bool {
-                                        if (!needle || !*needle) return true;
+                                    auto containsCi = [](const std::string& hay, const char* needle) -> bool {
+                                        if (!needle || !*needle)
+                                            return true;
                                         const size_t nlen = std::strlen(needle);
-                                        if (nlen > hay.size()) return false;
-                                        auto it = std::search(
-                                            hay.begin(), hay.end(),
-                                            needle, needle + nlen,
-                                            [](char a, char b) {
-                                                return std::tolower(static_cast<unsigned char>(a)) ==
-                                                       std::tolower(static_cast<unsigned char>(b));
-                                            });
+                                        if (nlen > hay.size())
+                                            return false;
+                                        auto it = std::search(hay.begin(), hay.end(), needle, needle + nlen,
+                                                              [](char a, char b) {
+                                                                  return std::tolower(static_cast<unsigned char>(a)) ==
+                                                                         std::tolower(static_cast<unsigned char>(b));
+                                                              });
                                         return it != hay.end();
                                     };
 
-                                    if (!filterActive &&
-                                        ImGui::Selectable(defaultLabel, activeEntry == nullptr)) {
+                                    if (!filterActive && ImGui::Selectable(defaultLabel, activeEntry == nullptr)) {
                                         // "Default" disables every enabled entry for this pair
                                         // (ClickNative). selected flags are preserved so the
                                         // user can click Synth to restore. Picking a real preset
                                         // below promotes it to selected.
-                                        SOH::MidiTranslator::Instance().ClickNative(
-                                            p.fontId, p.instOrWave);
+                                        SOH::MidiTranslator::Instance().ClickNative(p.fontId, p.instOrWave);
                                         AutoSaveOverrides();
                                     }
 
                                     int lastSfont = -2;
                                     int shown = 0;
                                     for (const auto& lp : sLoadedPresets) {
-                                        if (filterActive &&
-                                            !containsCi(lp.name, prgFilter) &&
+                                        if (filterActive && !containsCi(lp.name, prgFilter) &&
                                             !containsCi(lp.packName, prgFilter)) {
                                             continue;
                                         }
@@ -3173,20 +3166,14 @@ void AudioEditor::DrawElement() {
                                             lastSfont = lp.sfontId;
                                         }
                                         char item[256];
-                                        std::snprintf(item, sizeof(item), "B%d P%d: %s##%d:%d:%d",
-                                                      lp.bank, lp.program, lp.name.c_str(),
-                                                      lp.sfontId, lp.bank, lp.program);
-                                        bool sel = activeEntry &&
-                                                   activeEntry->packName == lp.packName &&
-                                                   activeEntry->bank == lp.bank &&
-                                                   activeEntry->program == lp.program;
+                                        std::snprintf(item, sizeof(item), "B%d P%d: %s##%d:%d:%d", lp.bank, lp.program,
+                                                      lp.name.c_str(), lp.sfontId, lp.bank, lp.program);
+                                        bool sel = activeEntry && activeEntry->packName == lp.packName &&
+                                                   activeEntry->bank == lp.bank && activeEntry->program == lp.program;
                                         if (ImGui::Selectable(item, sel)) {
                                             SOH::MidiTranslator::Instance().PickPreset(
-                                                p.fontId, p.instOrWave,
-                                                lp.packName,
-                                                static_cast<int16_t>(lp.program),
-                                                static_cast<int16_t>(lp.bank),
-                                                lp.name);
+                                                p.fontId, p.instOrWave, lp.packName, static_cast<int16_t>(lp.program),
+                                                static_cast<int16_t>(lp.bank), lp.name);
                                             AutoSaveOverrides();
                                         }
                                         shown++;
@@ -3201,19 +3188,17 @@ void AudioEditor::DrawElement() {
                                     ImGui::EndCombo();
                                 }
                                 if (ImGui::IsItemHovered()) {
-                                    std::string tip =
-                                        "Pick a preset from any loaded SF2. Selecting creates\n"
-                                        "or reuses an entry for (font, inst, pack, program),\n"
-                                        "marks it selected, and disables any other enabled\n"
-                                        "entries for this pair. The pack + preset name are\n"
-                                        "persisted so the choice survives an SF2 stack change.\n"
-                                        "Default = disable enabled entries (row goes native).";
+                                    std::string tip = "Pick a preset from any loaded SF2. Selecting creates\n"
+                                                      "or reuses an entry for (font, inst, pack, program),\n"
+                                                      "marks it selected, and disables any other enabled\n"
+                                                      "entries for this pair. The pack + preset name are\n"
+                                                      "persisted so the choice survives an SF2 stack change.\n"
+                                                      "Default = disable enabled entries (row goes native).";
                                     if (activeEntry && activeEntry->bank == 128) {
-                                        tip +=
-                                            "\n\nGM percussion (bank 128) currently falls back\n"
-                                            "to native at play time. The picked preset is kept\n"
-                                            "in the JSON so a future per-drum-slot routing\n"
-                                            "path can use it.";
+                                        tip += "\n\nGM percussion (bank 128) currently falls back\n"
+                                               "to native at play time. The picked preset is kept\n"
+                                               "in the JSON so a future per-drum-slot routing\n"
+                                               "path can use it.";
                                     }
                                     if (fallbackSaved) {
                                         tip += "\n\nMost recent pick (not currently loaded):\n  ";
@@ -3615,8 +3600,7 @@ void RegisterAudioWidgets() {
     SohGui::mSohMenu->AddSearchWidget({ lowerOctaves, "Enhancements", "Audio Editor", "Audio Options" });
 
 #if ENABLE_FLUIDSYNTH
-    fluidSynthEnabled = { .name = "Modern audio pipeline (floating point)",
-                          .type = WidgetType::WIDGET_CVAR_CHECKBOX };
+    fluidSynthEnabled = { .name = "Modern audio pipeline (floating point)", .type = WidgetType::WIDGET_CVAR_CHECKBOX };
     fluidSynthEnabled.CVar(CVAR_AUDIO("ModernAudioPipeline"))
         .Options(CheckboxOptions()
                      .Color(THEME_COLOR)
@@ -3631,9 +3615,8 @@ void RegisterAudioWidgets() {
     // native differs (reverb + curve) and is hidden behind a calibration constant
     // in MidiTranslator, so the slider is a clean relative level defaulting to
     // 100% for both modes -- the user never sees the raw per-mode values.
-    auto gainTip =
-        "Synth loudness for this mode, relative to the native engine.\n"
-        "100% = matched to native.";
+    auto gainTip = "Synth loudness for this mode, relative to the native engine.\n"
+                   "100% = matched to native.";
     fluidSynthGainEnhanced = { .name = "Synth volume (Enhanced)", .type = WidgetType::WIDGET_CVAR_SLIDER_FLOAT };
     fluidSynthGainEnhanced.CVar(CVAR_AUDIO("FluidSynthGainEnhanced"))
         .Options(FloatSliderOptions()

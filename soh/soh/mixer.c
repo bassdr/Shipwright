@@ -20,8 +20,8 @@
 #define ROUND_DOWN_16(v) ((v) & ~0xf)
 
 #define DMEM_BUF_SIZE (0x1000 - 0x3C0 - 0x40)
-#define BUF_U8(a) (rspa.buf.as_u8 + ((a)-0x3C0))
-#define BUF_S16(a) (rspa.buf.as_s16 + ((a)-0x3C0) / sizeof(int16_t))
+#define BUF_U8(a) (rspa.buf.as_u8 + ((a) - 0x3C0))
+#define BUF_S16(a) (rspa.buf.as_s16 + ((a) - 0x3C0) / sizeof(int16_t))
 
 static struct {
     uint16_t in;
@@ -92,12 +92,13 @@ static inline int32_t clamp32(int64_t v) {
     return (int32_t)v;
 }
 
-
 /* Saturate a float accumulator to s16 range, rounding once at conversion.
  * Used by the float mixing paths to avoid intermediate s16 truncation. */
 static inline int16_t clamp(double v) {
-    if (v > INT16_MAX) return INT16_MAX;
-    if (v < INT16_MIN) return INT16_MIN;
+    if (v > INT16_MAX)
+        return INT16_MAX;
+    if (v < INT16_MIN)
+        return INT16_MIN;
     return (int16_t)lrint(v);
 }
 void aClearBufferImpl(uint16_t addr, int nbytes) {
@@ -207,7 +208,7 @@ void aADPCMdecImpl(uint8_t flags, ADPCM_STATE state) {
     while (nbytes > 0) {
         int shift = *in >> 4;          // should be in 0..12 or 0..14
         int table_index = *in++ & 0xf; // should be in 0..7
-        int16_t(*tbl)[8] = rspa.adpcm_table[table_index];
+        int16_t (*tbl)[8] = rspa.adpcm_table[table_index];
         int i;
 
         for (i = 0; i < 2; i++) {
@@ -271,10 +272,8 @@ void aResampleImpl(uint8_t flags, uint16_t pitch, RESAMPLE_STATE state) {
     do {
         for (i = 0; i < 8; i++) {
             tbl = resample_table[pitch_accumulator * 64 >> 16];
-            double sample = (double)in[0] * (double)tbl[0]
-                          + (double)in[1] * (double)tbl[1]
-                          + (double)in[2] * (double)tbl[2]
-                          + (double)in[3] * (double)tbl[3];
+            double sample = (double)in[0] * (double)tbl[0] + (double)in[1] * (double)tbl[1] +
+                            (double)in[2] * (double)tbl[2] + (double)in[3] * (double)tbl[3];
             *out++ = clamp(sample / 32768.0);
 
             pitch_accumulator += (pitch << 1);
@@ -311,7 +310,7 @@ void aEnvMixerImpl(uint16_t in_addr, uint16_t n_samples, bool swap_reverb, bool 
                    bool neg_right, int32_t wet_dry_addr, u32 unk) {
     const int16_t* in = BUF_S16(in_addr);
     int16_t* dry[2] = { BUF_S16(((wet_dry_addr >> 24) & 0xFF) << 4), BUF_S16(((wet_dry_addr >> 16) & 0xFF) << 4) };
-    int16_t* wet[2] = { BUF_S16(((wet_dry_addr >> 8) & 0xFF) << 4), BUF_S16(((wet_dry_addr)&0xFF) << 4) };
+    int16_t* wet[2] = { BUF_S16(((wet_dry_addr >> 8) & 0xFF) << 4), BUF_S16(((wet_dry_addr) & 0xFF) << 4) };
     const int negs[4] = { neg_left ? -1 : 1, neg_right ? -1 : 1, neg_3 ? -1 : 1, neg_2 ? -1 : 1 };
     const int swapped[2] = { swap_reverb ? 1 : 0, swap_reverb ? 0 : 1 };
     int n = ROUND_UP_16(n_samples);

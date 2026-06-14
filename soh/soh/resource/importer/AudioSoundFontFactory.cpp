@@ -176,13 +176,9 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
         // Diagnostic: dump the per-instrument sample triple. Use INFO so
         // the user sees it without flipping log level. Empty quoted strings
         // make the "no name in the binary" case unambiguously visible.
-        SPDLOG_INFO("[SoundFont] font {} bank1={} slot {:3}: low='{}' normal='{}' high='{}'",
-                    fntIdx,
-                    audioSoundFont->soundFont.sampleBankId1,
-                    i,
-                    lowName.empty() ? "" : lowName.c_str(),
-                    normalName.empty() ? "" : normalName.c_str(),
-                    highName.empty() ? "" : highName.c_str());
+        SPDLOG_INFO("[SoundFont] font {} bank1={} slot {:3}: low='{}' normal='{}' high='{}'", fntIdx,
+                    audioSoundFont->soundFont.sampleBankId1, i, lowName.empty() ? "" : lowName.c_str(),
+                    normalName.empty() ? "" : normalName.c_str(), highName.empty() ? "" : highName.c_str());
 
         if (isValidEntry) {
             audioSoundFont->instrumentAddresses.push_back(instrument);

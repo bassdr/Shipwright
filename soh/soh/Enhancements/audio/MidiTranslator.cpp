@@ -154,8 +154,7 @@ uint8_t MidiTranslator::GetEntryNativeActive(int idx) const {
         return 0;
     return mEntryNativeActive[idx];
 }
-void MidiTranslator::GetPairEntryActivity(uint8_t fontId, int16_t instOrWave, bool& anySynth,
-                                          bool& anyNative) const {
+void MidiTranslator::GetPairEntryActivity(uint8_t fontId, int16_t instOrWave, bool& anySynth, bool& anyNative) const {
     anySynth = false;
     anyNative = false;
     for (size_t idx = 0; idx < mEntries.size(); idx++) {
@@ -176,11 +175,11 @@ MidiTranslator::DebugPairStats MidiTranslator::GetDebugStats(uint8_t fontId, int
     if (!BypassIndexValid(fontId, instOrWave))
         return out;
     const auto& s = mDebugStats[fontId][instOrWave];
-    out.noteOns          = s.noteOns.load(std::memory_order_relaxed);
-    out.routedSynth      = s.routedSynth.load(std::memory_order_relaxed);
-    out.routedNative     = s.routedNative.load(std::memory_order_relaxed);
-    out.routedMute       = s.routedMute.load(std::memory_order_relaxed);
-    out.lastSemitone     = s.lastSemitone;
+    out.noteOns = s.noteOns.load(std::memory_order_relaxed);
+    out.routedSynth = s.routedSynth.load(std::memory_order_relaxed);
+    out.routedNative = s.routedNative.load(std::memory_order_relaxed);
+    out.routedMute = s.routedMute.load(std::memory_order_relaxed);
+    out.lastSemitone = s.lastSemitone;
     return out;
 }
 
@@ -214,7 +213,7 @@ void MidiTranslator::ResetDebugStatsForPair(uint8_t fontId, int16_t instOrWave) 
     s.routedSynth.store(0, std::memory_order_relaxed);
     s.routedNative.store(0, std::memory_order_relaxed);
     s.routedMute.store(0, std::memory_order_relaxed);
-    s.lastSemitone     = 0;
+    s.lastSemitone = 0;
     if (DrumSlotHit* hist = DrumHistFor(fontId, instOrWave)) {
         for (int slot = 0; slot < kDrumHistSlots; ++slot)
             hist[slot].count.store(0, std::memory_order_relaxed);
@@ -340,8 +339,7 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
         if (std::find(winners.begin(), winners.end(), w) == winners.end())
             winners.push_back(w);
     }
-    std::sort(winners.begin(), winners.end(),
-              [&](int a, int b) { return mEntries[a].noteLow < mEntries[b].noteLow; });
+    std::sort(winners.begin(), winners.end(), [&](int a, int b) { return mEntries[a].noteLow < mEntries[b].noteLow; });
 
     // Reset this pair's links, relink the winners, then publish the head LAST (the
     // single int16_t store) so a concurrent audio-thread walk sees either the intact
@@ -600,8 +598,7 @@ const MidiTranslator::DrumSlotHit* MidiTranslator::DrumHistFor(uint8_t fontId, i
 }
 
 MidiTranslator::DrumSlotHit* MidiTranslator::DrumHistFor(uint8_t fontId, int16_t instOrWave) {
-    return const_cast<DrumSlotHit*>(
-        static_cast<const MidiTranslator*>(this)->DrumHistFor(fontId, instOrWave));
+    return const_cast<DrumSlotHit*>(static_cast<const MidiTranslator*>(this)->DrumHistFor(fontId, instOrWave));
 }
 
 int MidiTranslator::AllocForcedDrumPool() {
@@ -639,8 +636,7 @@ void MidiTranslator::SetForcedDrum(uint8_t fontId, int16_t instOrWave, bool forc
         // one so the pair starts from a clean native baseline (it stays in
         // mEntries, deselected-but-present, so flipping back restores it).
         for (auto& e : mEntries) {
-            if (e.fontId == fontId && e.instOrWave == instOrWave && e.enabled &&
-                e.noteLow == 0 && e.noteHigh == 127)
+            if (e.fontId == fontId && e.instOrWave == instOrWave && e.enabled && e.noteLow == 0 && e.noteHigh == 127)
                 e.enabled = false;
         }
         mForcedDrumPool[fontId][instOrWave] = static_cast<int8_t>(pool);
@@ -721,9 +717,9 @@ void MidiTranslator::AutoSplitDrums(uint8_t fontId, int16_t instOrWave) {
         e.program = static_cast<int16_t>(kitProgram);
         e.bank = kitBank;
         if (e.fixedNote < 0) {
-            e.fixedNote = static_cast<int16_t>(std::clamp(
-                static_cast<int>(kGmPercussionLo) + s, static_cast<int>(kGmPercussionLo),
-                static_cast<int>(kGmPercussionHi)));
+            e.fixedNote =
+                static_cast<int16_t>(std::clamp(static_cast<int>(kGmPercussionLo) + s,
+                                                static_cast<int>(kGmPercussionLo), static_cast<int>(kGmPercussionHi)));
         }
         e.route = EntryRoute::Synth;
         e.source = EntrySource::UserPicked;
@@ -807,13 +803,13 @@ int MidiTranslator::SplitEntry(int idx, uint8_t atSemitone) {
         return -1;
     if (mEntries.size() >= kMaxEntries)
         return -1;
-    ConfigEntry sib = mEntries[idx];        // copy preset/gain/effects/route/etc.
-    sib.noteLow = atSemitone;               // sibling takes the upper half
+    ConfigEntry sib = mEntries[idx]; // copy preset/gain/effects/route/etc.
+    sib.noteLow = atSemitone;        // sibling takes the upper half
     sib.selected = true;
     sib.source = EntrySource::UserPicked;
     sib.lastEnabledSeq = mNextSeq++;
     mEntries[idx].noteHigh = static_cast<uint8_t>(atSemitone - 1); // idx keeps lower half
-    mEntries.push_back(std::move(sib));      // mEntries reserved -> no realloc, idx stays valid
+    mEntries.push_back(std::move(sib));                            // mEntries reserved -> no realloc, idx stays valid
     int newIdx = static_cast<int>(mEntries.size()) - 1;
     RecomputeActive(mEntries[idx].fontId, mEntries[idx].instOrWave);
     return newIdx;
@@ -930,9 +926,9 @@ void MidiTranslator::AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave)
         mEntries.push_back(std::move(e));
     };
     if (lo > 0)
-        addRange(0, static_cast<uint8_t>(lo - 1));        // low sample range
+        addRange(0, static_cast<uint8_t>(lo - 1)); // low sample range
     if (hi < 127)
-        addRange(static_cast<uint8_t>(hi + 1), 127);      // high sample range
+        addRange(static_cast<uint8_t>(hi + 1), 127); // high sample range
     RecomputeActive(fontId, instOrWave);
 }
 
@@ -1177,15 +1173,20 @@ void MidiTranslator::ResetAllOverrides() {
 // Route <-> JSON string. Synth is the default and is omitted on write.
 static const char* RouteToString(EntryRoute r) {
     switch (r) {
-        case EntryRoute::Native: return "native";
-        case EntryRoute::Mute:   return "mute";
-        case EntryRoute::Synth:  break;
+        case EntryRoute::Native:
+            return "native";
+        case EntryRoute::Mute:
+            return "mute";
+        case EntryRoute::Synth:
+            break;
     }
     return "synth";
 }
 static EntryRoute RouteFromString(const std::string& s) {
-    if (s == "native") return EntryRoute::Native;
-    if (s == "mute")   return EntryRoute::Mute;
+    if (s == "native")
+        return EntryRoute::Native;
+    if (s == "mute")
+        return EntryRoute::Mute;
     return EntryRoute::Synth;
 }
 
@@ -1325,10 +1326,14 @@ bool MidiTranslator::SaveOverridesToFile(const std::string& path) const {
 // (its effective mapping now), regardless of source or `selected`. PickPreset
 // keeps at most one entry enabled per (pair, split), so this never double-emits.
 static bool ExportEntryMatches(const ConfigEntry& e, const std::string& packNameFilter) {
-    if (!e.enabled) return false;
-    if (e.program < 0) return false;          // None placeholder — not shippable
-    if (e.packName.empty()) return false;
-    if (!packNameFilter.empty() && e.packName != packNameFilter) return false;
+    if (!e.enabled)
+        return false;
+    if (e.program < 0)
+        return false; // None placeholder — not shippable
+    if (e.packName.empty())
+        return false;
+    if (!packNameFilter.empty() && e.packName != packNameFilter)
+        return false;
     return true;
 }
 
@@ -1658,9 +1663,8 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     // record the engine semitone. Route counters are incremented at the
     // dispatch decision below — guarded by `wasIdleStart` so continuation
     // frames of the same note don't double-count.
-    const bool wasIdleStart = BypassIndexValid(fontId, instOrWave) &&
-                              state.kind == SlotKind::Idle &&
-                              velocity > 0.0f && !isFinished;
+    const bool wasIdleStart =
+        BypassIndexValid(fontId, instOrWave) && state.kind == SlotKind::Idle && velocity > 0.0f && !isFinished;
     if (wasIdleStart) {
         auto& dbg = mDebugStats[fontId][instOrWave];
         dbg.noteOns.fetch_add(1, std::memory_order_relaxed);
@@ -1677,7 +1681,7 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     }
     // Helper for the route-decision counters below. Only counts on a fresh
     // NoteOn so per-frame continuation calls don't inflate the totals.
-    auto bumpRoute = [&](std::atomic<uint32_t> DebugSlot::*counter) {
+    auto bumpRoute = [&](std::atomic<uint32_t> DebugSlot::* counter) {
         if (wasIdleStart && BypassIndexValid(fontId, instOrWave))
             (mDebugStats[fontId][instOrWave].*counter).fetch_add(1, std::memory_order_relaxed);
     };
@@ -1706,8 +1710,8 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
     // entryIdx attributes the native note to a split row (route=Native) so its
     // row lights up; -1 for the plain "no entry covers this" fall-through.
     auto adoptNative = [&](int entryIdx) {
-        if (state.kind != SlotKind::Native || state.pairFontId != fontId ||
-            state.pairInstOrWave != instOrWave || state.activeEntryIdx != entryIdx) {
+        if (state.kind != SlotKind::Native || state.pairFontId != fontId || state.pairInstOrWave != instOrWave ||
+            state.activeEntryIdx != entryIdx) {
             retireSlot();
             state.kind = SlotKind::Native;
             state.pairFontId = fontId;

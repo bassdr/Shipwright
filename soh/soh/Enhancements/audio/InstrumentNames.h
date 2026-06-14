@@ -23,8 +23,7 @@ inline constexpr int16_t kMelodicInstOrWaveBase = 2;
 // Record one sample filename for an (instrument slot, range). Pass the raw
 // string the factory loaded (with directory prefix) — the helper strips it
 // on display. Empty `name` clears any prior entry for that range.
-void SetInstrumentSampleName(uint8_t fontId, int16_t instId, SampleRange range,
-                             std::string name);
+void SetInstrumentSampleName(uint8_t fontId, int16_t instId, SampleRange range, std::string name);
 
 // Record the engine's low/normal/high split boundaries for an instrument slot
 // (in engine-semitone space): semitone < lo -> low sample, lo..hi -> normal,
@@ -44,7 +43,7 @@ struct InstrumentSampleSet {
     // full-range entry.
     uint8_t rangeLo = 0;
     uint8_t rangeHi = 127;
-    bool    hasRange = false;
+    bool hasRange = false;
     bool empty() const {
         return low.empty() && normal.empty() && high.empty();
     }

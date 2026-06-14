@@ -356,8 +356,8 @@ void Audio_ProcessNotes(void) {
                     }
                 }
                 bool handledByFluidSynth = SOH_MidiTranslator_ProcessNote(
-                    i, subAttrs.frequency, noteVelocity, subAttrs.pan, channelVolume, playbackState->fontId,
-                    instOrWave, semitone, (bool)noteSubEu->bitField0.finished, chanIdx,
+                    i, subAttrs.frequency, noteVelocity, subAttrs.pan, channelVolume, playbackState->fontId, instOrWave,
+                    semitone, (bool)noteSubEu->bitField0.finished, chanIdx,
                     gAudioContext.audioBufferParameters.resampleRate, pitchBend);
                 if (handledByFluidSynth) {
                     // FluidSynth owns this note; silence the native side so the two
