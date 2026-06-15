@@ -421,7 +421,7 @@ typedef struct EnAObj {
     /* 0x17C */ ColliderCylinder collider;
 } EnAObj; // size = 0x1C8
 
-typedef enum : uint8_t {
+typedef enum {
     /* 0x00 */ ACTORCAT_SWITCH,
     /* 0x01 */ ACTORCAT_BG,
     /* 0x02 */ ACTORCAT_PLAYER,
