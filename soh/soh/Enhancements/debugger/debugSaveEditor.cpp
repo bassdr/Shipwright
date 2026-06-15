@@ -547,22 +547,16 @@ void DrawInventoryTab() {
             uint8_t item = gSaveContext.inventory.items[index];
             PushStyleButton(Colors::DarkGray);
             if (item == ITEM_ROCS_FEATHER) {
-                auto ret = ImGui::ImageButton(
-                    "ROCS_FEATHER",
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                        ->GetTextureByName("ROCS_FEATHER"),
-                    ImVec2(48.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
+                auto ret = ImGui::ImageButton("ROCS_FEATHER", gui->GetTextureByName("ROCS_FEATHER"),
+                                              ImVec2(48.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
                 if (ret) {
                     selectedIndex = index;
                     ImGui::OpenPopup(itemPopupPicker);
                 }
             } else if (item != ITEM_NONE) {
                 const ItemMapEntry& slotEntry = itemMapping.find(item)->second;
-                auto ret = ImGui::ImageButton(
-                    slotEntry.name.c_str(),
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                        ->GetTextureByName(slotEntry.name),
-                    ImVec2(48.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
+                auto ret = ImGui::ImageButton(slotEntry.name.c_str(), gui->GetTextureByName(slotEntry.name),
+                                              ImVec2(48.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
                 if (ret) {
                     selectedIndex = index;
                     ImGui::OpenPopup(itemPopupPicker);
@@ -610,10 +604,8 @@ void DrawInventoryTab() {
                     }
                     const ItemMapEntry& slotEntry = possibleItems[pickerIndex];
                     PushStyleButton(Colors::DarkGray);
-                    auto ret = ImGui::ImageButton(
-                        slotEntry.name.c_str(),
-                        gui->GetTextureByName(slotEntry.name),
-                        ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
+                    auto ret = ImGui::ImageButton(slotEntry.name.c_str(), gui->GetTextureByName(slotEntry.name),
+                                                  ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
                     PopStyleButton();
                     if (ret) {
                         gSaveContext.inventory.items[selectedIndex] = slotEntry.id;
@@ -1234,14 +1226,15 @@ void DrawUpgradeIcon(const std::string& categoryName, int32_t categoryId, const 
 
     ImGui::PushID(categoryName.c_str());
 
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+
     PushStyleButton(Colors::DarkGray);
     auto value = (size_t)CUR_UPG_VALUE(categoryId);
     uint8_t item = value < items.size() ? items[value] : ITEM_NONE;
     const ItemMapEntry& slotEntry = itemMapping[item];
     if (ImGui::ImageButton(
             slotEntry.name.c_str(),
-            std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                ->GetTextureByName(item != ITEM_NONE ? slotEntry.name : itemMapping[items[1]].nameFaded),
+            gui->GetTextureByName(item != ITEM_NONE ? slotEntry.name : itemMapping[items[1]].nameFaded),
             ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1))) {
         ImGui::OpenPopup(upgradePopupPicker);
     }
@@ -1264,11 +1257,8 @@ void DrawUpgradeIcon(const std::string& categoryName, int32_t categoryId, const 
                 Tooltip("None");
             } else {
                 const ItemMapEntry& slotEntry = itemMapping[items[pickerIndex]];
-                auto ret = ImGui::ImageButton(
-                    slotEntry.name.c_str(),
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                        ->GetTextureByName(slotEntry.name),
-                    ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
+                auto ret = ImGui::ImageButton(slotEntry.name.c_str(), gui->GetTextureByName(slotEntry.name),
+                                              ImVec2(IMAGE_SIZE, IMAGE_SIZE), ImVec2(0, 0), ImVec2(1, 1));
                 if (ret) {
                     Inventory_ChangeUpgrade(categoryId, static_cast<s16>(pickerIndex));
                     ImGui::CloseCurrentPopup();
@@ -1516,10 +1506,9 @@ void DrawQuestStatusTab() {
         uint32_t bitMask = 1 << entry.id;
         bool hasQuestItem = (bitMask & gSaveContext.inventory.questItems) != 0;
         PushStyleButton(Colors::DarkGray);
-        auto ret = ImGui::ImageButton(
-            entry.name.c_str(),
-            gui->GetTextureByName(hasQuestItem ? entry.name : entry.nameFaded),
-            ImVec2(32.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
+        auto ret =
+            ImGui::ImageButton(entry.name.c_str(), gui->GetTextureByName(hasQuestItem ? entry.name : entry.nameFaded),
+                               ImVec2(32.0f, 48.0f), ImVec2(0, 0), ImVec2(1, 1));
         if (ret) {
             if (hasQuestItem) {
                 gSaveContext.inventory.questItems &= ~bitMask;
@@ -1596,10 +1585,9 @@ void DrawQuestStatusTab() {
 
             if (dungeonItemsScene != SCENE_JABU_JABU_BOSS) {
                 float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-                auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
-                ImGui::Image(
-                    gui->GetTextureByName(itemMapping[ITEM_KEY_SMALL].name),
-                    ImVec2(lineHeight, lineHeight));
+                auto gui =
+                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+                ImGui::Image(gui->GetTextureByName(itemMapping[ITEM_KEY_SMALL].name), ImVec2(lineHeight, lineHeight));
                 ImGui::SameLine();
                 PushStyleInput(THEME_COLOR);
                 if (ImGui::InputScalar("##Keys", ImGuiDataType_S8,

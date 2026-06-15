@@ -47,7 +47,7 @@ void InputViewer::RenderButton(std::string btnTexture, std::string btnOutlineTex
     ImGui::SetNextItemAllowOverlap();
 
     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
-    
+
     // Render Outline based on settings
     if (outlineMode == BUTTON_OUTLINE_ALWAYS_SHOWN || (outlineMode == BUTTON_OUTLINE_NOT_PRESSED && !state) ||
         (outlineMode == BUTTON_OUTLINE_PRESSED && state)) {
@@ -76,7 +76,7 @@ void InputViewer::DrawElement() {
         auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 
         if (!sButtonTexturesLoaded) {
-            gui->LoadTextureFromRawImage( "Input-Viewer-Background", "textures/buttons/InputViewerBackground.png");
+            gui->LoadTextureFromRawImage("Input-Viewer-Background", "textures/buttons/InputViewerBackground.png");
             gui->LoadTextureFromRawImage("A-Btn", "textures/buttons/ABtn.png");
             gui->LoadTextureFromRawImage("B-Btn", "textures/buttons/BBtn.png");
             gui->LoadTextureFromRawImage("L-Btn", "textures/buttons/LBtn.png");
@@ -165,9 +165,8 @@ void InputViewer::DrawElement() {
             if (CVarGetInteger(CVAR_INPUT_VIEWER("ShowBackground"), 1)) {
                 ImGui::SetNextItemAllowOverlap();
                 // Background
-                ImGui::Image(
-                    gui->GetTextureByName("Input-Viewer-Background"),
-                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
+                ImGui::Image(gui->GetTextureByName("Input-Viewer-Background"), scaledBGSize, ImVec2(0, 0),
+                             ImVec2(1.0f, 1.0f));
             }
 
             // A/B
@@ -316,9 +315,8 @@ void InputViewer::DrawElement() {
                 (analogOutlineMode == STICK_MODE_HIDDEN_IN_DEADZONE && !analogStickIsInDeadzone)) {
                 ImGui::SetNextItemAllowOverlap();
                 ImGui::SetCursorPos(aPos);
-                ImGui::Image(
-                    gui->GetTextureByName("Analog-Stick Outline"),
-                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
+                ImGui::Image(gui->GetTextureByName("Analog-Stick Outline"), scaledBGSize, ImVec2(0, 0),
+                             ImVec2(1.0f, 1.0f));
             }
             const int analogStickMode =
                 CVarGetInteger(CVAR_INPUT_VIEWER("AnalogStick.VisibilityMode"), STICK_MODE_ALWAYS_SHOWN);
@@ -328,8 +326,7 @@ void InputViewer::DrawElement() {
                 ImGui::SetCursorPos(
                     ImVec2(aPos.x + maxStickDistance * ((float)(pads[0].stick_x) / MAX_AXIS_RANGE) * scale,
                            aPos.y - maxStickDistance * ((float)(pads[0].stick_y) / MAX_AXIS_RANGE) * scale));
-                ImGui::Image(gui->GetTextureByName("Analog-Stick"),
-                             scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
+                ImGui::Image(gui->GetTextureByName("Analog-Stick"), scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
 
             // Right Stick
@@ -340,9 +337,8 @@ void InputViewer::DrawElement() {
                 (rightOutlineMode == STICK_MODE_HIDDEN_IN_DEADZONE && !rightStickIsInDeadzone)) {
                 ImGui::SetNextItemAllowOverlap();
                 ImGui::SetCursorPos(aPos);
-                ImGui::Image(
-                    gui->GetTextureByName("Right-Stick Outline"),
-                    scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
+                ImGui::Image(gui->GetTextureByName("Right-Stick Outline"), scaledBGSize, ImVec2(0, 0),
+                             ImVec2(1.0f, 1.0f));
             }
             const int rightStickMode =
                 CVarGetInteger(CVAR_INPUT_VIEWER("RightStick.VisibilityMode"), STICK_MODE_ALWAYS_HIDDEN);
@@ -352,8 +348,7 @@ void InputViewer::DrawElement() {
                 ImGui::SetCursorPos(
                     ImVec2(aPos.x + maxRightStickDistance * ((float)(pads[0].right_stick_x) / MAX_AXIS_RANGE) * scale,
                            aPos.y - maxRightStickDistance * ((float)(pads[0].right_stick_y) / MAX_AXIS_RANGE) * scale));
-                ImGui::Image(gui->GetTextureByName("Right-Stick"),
-                             scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
+                ImGui::Image(gui->GetTextureByName("Right-Stick"), scaledBGSize, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
             }
 
             // Analog stick angle text

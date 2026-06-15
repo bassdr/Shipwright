@@ -969,8 +969,9 @@ class ExtendedVanillaTableInvalidItemIdException : public std::exception {
 
     virtual const char* what() const noexcept override {
         static std::string staticString;
-        staticString = std::to_string(itemID) + " is not a valid ItemID for the extendedVanillaGetItemTable. If you are adding a new"
-                        "item, try adding it to randoGetItemTable instead.";
+        staticString = std::to_string(itemID) +
+                       " is not a valid ItemID for the extendedVanillaGetItemTable. If you are adding a new"
+                       "item, try adding it to randoGetItemTable instead.";
         return staticString.c_str();
     }
 };

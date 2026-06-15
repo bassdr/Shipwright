@@ -815,8 +815,7 @@ void DrawQuest(ItemTrackerItem item) {
     ImGui::BeginGroup();
     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 
-    ImGui::ImageWithBg(gui->GetTextureByName(
-                           hasQuestItem && IsValidSaveFile() ? item.name : item.nameFaded),
+    ImGui::ImageWithBg(gui->GetTextureByName(hasQuestItem && IsValidSaveFile() ? item.name : item.nameFaded),
                        ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1));
 
     if (item.id == QUEST_SKULL_TOKEN) {
@@ -1317,12 +1316,10 @@ void DrawDungeonItem(ItemTrackerItem item) {
     ImGui::BeginGroup();
     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
     if (itemId == ITEM_KEY_SMALL) {
-        ImGui::Image(gui->GetTextureByName(
-                         hasSmallKey && IsValidSaveFile() ? item.name : item.nameFaded),
+        ImGui::Image(gui->GetTextureByName(hasSmallKey && IsValidSaveFile() ? item.name : item.nameFaded),
                      ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1));
     } else {
-        ImGui::Image(gui->GetTextureByName(
-                         hasItem && IsValidSaveFile() ? item.name : item.nameFaded),
+        ImGui::Image(gui->GetTextureByName(hasItem && IsValidSaveFile() ? item.name : item.nameFaded),
                      ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1));
     }
 

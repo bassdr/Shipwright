@@ -436,10 +436,8 @@ void TimeSplitsPopUpContext() {
             ImGui::TableNextColumn();
             SplitsPushImageButtonStyle();
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
-            ImGui::ImageButton(
-                "QUEST_SKULL_TOKEN",
-                gui->GetTextureByName("QUEST_SKULL_TOKEN"),
-                ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0));
+            ImGui::ImageButton("QUEST_SKULL_TOKEN", gui->GetTextureByName("QUEST_SKULL_TOKEN"), ImVec2(32.0f, 32.0f),
+                               ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0));
             ImGui::PopStyleVar();
             ImGui::TableNextColumn();
             SplitsPopImageButtonStyle();
@@ -489,10 +487,9 @@ void TimeSplitsPopUpContext() {
                 ImGui::BeginGroup();
                 ImGui::PushID(popupObject.splitID);
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
-                auto ret = ImGui::ImageButton(
-                    popupObject.splitImage.c_str(),
-                    gui->GetTextureByName(popupObject.splitImage),
-                    ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), popupObject.splitTint);
+                auto ret = ImGui::ImageButton(popupObject.splitImage.c_str(),
+                                              gui->GetTextureByName(popupObject.splitImage), ImVec2(32.0f, 32.0f),
+                                              ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), popupObject.splitTint);
                 ImGui::PopStyleVar();
                 if (ret) {
                     splitList.push_back(popupObject);
@@ -666,10 +663,8 @@ void TimeSplitsDrawSplitsList() {
             }
             TimeSplitsGetImageSize(split.splitID);
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(imagePadding, imagePadding));
-            auto ret = ImGui::ImageButton(
-                split.splitImage.c_str(),
-                gui->GetTextureByName(split.splitImage), imageSize,
-                ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
+            auto ret = ImGui::ImageButton(split.splitImage.c_str(), gui->GetTextureByName(split.splitImage), imageSize,
+                                          ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
             ImGui::PopStyleVar();
             if (ret) {
                 TimeSplitsSkipSplit(dragIndex);
@@ -752,10 +747,8 @@ void TimeSplitsDrawItemList(uint32_t type) {
             TimeSplitsGetImageSize(split.splitID);
             SplitsPushImageButtonStyle();
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(imagePadding, imagePadding));
-            auto ret = ImGui::ImageButton(
-                split.splitImage.c_str(),
-                gui->GetTextureByName(split.splitImage), imageSize,
-                ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
+            auto ret = ImGui::ImageButton(split.splitImage.c_str(), gui->GetTextureByName(split.splitImage), imageSize,
+                                          ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), split.splitTint);
             ImGui::PopStyleVar();
             if (ret) {
                 if (popupList.contains(split.splitID) && (split.splitType < SPLIT_TYPE_BOSS)) {
@@ -885,7 +878,8 @@ void TimeSplitsDrawManageList() {
         ImGui::BeginTabBar("List Preview");
         if (ImGui::BeginTabItem("Preview")) {
             ImGui::BeginChild("PreviewChild");
-            auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+            auto gui =
+                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 
             for (auto& data : splitList) {
                 float availableWidth = ImGui::GetContentRegionAvail().x;
@@ -897,10 +891,9 @@ void TimeSplitsDrawManageList() {
                 }
                 TimeSplitsGetImageSize(data.splitID);
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(imagePadding, imagePadding));
-                auto ret = ImGui::ImageButton(
-                    data.splitImage.c_str(),
-                    gui->GetTextureByName(data.splitImage), imageSize,
-                    ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), data.splitTint);
+                auto ret =
+                    ImGui::ImageButton(data.splitImage.c_str(), gui->GetTextureByName(data.splitImage), imageSize,
+                                       ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), data.splitTint);
                 ImGui::PopStyleVar();
                 if (ret) {
                     removeIndex = index;

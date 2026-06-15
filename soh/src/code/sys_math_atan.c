@@ -84,7 +84,7 @@ u16 Math_GetAtan2Tbl(f32 x, f32 y) {
     s32 tblIdx = lrintf((x / y) * 1024.0f);
     if (tblIdx >= ARRAY_COUNT(sATan2Tbl))
         return sATan2Tbl[0];
-    
+
     return sATan2Tbl[tblIdx];
 }
 

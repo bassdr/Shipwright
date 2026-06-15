@@ -117,7 +117,8 @@ void Menu::UpdateWindowBackendObjects() {
 
     auto backends = Ship::Context::GetRawInstance()->GetWindow()->GetAvailableWindowBackends();
     for (auto& backend : *backends) {
-        availableWindowBackends[static_cast<Fast::WindowBackend>(backend)] = windowBackendsMap.at(static_cast<Fast::WindowBackend>(backend));
+        availableWindowBackends[static_cast<Fast::WindowBackend>(backend)] =
+            windowBackendsMap.at(static_cast<Fast::WindowBackend>(backend));
     }
 }
 

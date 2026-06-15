@@ -195,7 +195,7 @@ void TimeDisplayWindow::Draw() {
         ImGui::Text("No Enabled Timers...");
     } else {
         ImGui::BeginTable("Timer List", 2, ImGuiTableFlags_NoClip);
-        
+
         auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 
         for (auto& timers : activeTimers) {

@@ -1747,8 +1747,8 @@ extern "C" void Graph_StartFrame() {
     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
     switch (dwScancode) {
         case KbScancode::LUS_KB_F1: {
-            std::shared_ptr<SohModalWindow> modal = static_pointer_cast<SohModalWindow>(
-                gui->GetGuiWindow("Modal Window"));
+            std::shared_ptr<SohModalWindow> modal =
+                static_pointer_cast<SohModalWindow>(gui->GetGuiWindow("Modal Window"));
             if (modal->IsPopupOpen("Menu Moved")) {
                 modal->DismissPopup();
             } else {

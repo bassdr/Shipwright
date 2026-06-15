@@ -975,15 +975,15 @@ void PlandomizerDrawOptions() {
 
                 int32_t index = 0;
                 PlandoPushImageButtonStyle();
-                auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+                auto gui =
+                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
                 for (auto& hash : plandoHash) {
                     ImGui::PushID(index);
                     textureID = gui->GetTextureByName(gSeedTextures[hash].tex);
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
-                    auto upRet = ImGui::ImageButton(
-                        "HASH_ARROW_UP",
-                        gui->GetTextureByName("HASH_ARROW_UP"),
-                        ImVec2(35.0f, 18.0f), ImVec2(1, 1), ImVec2(0, 0), ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
+                    auto upRet = ImGui::ImageButton("HASH_ARROW_UP", gui->GetTextureByName("HASH_ARROW_UP"),
+                                                    ImVec2(35.0f, 18.0f), ImVec2(1, 1), ImVec2(0, 0),
+                                                    ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
                     ImGui::PopStyleVar();
                     if (upRet) {
                         if (hash + 1 < 0 || static_cast<size_t>(hash + 1) >= gSeedTextures.size()) {
@@ -994,10 +994,9 @@ void PlandomizerDrawOptions() {
                     }
                     ImGui::Image(textureID, ImVec2(35.0f, 35.0f));
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
-                    auto downRet = ImGui::ImageButton(
-                        "HASH_ARROW_DWN",
-                        gui->GetTextureByName("HASH_ARROW_DWN"),
-                        ImVec2(35.0f, 18.0f), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
+                    auto downRet = ImGui::ImageButton("HASH_ARROW_DWN", gui->GetTextureByName("HASH_ARROW_DWN"),
+                                                      ImVec2(35.0f, 18.0f), ImVec2(0, 0), ImVec2(1, 1),
+                                                      ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
                     ImGui::PopStyleVar();
                     if (downRet) {
                         if (hash == 0) {

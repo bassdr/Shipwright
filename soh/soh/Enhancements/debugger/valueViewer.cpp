@@ -180,9 +180,10 @@ void ValueViewerWindow::DrawElement() {
 
     ImGui::BeginGroup();
     static size_t selectedElement = SIZE_MAX;
-    std::string selectedElementText = (selectedElement == SIZE_MAX) 
-        ? "Select a value" 
-        : (std::string(valueTable[selectedElement].name) + " (" + std::string(valueTable[selectedElement].path) + ")");
+    std::string selectedElementText = (selectedElement == SIZE_MAX)
+                                          ? "Select a value"
+                                          : (std::string(valueTable[selectedElement].name) + " (" +
+                                             std::string(valueTable[selectedElement].path) + ")");
     UIWidgets::PushStyleCombobox(THEME_COLOR);
     if (ImGui::BeginCombo("##valueViewerElement", selectedElementText.c_str())) {
         for (size_t i = 0; i < valueTable.size(); i++) {
