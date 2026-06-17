@@ -123,10 +123,12 @@ struct ConfigEntry {
     // currently loaded OR the SF2 doesn't have (bank, program).
     // Refreshed by AudioEditor's pack-apply path; never persisted.
     int16_t sfontId = -1;
-    // Runtime: forward link of the active-split chain for this pair, sorted
-    // by noteLow (-1 = chain tail). Built by RecomputeActive; the audio
-    // thread walks it by index over the reserved mEntries vector. Acyclic by
-    // construction (each entry linked at most once). Never serialised.
+    // Runtime: forward link of the active-split chain for this pair, sorted by
+    // resolution priority (source > specificity > pack order), so the audio
+    // thread's first-covering-entry walk reproduces the per-semitone winner even
+    // when ranges overlap (-1 = chain tail). Built by RecomputeActive; walked by
+    // index over the reserved mEntries vector. Acyclic (each entry linked at most
+    // once). Never serialised.
     int16_t nextActiveSplit = -1;
 };
 
@@ -268,6 +270,14 @@ class MidiTranslator {
     // drum/SFX channels.
     void AutoSplitDrums(uint8_t fontId, int16_t instOrWave);
 
+    // Manually create a single drum slot at `slot` (engine-semitone index) for a
+    // drum/SFX or forced-drum pair, without waiting for runtime discovery. Mirrors
+    // one AutoSplitDrums row: pinned to the pair's kit, Native by default (the user
+    // picks a Drum Sound to make it synth). Reuses an existing slot entry rather
+    // than duplicating. Lets a pair be configured offline (e.g. a forced-drum pair
+    // whose song hasn't played yet). No-op outside drum-like pairs.
+    void AddDrumSlot(uint8_t fontId, int16_t instOrWave, uint8_t slot);
+
     // Drum channel Mode (master switch). Sets an explicit per-pair flag,
     // separate from per-slot `enabled`, so toggling it never rewrites the
     // per-slot state. Native (default) => every slot plays the engine drum
@@ -298,6 +308,11 @@ class MidiTranslator {
     // entry's [lo,hi]. AutoSplitByEngineRanges splits a melodic pair's active entry
     // into the engine's low/normal/high ranges (boundaries from InstrumentNames).
     int SplitEntry(int idx, uint8_t atSemitone);
+    // Split entry idx into `parts` (>=2) near-equal contiguous ranges in one shot
+    // (the UI's "split into N"), clamped so no range empties. Returns idx (the
+    // lowest range). Repeated bisection via SplitEntry, so siblings inherit the
+    // preset; the user reassigns each range after.
+    int SplitEntryEven(int idx, int parts);
     void MergeWithNext(int idx);
     void SetEntryNoteRange(int idx, uint8_t noteLow, uint8_t noteHigh);
     // Move the single boundary between two adjacent split ranges atomically:

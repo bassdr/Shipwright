@@ -296,14 +296,35 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
 
-    // Per-semitone winner: the highest-pack-rank enabled+resolvable entry whose
+    // Winner ranking among the enabled+resolvable entries covering a semitone. The
+    // order is a single semitone-independent total order, so the same comparator
+    // drives both the per-semitone pick and the chain sort below:
+    //   1. source: user picks beat mod-supplied ("user pref wins at all cost").
+    //   2. specificity: the narrower range beats a wider base, so a split overrides
+    //      a full-range entry of the same source (mod full-range vs user/mod split).
+    //   3. pack load order: later-loaded pack wins (loose over .o2r).
+    // A full tie keeps whichever sorts first; same-priority entries are disjoint in
+    // practice so the order between them never decides a semitone.
+    auto outranks = [this](int ai, int bi) {
+        const ConfigEntry& a = mEntries[ai];
+        const ConfigEntry& b = mEntries[bi];
+        int sa = (a.source == EntrySource::UserPicked) ? 1 : 0;
+        int sb = (b.source == EntrySource::UserPicked) ? 1 : 0;
+        if (sa != sb)
+            return sa > sb;
+        int wa = static_cast<int>(a.noteHigh) - static_cast<int>(a.noteLow);
+        int wb = static_cast<int>(b.noteHigh) - static_cast<int>(b.noteLow);
+        if (wa != wb)
+            return wa < wb; // narrower == more specific -> wins
+        return PackRank(a.packName) > PackRank(b.packName);
+    };
+
+    // Per-semitone winner: the top-ranked enabled+resolvable entry whose
     // [noteLow,noteHigh] covers that engine slot. For an unsplit pair every semitone
     // resolves to the same single entry (or none), collapsing the chain to length 1.
-    // Disjoint splits (the UI enforces non-overlap) yield one winner per range.
     int winnerAt[128];
     for (int s = 0; s < 128; ++s) {
         int best = -1;
-        int bestRank = -2;
         for (size_t idx = 0; idx < mEntries.size(); idx++) {
             const ConfigEntry& e = mEntries[idx];
             if (e.fontId != fontId || e.instOrWave != instOrWave)
@@ -316,21 +337,17 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
                 continue;
             if (s < e.noteLow || s > e.noteHigh)
                 continue;
-            int rank = PackRank(e.packName);
-            // Strict '>' keeps the first-seen entry on a rank tie. (Equal rank ==
-            // same pack == an overlap, which the UI disallows, so this tiebreak
-            // only fires on the unsplit multi-enabled corner.)
-            if (best < 0 || rank > bestRank) {
+            if (best < 0 || outranks(static_cast<int>(idx), best))
                 best = static_cast<int>(idx);
-                bestRank = rank;
-            }
         }
         winnerAt[s] = best;
     }
 
-    // Distinct winners in ascending-noteLow order, deduped so each entry is linked
-    // at most once, which keeps the chain acyclic (the audio thread walks it by
-    // index).
+    // Distinct winners, deduped so each entry is linked at most once (keeps the
+    // chain acyclic; the audio thread walks it by index). Sorted by the SAME
+    // priority order so the walk's "first covering entry wins" reproduces winnerAt
+    // even with overlapping ranges (e.g. a user split over a mod full-range): for
+    // any semitone the highest-priority covering winner sorts ahead of the rest.
     std::vector<int> winners;
     for (int s = 0; s < 128; ++s) {
         int w = winnerAt[s];
@@ -339,7 +356,7 @@ void MidiTranslator::RecomputeActive(uint8_t fontId, int16_t instOrWave) {
         if (std::find(winners.begin(), winners.end(), w) == winners.end())
             winners.push_back(w);
     }
-    std::sort(winners.begin(), winners.end(), [&](int a, int b) { return mEntries[a].noteLow < mEntries[b].noteLow; });
+    std::sort(winners.begin(), winners.end(), [&](int a, int b) { return outranks(a, b); });
 
     // Reset this pair's links, relink the winners, then publish the head LAST (the
     // single int16_t store) so a concurrent audio-thread walk sees either the intact
@@ -489,17 +506,55 @@ void MidiTranslator::PickPreset(uint8_t fontId, int16_t instOrWave, const std::s
 void MidiTranslator::ClickNative(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
+    bool hasModEntry = false;
     for (auto& e : mEntries) {
         if (e.fontId == fontId && e.instOrWave == instOrWave) {
+            if (e.source == EntrySource::ModSupplied)
+                hasModEntry = true;
             e.enabled = false;
+        }
+    }
+    // A pack mapping ships enabled entries that reappear -- and, under source-aware
+    // resolution, win -- on every reload, so disabling our entries can't outlast it.
+    // Persist the Native choice as a user-owned full-range Native marker: it
+    // outranks the mod (UserPicked) and routes to the engine sample. Pairs with no
+    // mod entry need no marker -- a disabled user entry already persists "off".
+    if (hasModEntry) {
+        int idx =
+            FindOrCreateEntry(fontId, instOrWave, std::string(), -1, 0, std::string("Native"), EntrySource::UserPicked);
+        if (idx >= 0) {
+            ConfigEntry& m = mEntries[idx];
+            m.route = EntryRoute::Native;
+            m.noteLow = 0;
+            m.noteHigh = 127;
+            m.enabled = true;
+            m.selected = true;
+            m.source = EntrySource::UserPicked;
+            m.lastEnabledSeq = mNextSeq++;
         }
     }
     RecomputeActive(fontId, instOrWave);
 }
 
+// A user Native marker is an empty-pack, full-range, route=Native entry created by
+// ClickNative to persist "this pair plays native" over a mod that ships a preset.
+static inline bool IsNativeMarker(const ConfigEntry& e) {
+    return e.route == EntryRoute::Native && e.packName.empty();
+}
+
 void MidiTranslator::ClickSynth(uint8_t fontId, int16_t instOrWave) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
+
+    // Leaving Native: retire any user Native marker so it stops winning. The
+    // candidate searches below also skip it (deselected here, but the fallback
+    // ignores `selected`).
+    for (auto& e : mEntries) {
+        if (e.fontId == fontId && e.instOrWave == instOrWave && IsNativeMarker(e)) {
+            e.enabled = false;
+            e.selected = false;
+        }
+    }
 
     // Primary search: user-selected entries.
     int bestIdx = -1;
@@ -523,6 +578,8 @@ void MidiTranslator::ClickSynth(uint8_t fontId, int16_t instOrWave) {
             const ConfigEntry& e = mEntries[idx];
             if (e.fontId != fontId || e.instOrWave != instOrWave)
                 continue;
+            if (IsNativeMarker(e))
+                continue; // never restore the Native marker as a synth pick
             if (e.sfontId < 0)
                 continue;
             if (bestIdx < 0 || e.lastEnabledSeq >= bestSeq) {
@@ -739,6 +796,48 @@ void MidiTranslator::AutoSplitDrums(uint8_t fontId, int16_t instOrWave) {
     RecomputeActive(fontId, instOrWave);
 }
 
+void MidiTranslator::AddDrumSlot(uint8_t fontId, int16_t instOrWave, uint8_t slot) {
+    if (!BypassIndexValid(fontId, instOrWave))
+        return;
+    if (slot >= kDrumHistSlots)
+        return;
+    // Drum-like pairs only: intrinsic drum/SFX channels or a forced-drum pair.
+    if (instOrWave != 0 && instOrWave != 1 && !IsForcedDrum(fontId, instOrWave))
+        return;
+
+    std::string kitPack;
+    int kitProgram = 0;
+    const int16_t kitBank = 128;
+    ResolveDrumKit(fontId, instOrWave, kitPack, kitProgram);
+
+    int idx = FindSlotEntryIdx(fontId, instOrWave, slot);
+    if (idx < 0) {
+        idx = FindOrCreateEntry(fontId, instOrWave, kitPack, static_cast<int16_t>(kitProgram), kitBank,
+                                std::string("Drum Kit"), EntrySource::UserPicked, slot);
+        if (idx < 0)
+            return;
+    }
+    ConfigEntry& e = mEntries[idx];
+    e.noteLow = slot;
+    e.noteHigh = slot;
+    e.packName = kitPack;
+    e.program = static_cast<int16_t>(kitProgram);
+    e.bank = kitBank;
+    if (e.fixedNote < 0) {
+        e.fixedNote =
+            static_cast<int16_t>(std::clamp(static_cast<int>(kGmPercussionLo) + slot, static_cast<int>(kGmPercussionLo),
+                                            static_cast<int>(kGmPercussionHi)));
+    }
+    e.route = EntryRoute::Synth;
+    e.source = EntrySource::UserPicked;
+    e.selected = true;
+    // Native by default (like discovery) so adding a slot never blasts a guessed
+    // GM kit; the user enables it by picking a Drum Sound.
+    e.enabled = false;
+    e.sfontId = kitPack.empty() ? -1 : ResolveSfontIdFromCache(kitPack, kitBank, kitProgram);
+    RecomputeActive(fontId, instOrWave);
+}
+
 void MidiTranslator::SetDrumChannelSynth(uint8_t fontId, int16_t instOrWave, bool synth) {
     if (!BypassIndexValid(fontId, instOrWave))
         return;
@@ -813,6 +912,32 @@ int MidiTranslator::SplitEntry(int idx, uint8_t atSemitone) {
     int newIdx = static_cast<int>(mEntries.size()) - 1;
     RecomputeActive(mEntries[idx].fontId, mEntries[idx].instOrWave);
     return newIdx;
+}
+
+int MidiTranslator::SplitEntryEven(int idx, int parts) {
+    if (idx < 0 || idx >= static_cast<int>(mEntries.size()))
+        return idx;
+    if (parts < 2)
+        return idx;
+    const int lo = mEntries[idx].noteLow;
+    const int hi = mEntries[idx].noteHigh;
+    const int span = hi - lo + 1;
+    if (span < parts)
+        parts = span; // can't make more ranges than semitones in the span
+    if (parts < 2)
+        return idx;
+    // Bisect off the top repeatedly: cut at the start of each part, then keep
+    // splitting the upper remainder. Boundaries are evenly spaced and strictly
+    // increasing (span >= parts), so each SplitEntry cut lands inside its range.
+    int cur = idx;
+    for (int k = 1; k < parts; ++k) {
+        int boundary = lo + static_cast<int>((static_cast<long long>(span) * k) / parts);
+        int newIdx = SplitEntry(cur, static_cast<uint8_t>(boundary));
+        if (newIdx < 0)
+            break;
+        cur = newIdx;
+    }
+    return idx;
 }
 
 void MidiTranslator::MergeWithNext(int idx) {
@@ -1769,10 +1894,10 @@ bool MidiTranslator::ProcessNote(int noteIndex, float freqScale, float velocity,
         // bumpRoute is a no-op outside the bypass range — fine.
         return false;
     }
-    // Find the entry whose engine-semitone range covers this note. The chain
-    // is sorted by noteLow and acyclic (RecomputeActive links each entry at
-    // most once); an unsplit pair has a length-1 chain so this is the same
-    // single lookup as before.
+    // Find the entry whose engine-semitone range covers this note. The chain is
+    // sorted by resolution priority, so the FIRST covering entry is the winner even
+    // when ranges overlap (RecomputeActive links each entry at most once -> acyclic);
+    // an unsplit pair has a length-1 chain so this is the same single lookup as before.
     int activeIdx = mActiveEntryIdx[fontId][instOrWave];
     while (activeIdx >= 0 && activeIdx < static_cast<int>(mEntries.size())) {
         const ConfigEntry& cand = mEntries[activeIdx];

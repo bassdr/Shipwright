@@ -2082,29 +2082,30 @@ void AudioEditor::DrawElement() {
                                 for (int i = 0; i < nPairs; i++) {
                                     const auto& q = pairs[i];
                                     auto key = std::make_pair(q.fontId, q.instOrWave);
-                                    bool isDrum = (q.instOrWave == 0 || q.instOrWave == 1) ||
-                                                  SOH::MidiTranslator::Instance().IsForcedDrum(q.fontId, q.instOrWave);
+                                    // A soloed sub-unit (drum slot OR melodic range) keeps its parent
+                                    // pair audible; scan regardless of pair kind so soloing a melodic
+                                    // range doesn't mute its own instrument.
                                     bool pairHasSoloedSlot = false;
-                                    if (isDrum) {
-                                        for (const auto& t : sSoloedSlots)
-                                            if (std::get<0>(t) == q.fontId && std::get<1>(t) == q.instOrWave) {
-                                                pairHasSoloedSlot = true;
-                                                break;
-                                            }
-                                    }
+                                    for (const auto& t : sSoloedSlots)
+                                        if (std::get<0>(t) == q.fontId && std::get<1>(t) == q.instOrWave) {
+                                            pairHasSoloedSlot = true;
+                                            break;
+                                        }
                                     bool inSolo = sSoloedPairs.count(key) > 0 || pairHasSoloedSlot;
                                     bool explicitMute = sExplicitMutedPairs.count(key) > 0;
                                     bool effPair = (anySolo && !inSolo) || explicitMute;
                                     SOH::MidiTranslator::Instance().SetTemporaryMute(q.fontId, q.instOrWave, effPair);
 
-                                    // Per-slot mutes only matter when the channel itself isn't
-                                    // muted (the pair-mute short-circuits before per-slot).
-                                    if (isDrum && !effPair) {
+                                    // Per-slot / per-range mutes only matter when the channel itself
+                                    // isn't muted (the pair-mute short-circuits before per-slot). Drum
+                                    // slots and melodic sub-ranges are both keyed by noteLow; only the
+                                    // whole-pair full-range entry (and the Native marker) is excluded.
+                                    if (!effPair) {
                                         std::vector<int> idxs;
                                         SOH::MidiTranslator::Instance().GetEntriesForPair(q.fontId, q.instOrWave, idxs);
                                         for (int ei : idxs) {
                                             const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
-                                            if (!ce.selected || ce.noteLow != ce.noteHigh)
+                                            if (!ce.selected || (ce.noteLow == 0 && ce.noteHigh == 127))
                                                 continue;
                                             auto st = std::make_tuple(q.fontId, q.instOrWave, ce.noteLow);
                                             bool slotSolo = sSoloedSlots.count(st) > 0 || sSoloedPairs.count(key) > 0;
@@ -2243,6 +2244,31 @@ void AudioEditor::DrawElement() {
                                                                                                 true);
                                             AutoSaveOverrides();
                                         }
+                                        // Dormant-slot warning: per-slot Synth entries do nothing
+                                        // while the channel master is Native (the channel plays
+                                        // native wholesale), so saved-but-silent slots aren't a
+                                        // mystery.
+                                        if (!channelSynth) {
+                                            int dormant = 0;
+                                            std::vector<int> didx;
+                                            SOH::MidiTranslator::Instance().GetEntriesForPair(p.fontId, p.instOrWave,
+                                                                                              didx);
+                                            for (int ei : didx) {
+                                                const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
+                                                if (ce.enabled && ce.selected && ce.noteLow == ce.noteHigh)
+                                                    ++dormant;
+                                            }
+                                            if (dormant > 0) {
+                                                ImGui::SameLine();
+                                                ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "(%d dormant)",
+                                                                   dormant);
+                                                if (ImGui::IsItemHovered())
+                                                    ImGui::SetTooltip(
+                                                        "%d slot(s) are set to Synth but the instrument is Native,\n"
+                                                        "so they play the engine drum. Click Synth to hear them.",
+                                                        dormant);
+                                            }
+                                        }
                                     }
 
                                     // Preset: Kit dropdown (bank-128 presets). Mirrors the
@@ -2292,6 +2318,28 @@ void AudioEditor::DrawElement() {
                                     }
 
                                     if (treeOpen) {
+                                        // Manual Add slot: configure a slot offline without replaying
+                                        // the song to discover it (the fix for forced-drum pairs that
+                                        // reload with no slots). Synth master only -- slots resolve
+                                        // only then. The slot index is transient, shared across rows.
+                                        if (channelSynth) {
+                                            ImGui::TableNextRow();
+                                            ImGui::TableSetColumnIndex(instCol);
+                                            static int sAddSlot = 0;
+                                            ImGui::SetNextItemWidth(64.0f);
+                                            ImGui::DragInt("##addslotidx", &sAddSlot, 0.3f, 0, 127, "slot %d");
+                                            ImGui::SameLine();
+                                            if (ImGui::SmallButton("Add##addslot")) {
+                                                SOH::MidiTranslator::Instance().AddDrumSlot(
+                                                    p.fontId, p.instOrWave, (uint8_t)std::clamp(sAddSlot, 0, 127));
+                                                AutoSaveOverrides();
+                                            }
+                                            if (ImGui::IsItemHovered())
+                                                ImGui::SetTooltip("Add a drum slot by index without waiting to\n"
+                                                                  "discover it in-game. Created Native; pick a\n"
+                                                                  "Drum Sound to make it synth.");
+                                        }
+
                                         std::vector<int> idxs;
                                         SOH::MidiTranslator::Instance().GetEntriesForPair(p.fontId, p.instOrWave, idxs);
                                         std::vector<int> slots;
@@ -2481,6 +2529,11 @@ void AudioEditor::DrawElement() {
                                         const auto& ce = SOH::MidiTranslator::Instance().GetEntry(ei);
                                         if (!ce.selected)
                                             continue;
+                                        // The user Native marker (empty-pack route=Native) is a
+                                        // whole-pair native flag, not a split range -- skip it so it
+                                        // doesn't surface as a phantom range row.
+                                        if (ce.route == SOH::EntryRoute::Native && ce.packName.empty())
+                                            continue;
                                         ranges.push_back(ei);
                                         if (ce.noteLow != 0 || ce.noteHigh != 127)
                                             isRangeSplit = true;
@@ -2518,7 +2571,16 @@ void AudioEditor::DrawElement() {
                                         ImGui::Text("%d", (int)p.instOrWave);
 
                                         ImGui::TableSetColumnIndex(presetCol);
-                                        ImGui::Text("%d ranges", (int)ranges.size());
+                                        // Flag native (disabled) ranges so coverage that isn't synth is
+                                        // visible at a glance, not hidden one row deeper.
+                                        int nativeRanges = 0;
+                                        for (int ei : ranges)
+                                            if (!SOH::MidiTranslator::Instance().GetEntry(ei).enabled)
+                                                ++nativeRanges;
+                                        if (nativeRanges > 0)
+                                            ImGui::Text("%d ranges (%d native)", (int)ranges.size(), nativeRanges);
+                                        else
+                                            ImGui::Text("%d ranges", (int)ranges.size());
                                         ImGui::SameLine();
                                         if (ImGui::SmallButton("Flatten##melflat")) {
                                             // Collapse back to unsplit: widen every range to the
@@ -2547,6 +2609,11 @@ void AudioEditor::DrawElement() {
                                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kSynthTint);
                                                 else if (SOH::MidiTranslator::Instance().GetEntryNativeActive(ei) > 0)
                                                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, kNativeTint);
+
+                                                // Per-range Solo / Mute (keyed by noteLow, like drum
+                                                // slots), so a single melodic range can be isolated.
+                                                ImGui::TableSetColumnIndex(overrideCol);
+                                                drawSlotSoloMute(std::make_tuple(p.fontId, p.instOrWave, ce.noteLow));
 
                                                 // Inst column: contiguous-range boundary editor. Ranges
                                                 // are kept adjacent and non-overlapping by construction:
@@ -2734,7 +2801,11 @@ void AudioEditor::DrawElement() {
                                     SOH::MidiTranslator::Instance().GetActiveEntry(p.fontId, p.instOrWave);
                                 int activeIdx =
                                     SOH::MidiTranslator::Instance().GetActiveEntryIdx(p.fontId, p.instOrWave);
-                                bool effectiveIsNative = (activeEntry == nullptr);
+                                // A whole-pair Native marker wins resolution (activeEntry non-null)
+                                // but means the instrument plays native, so treat it as Native here.
+                                bool effectiveIsNative =
+                                    (activeEntry == nullptr) ||
+                                    (activeEntry->route == SOH::EntryRoute::Native && activeEntry->packName.empty());
 
                                 // ── Override column (session-only Solo / Mute) ─────────
                                 ImGui::TableSetColumnIndex(overrideCol);
@@ -2882,6 +2953,22 @@ void AudioEditor::DrawElement() {
                                         ImGui::SetTooltip("Split this instrument into two note ranges (at the\n"
                                                           "midpoint) so the low and high halves can use\n"
                                                           "different presets. Expand the row to edit them.");
+                                    // Split into N equal ranges in one click (the common "I want 4
+                                    // ranges" case, instead of repeatedly bisecting the lowest).
+                                    ImGui::SameLine();
+                                    static int sSplitN = 4;
+                                    ImGui::SetNextItemWidth(40.0f);
+                                    ImGui::DragInt("##splitn", &sSplitN, 0.1f, 2, 16, "%d");
+                                    ImGui::SameLine(0.0f, 2.0f);
+                                    if (ImGui::SmallButton("Split N##manualmelN")) {
+                                        SOH::MidiTranslator::Instance().SplitEntryEven(activeIdx,
+                                                                                       std::clamp(sSplitN, 2, 16));
+                                        AutoSaveOverrides();
+                                    }
+                                    if (ImGui::IsItemHovered())
+                                        ImGui::SetTooltip("Split this instrument into N equal note ranges at once,\n"
+                                                          "duplicating the current preset so each range can be\n"
+                                                          "reassigned. Expand the row to edit them.");
                                     auto rng = SOH::GetInstrumentSampleNames(p.fontId, p.instOrWave);
                                     if (rng.hasRange && !(rng.rangeLo == 0 && rng.rangeHi >= 127)) {
                                         ImGui::SameLine();
