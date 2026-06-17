@@ -479,10 +479,17 @@ void MidiTranslator::PickPreset(uint8_t fontId, int16_t instOrWave, const std::s
         }
     }
 
+    const size_t entryCountBefore = mEntries.size();
     int idx = FindOrCreateEntry(fontId, instOrWave, pack, program, bank, presetName, EntrySource::UserPicked);
     if (idx < 0)
         return;
     ConfigEntry& e = mEntries[idx];
+    // On a freshly created entry, seed the octave Shift from the engine sample's
+    // tuning so a substitute lands in the native octave by default; user-overridable.
+    // SOH [Enhancement]
+    if (mEntries.size() > entryCountBefore) {
+        e.transpose = static_cast<int8_t>(SuggestedTranspose(fontId, instOrWave, e.noteLow, e.noteHigh));
+    }
     // Preserve gain/transpose/effects when reusing; only program/bank/pack identify
     // the entry. presetName updates so renamed presets surface. Re-resolve sfontId
     // in case the bank changed on a reused entry (FindEntry keys on pack+program).
@@ -1035,9 +1042,12 @@ void MidiTranslator::AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave)
         return;
     ConfigEntry tmpl = mEntries[actIdx]; // copy the preset/gain/effects/route
 
-    // Repurpose the active entry as the normal range [lo, hi].
+    // Repurpose the active entry as the normal range [lo, hi]. Each range maps to a
+    // distinct engine sample, so re-derive its octave Shift from that sample's tuning.
+    // SOH [Enhancement]
     mEntries[actIdx].noteLow = lo;
     mEntries[actIdx].noteHigh = hi;
+    mEntries[actIdx].transpose = static_cast<int8_t>(SuggestedTranspose(fontId, instOrWave, lo, hi));
 
     auto addRange = [&](uint8_t rLo, uint8_t rHi) {
         if (mEntries.size() >= kMaxEntries)
@@ -1045,6 +1055,7 @@ void MidiTranslator::AutoSplitByEngineRanges(uint8_t fontId, int16_t instOrWave)
         ConfigEntry e = tmpl;
         e.noteLow = rLo;
         e.noteHigh = rHi;
+        e.transpose = static_cast<int8_t>(SuggestedTranspose(fontId, instOrWave, rLo, rHi));
         e.selected = true;
         e.source = EntrySource::UserPicked;
         e.lastEnabledSeq = mNextSeq++;

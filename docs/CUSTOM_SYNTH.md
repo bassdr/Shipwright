@@ -136,7 +136,7 @@ Columns:
 | Inst     | Engine slot id; `0 (Drum)` / `1 (SFX)` are special. Holds the **Split** / **L/M/H** / **As Drum** (and, for drum rows, **Slots**) buttons; hover for NoteOn stats. |
 | Mode     | **Native** (engine synth) vs **Synth** (FluidSynth).                                          |
 | Gain     | Per-instrument synth volume (0..4x).                                                          |
-| Shift    | Pitch shift. Header has a **Semitone** checkbox to switch the column between octaves (+/-8) and semitones (+/-24). |
+| Shift    | Pitch shift. Header has a **Semitone** checkbox to switch the column between octaves (+/-8) and semitones (+/-24). Auto-seeded from the engine sample's tuning when you pick a preset (so a substitute lands in the original octave); right-click to re-apply the suggested shift. |
 | Preset   | Pick an SF2 preset from any loaded pack (filterable). Selecting also pins the row to that pack. |
 | Adv      | Per-entry **Adv** popup: Reverb (CC91), Chorus (CC93), Cutoff (CC74), Q (CC71). Drag a slider below 0 to clear that override. |
 

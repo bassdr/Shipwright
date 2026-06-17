@@ -137,6 +137,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             instrument->lowNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
             lowName = sampleFileName;
             SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::Low, std::move(sampleFileName));
+            SOH::SetInstrumentTuning(fntIdx, slot, SOH::SampleRange::Low, instrument->lowNotesSound.tuning);
         } else {
             instrument->lowNotesSound.sample = nullptr;
             instrument->lowNotesSound.tuning = 0;
@@ -153,6 +154,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             instrument->normalNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
             normalName = sampleFileName;
             SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::Normal, std::move(sampleFileName));
+            SOH::SetInstrumentTuning(fntIdx, slot, SOH::SampleRange::Normal, instrument->normalNotesSound.tuning);
         } else {
             instrument->normalNotesSound.sample = nullptr;
             instrument->normalNotesSound.tuning = 0;
@@ -168,6 +170,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             instrument->highNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
             highName = sampleFileName;
             SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::High, std::move(sampleFileName));
+            SOH::SetInstrumentTuning(fntIdx, slot, SOH::SampleRange::High, instrument->highNotesSound.tuning);
         } else {
             instrument->highNotesSound.sample = nullptr;
             instrument->highNotesSound.tuning = 0;
@@ -176,9 +179,12 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
         // Diagnostic: dump the per-instrument sample triple. Use INFO so
         // the user sees it without flipping log level. Empty quoted strings
         // make the "no name in the binary" case unambiguously visible.
-        SPDLOG_INFO("[SoundFont] font {} bank1={} slot {:3}: low='{}' normal='{}' high='{}'", fntIdx,
-                    audioSoundFont->soundFont.sampleBankId1, i, lowName.empty() ? "" : lowName.c_str(),
-                    normalName.empty() ? "" : normalName.c_str(), highName.empty() ? "" : highName.c_str());
+        SPDLOG_INFO("[SoundFont] font {} bank1={} slot {:3}: low='{}'({:.3f}) normal='{}'({:.3f}) "
+                    "high='{}'({:.3f})",
+                    fntIdx, audioSoundFont->soundFont.sampleBankId1, i, lowName.empty() ? "" : lowName.c_str(),
+                    instrument->lowNotesSound.tuning, normalName.empty() ? "" : normalName.c_str(),
+                    instrument->normalNotesSound.tuning, highName.empty() ? "" : highName.c_str(),
+                    instrument->highNotesSound.tuning);
 
         if (isValidEntry) {
             audioSoundFont->instrumentAddresses.push_back(instrument);

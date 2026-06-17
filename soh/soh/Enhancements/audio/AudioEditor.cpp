@@ -1996,10 +1996,24 @@ void AudioEditor::DrawElement() {
                                 }
                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                     AutoSaveOverrides();
+                                // Right-click: re-apply the octave Shift derived from this range's
+                                // engine sample tuning (auto-seeded on preset pick; this restores it).
+                                const SOH::ConfigEntry& re = SOH::MidiTranslator::Instance().GetEntry(idx);
+                                int rSuggest =
+                                    SOH::SuggestedTranspose(re.fontId, re.instOrWave, re.noteLow, re.noteHigh);
+                                if (ImGui::BeginPopupContextItem("##rshiftctx")) {
+                                    if (ImGui::MenuItem(rSuggest % 12 == 0 ? "Apply suggested octave"
+                                                                           : "Apply suggested shift")) {
+                                        SOH::MidiTranslator::Instance().SetEntryTranspose(idx, (int8_t)rSuggest);
+                                        AutoSaveOverrides();
+                                    }
+                                    ImGui::EndPopup();
+                                }
                                 if (ImGui::IsItemHovered())
                                     ImGui::SetTooltip("Shift this range's notes (%+d st stored). Toggle Semitone\n"
-                                                      "precision in the header for +/-24 st fine control.",
-                                                      transStored);
+                                                      "precision in the header for +/-24 st fine control.\n"
+                                                      "Sample tuning suggests %+d st (right-click to apply).",
+                                                      transStored, rSuggest);
                             };
                             (void)drawShiftEditor;
 
@@ -3111,24 +3125,43 @@ void AudioEditor::DrawElement() {
                                 }
                                 if (ImGui::IsItemDeactivatedAfterEdit())
                                     AutoSaveOverrides();
+                                // Right-click: re-apply the tuning-derived octave Shift (auto-seeded
+                                // on preset pick). Only meaningful when there's an active entry.
+                                int pairSuggest =
+                                    activeEntry ? SOH::SuggestedTranspose(p.fontId, p.instOrWave, activeEntry->noteLow,
+                                                                          activeEntry->noteHigh)
+                                                : 0;
+                                if (activeIdx >= 0 && ImGui::BeginPopupContextItem("##transctx")) {
+                                    if (ImGui::MenuItem(pairSuggest % 12 == 0 ? "Apply suggested octave"
+                                                                              : "Apply suggested shift")) {
+                                        SOH::MidiTranslator::Instance().SetEntryTranspose(activeIdx,
+                                                                                          (int8_t)pairSuggest);
+                                        AutoSaveOverrides();
+                                    }
+                                    ImGui::EndPopup();
+                                }
                                 if (ImGui::IsItemHovered()) {
                                     if (transSemis) {
-                                        ImGui::SetTooltip("Shift this pair's notes by +/-24 semitones (fine).\n"
-                                                          "Stored value: %+d st. 0 = no shift. Drums skip this column.",
-                                                          (int)transStored);
+                                        ImGui::SetTooltip(
+                                            "Shift this pair's notes by +/-24 semitones (fine).\n"
+                                            "Stored value: %+d st. 0 = no shift. Drums skip this column.\n"
+                                            "Sample tuning suggests %+d st (right-click to apply).",
+                                            (int)transStored, pairSuggest);
                                     } else if (hasRemainder) {
                                         ImGui::SetTooltip("Shift this pair's notes by +/-8 octaves (whole-scale).\n"
                                                           "Stored value: %+d st = %+d oct %+d st leftover.\n"
                                                           "The leftover semitone offset is preserved when you\n"
                                                           "drag here - octaves move by +/-12 around it. Enable\n"
                                                           "Semitone precision above to edit the leftover.\n"
-                                                          "(Cell tinted to flag the leftover.)",
-                                                          (int)transStored, curOctaves, curRemainder);
+                                                          "(Cell tinted to flag the leftover.)\n"
+                                                          "Sample tuning suggests %+d st (right-click to apply).",
+                                                          (int)transStored, curOctaves, curRemainder, pairSuggest);
                                     } else {
                                         ImGui::SetTooltip("Shift this pair's notes by +/-8 octaves (whole-scale).\n"
                                                           "Stored value: %+d st. 0 = no shift. Enable Semitone\n"
-                                                          "precision above for +/-24 st fine control.",
-                                                          (int)transStored);
+                                                          "precision above for +/-24 st fine control.\n"
+                                                          "Sample tuning suggests %+d st (right-click to apply).",
+                                                          (int)transStored, pairSuggest);
                                     }
                                 }
                                 disabledTooltipIfNative();
