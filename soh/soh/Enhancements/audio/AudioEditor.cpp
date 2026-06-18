@@ -2122,7 +2122,11 @@ void AudioEditor::DrawElement() {
                                             if (!ce.selected || (ce.noteLow == 0 && ce.noteHigh == 127))
                                                 continue;
                                             auto st = std::make_tuple(q.fontId, q.instOrWave, ce.noteLow);
-                                            bool slotSolo = sSoloedSlots.count(st) > 0 || sSoloedPairs.count(key) > 0;
+                                            // A soloed slot is more specific than a soloed pair: when the pair
+                                            // has any soloed slot, ONLY those slots play (slot-solo wins). A
+                                            // pair-solo lights up every slot only when no slot is soloed.
+                                            bool slotSolo = sSoloedSlots.count(st) > 0 ||
+                                                            (sSoloedPairs.count(key) > 0 && !pairHasSoloedSlot);
                                             bool effSlot = (anySolo && !slotSolo) || sExplicitMutedSlots.count(st) > 0;
                                             if (effSlot)
                                                 SOH::MidiTranslator::Instance().SetTemporarySlotMute(
