@@ -6,6 +6,7 @@
 #include <soh/Enhancements/cosmetics/authenticGfxPatches.h>
 #include <soh/Enhancements/TimeDisplay/TimeDisplay.h>
 #include "soh/Enhancements/randomizer/randomizer.h"
+#include <ship/Context.h>
 
 extern "C" {
 #include "functions.h"
@@ -491,7 +492,7 @@ void SohMenu::AddMenuEnhancements() {
 
     path.column = SECTION_COLUMN_3;
     AddWidget(path, "Misc", WIDGET_SEPARATOR_TEXT);
-    AddWidget(path, "Skip Child Stealth", WIDGET_CVAR_CHECKBOX)
+    AddWidget(path, "Skip Child Stealth##Enhancement", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("TimeSavers.SkipChildStealth"))
         .Options(CheckboxOptions().Tooltip(
             "The crawlspace into Hyrule Castle goes straight to Zelda, skipping the guards."));
@@ -909,7 +910,7 @@ void SohMenu::AddMenuEnhancements() {
     AddWidget(path, "Skip Magic Arrow Equip Animation", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("SkipArrowAnimation"));
     // TODO: See if a Callback could be registered to avoid the need to reload scenes for the next two options.
-    AddWidget(path, "Blue Fire Arrows", WIDGET_CVAR_CHECKBOX)
+    AddWidget(path, "Blue Fire Arrows##Enhancement", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("BlueFireArrows"))
         .PreFunc([](WidgetInfo& info) {
             info.options->disabled =
@@ -919,7 +920,7 @@ void SohMenu::AddMenuEnhancements() {
         })
         .Options(CheckboxOptions().Tooltip(
             "Allows Ice Arrows to melt Red Ice. May require a room reload if toggled during gameplay."));
-    AddWidget(path, "Sunlight Arrows", WIDGET_CVAR_CHECKBOX)
+    AddWidget(path, "Sunlight Arrows##Enhancement", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("SunlightArrows"))
         .PreFunc([](WidgetInfo& info) {
             info.options->disabled =
@@ -1202,6 +1203,11 @@ void SohMenu::AddMenuEnhancements() {
         .RaceDisable(false)
         .Options(CheckboxOptions().Tooltip(
             "Restores an unfinished feature to pulsate the boss room icon when you are in the boss room."));
+    AddWidget(path, "Saria's Friends Forever Gesture", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ENHANCEMENT("SariaGestureFriendsForever"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip(
+            "Restores an unused animation of Saria when she says, \"Saria and Link will be friends forever.\""));
 
     AddWidget(path, "Glitch Restorations", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Fish while Hovering", WIDGET_CVAR_CHECKBOX)
@@ -1655,6 +1661,10 @@ void SohMenu::AddMenuEnhancements() {
     AddWidget(path, "Rupee Dash Mode", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("RupeeDash"))
         .Options(CheckboxOptions().Tooltip("Rupees reduce over time, Link suffers damage when the count hits 0."));
+    AddWidget(path, "Rupee Dash Wallet Scaling", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ENHANCEMENT("RupeeDashScaling"))
+        .PreFunc([](WidgetInfo& info) { info.isHidden = CVarGetInteger(CVAR_ENHANCEMENT("RupeeDash"), 0) == 0; })
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip("The larger Link's wallet, the faster Rupees reduce."));
     AddWidget(path, "Rupee Dash Interval %d seconds", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_ENHANCEMENT("RupeeDashInterval"))
         .PreFunc([](WidgetInfo& info) { info.isHidden = CVarGetInteger(CVAR_ENHANCEMENT("RupeeDash"), 0) == 0; })

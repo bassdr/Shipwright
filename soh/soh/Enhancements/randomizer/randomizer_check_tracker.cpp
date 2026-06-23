@@ -22,7 +22,6 @@
 #include <sstream>
 #include <vector>
 #include <set>
-#include <libultraship/libultraship.h>
 #include <libultraship/controller/controldeck/ControlDeck.h>
 #include "location.h"
 #include "item_location.h"
@@ -1677,7 +1676,7 @@ bool IsCheckShuffled(RandomizerCheck rc) {
                (loc->GetRCType() != RCTYPE_SCRUB || showScrubs ||
                 (showMajorScrubs && (rc == RC_LW_DEKU_SCRUB_NEAR_BRIDGE || // The 3 scrubs that are always randomized
                                      rc == RC_HF_DEKU_SCRUB_GROTTO || rc == RC_LW_DEKU_SCRUB_GROTTO_FRONT))) &&
-               ((loc->GetRCType() != RCTYPE_MERCHANT || showMerchants) ||
+               ((loc->GetRCType() != RCTYPE_MERCHANT || (showMerchants && rc != RC_ZR_MAGIC_BEAN_SALESMAN)) ||
                 (rc == RC_ZR_MAGIC_BEAN_SALESMAN && showBeans)) &&
                (loc->GetRCType() != RCTYPE_BEGGAR || showBeggar) &&
                (loc->GetRCType() != RCTYPE_SONG_LOCATION || showSongs) &&

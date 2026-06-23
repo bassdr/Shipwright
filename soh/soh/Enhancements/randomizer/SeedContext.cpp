@@ -16,6 +16,8 @@
 #include "soh/Enhancements/randomizer/3drando/random.hpp"
 #include "soh/Enhancements/randomizer/randomizer.h"
 
+#include <vector>
+
 #include <fstream>
 #include <spdlog/spdlog.h>
 extern "C" {
@@ -43,10 +45,10 @@ RandomizerArea Context::GetAreaFromString(std::string str) {
 
 int Context::CountEmptyLocations(const bool countShops) {
     auto ctx = Rando::Context::GetInstance();
-    return count_if(allLocations.begin(), allLocations.end(), [ctx, countShops](const auto loc) {
+    return static_cast<int>(count_if(allLocations.begin(), allLocations.end(), [ctx, countShops](const auto loc) {
         return ctx->GetItemLocation(loc)->GetPlacedRandomizerGet() == RG_NONE &&
                (countShops || Rando::StaticData::GetLocation(loc)->GetRCType() != RCTYPE_SHOP);
-    });
+    }));
 }
 
 void Context::InitStaticData() {

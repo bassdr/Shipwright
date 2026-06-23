@@ -1,7 +1,8 @@
 #include "Menu.h"
+#include "BackendTypes.h"
 #include "UIWidgets.hpp"
 #include "soh/OTRGlobals.h"
-#include <ship/window/gui/GuiMenuBar.h>
+#include <ship/config/Config.h>
 #include <ship/window/gui/GuiElement.h>
 #include "SohModals.h"
 #include <variant>
@@ -96,6 +97,13 @@ void Menu::RemoveSidebarSearch() {
         curIndex = static_cast<u32>(menuEntries["Settings"].sidebarOrder.size() - 1);
     }
     CVarSetString(menuEntries["Settings"].sidebarCvar, menuEntries["Settings"].sidebarOrder.at(curIndex).c_str());
+}
+
+void Menu::UpdateAudioBackendObjects() {
+    availableAudioBackends = Ship::Context::GetRawInstance()->GetAudio()->GetAvailableAudioBackends();
+    for (auto& backend : *availableAudioBackends) {
+        availableAudioBackendsMap[backend] = audioBackendsMap.at(backend);
+    }
 }
 
 void Menu::UpdateWindowBackendObjects() {
@@ -341,10 +349,9 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
                 UIWidgets::ComboboxOptions options = {};
                 options.color = menuThemeIndex;
                 options.tooltip = "Sets the audio API used by the game. Requires a relaunch to take effect.";
-                options.disabled =
-                    Ship::Context::GetRawInstance()->GetAudio()->GetAvailableAudioBackends()->size() <= 1;
+                options.disabled = availableAudioBackends->size() <= 1;
                 options.disabledTooltip = "Only one audio API is available on this platform.";
-                if (UIWidgets::Combobox("Audio API", &currentAudioBackend, audioBackendsMap, options)) {
+                if (UIWidgets::Combobox("Audio API", &currentAudioBackend, availableAudioBackendsMap, options)) {
                     Ship::Context::GetRawInstance()->GetAudio()->SetCurrentAudioBackend(currentAudioBackend);
                 }
             } break;
@@ -814,7 +821,7 @@ void Menu::DrawElement() {
     pos.y += headerHeight + style.ItemSpacing.y;
     pos.x = centerX - menuSize.x / 2 + (style.ItemSpacing.x * (menuEntries.size() + 1));
     window->DrawList->AddRectFilled(pos, pos + ImVec2{ menuSize.x, 4 }, ImGui::GetColorU32({ 255, 255, 255, 255 }),
-                                    true, style.WindowRounding);
+                                    style.WindowRounding);
     pos.y += style.ItemSpacing.y;
     float sectionHeight = menuSize.y - headerHeight - 4 - style.ItemSpacing.y * 2;
     float columnHeight = sectionHeight - style.ItemSpacing.y * 4;
@@ -864,7 +871,7 @@ void Menu::DrawElement() {
 
     pos = ImVec2{ sectionCenterX + (sidebarWidth / 2), topY } + style.ItemSpacing * 2;
     window->DrawList->AddRectFilled(pos, pos + ImVec2{ 4, sectionHeight - style.FramePadding.y * 2 },
-                                    ImGui::GetColorU32({ 255, 255, 255, 255 }), true, style.WindowRounding);
+                                    ImGui::GetColorU32({ 255, 255, 255, 255 }), style.WindowRounding);
     pos.x += 4 + style.ItemSpacing.x;
     ImGui::SetNextWindowPos(pos + style.ItemSpacing);
     float sectionWidth = menuSize.x - sidebarWidth - 4 - style.ItemSpacing.x * 4;

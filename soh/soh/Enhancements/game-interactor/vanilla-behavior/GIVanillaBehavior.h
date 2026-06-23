@@ -612,6 +612,12 @@ typedef enum {
     // - `*int16_t` (item id)
     VB_DRAW_AMMO_COUNT,
 
+    // #### `args`
+    // - `Player*` player
+    // - `PlayState*` play
+    VB_DRAW_HOOKSHOT_CHAIN,
+    VB_DRAW_HOOKSHOT_TIP,
+
     // #### `result`
     // ```c
     // true
@@ -619,6 +625,16 @@ typedef enum {
     // #### `args`
     // - Player*
     VB_EMPTYING_BOTTLE,
+
+    // #### `result`
+    // ```c
+    // (gSaveContext.inventory.items[gSaveContext.equips.cButtonSlots[button - 1]] == ITEM_MILK_BOTTLE) &&
+    //     (item == ITEM_BOTTLE)
+    // ```
+    // #### `args`
+    // - `int32_t` (button - promoted from `u8`)
+    // - `int32_t` (item - promoted from `u8`)
+    VB_EMPTY_BOTTLE_TO_HALF_MILK,
 
     // #### `result`
     // ```c
@@ -934,6 +950,14 @@ typedef enum {
     // - `*EnGe1`
     // - `*PlayState`
     VB_PLAY_HORSEBACK_ARCHERY,
+
+    // #### `result`
+    // ```c
+    // play->sceneNum == SCENE_KOKIRI_FOREST
+    // ```
+    // #### `args`
+    // - `*EnSa`
+    VB_SARIA_GESTURE,
 
     // #### `result`
     // ```c
@@ -1979,6 +2003,31 @@ typedef enum {
     // - `*int32_t` (arrowType)
     VB_PLAYER_ARROW_MAGIC_CONSUMPTION,
 
+    // #### `args`
+    // - `void*` player (Player*)
+    // - `PlayState*` play
+    VB_PLAYER_DRAW_BOTTLE,
+
+    // #### `args`
+    // - `s32` limbIndex
+    // - `Gfx**` dList (write to *dList to replace the resolved display list)
+    // - `void*` player (Player*)
+    // - `PlayState*` play
+    VB_PLAYER_OVERRIDE_LIMB_DRAW,
+
+    // Fired from Player_OverrideLimbDrawPause (pause/equipment screen character only).
+    // #### `args`
+    // - `s32` limbIndex
+    // - `Gfx**` dList (write to *dList to replace the resolved display list)
+    // - `void*` player (Player*)
+    // - `PlayState*` play
+    VB_PLAYER_OVERRIDE_LIMB_DRAW_PAUSE,
+
+    // #### `args`
+    // - `*Player`
+    // - `*PlayState`
+    VB_PLAYER_UPDATE_BOTTLE_HELD,
+
     // #### `result`
     // ```c
     // item == ITEM_SAW
@@ -2044,6 +2093,13 @@ typedef enum {
     VB_RED_ICE_MELTED_FLAG,
 
     // #### `result`
+    // ```c
+    // camera->xzSpeed > 0.001f || <any release button pressed> || params->interfaceFlags & 0x8
+    // ```
+    // #### `args`
+    // - `Camera*` (`camera`)
+    VB_RELEASE_DOORC_CAMERA,
+
     // #### `result`
     // ```c
     // true
