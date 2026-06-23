@@ -2193,7 +2193,9 @@ extern "C" void OTRControllerCallback(uint8_t rumble) {
                 std::dynamic_pointer_cast<SohInputEditorWindow>(gui->GetGuiWindow("Controller Configuration"));
 
         sControllerConfigWindow = controllerConfigWindow;
-    } else if (controllerConfigWindow->TestingRumble()) {
+    }
+
+    if (controllerConfigWindow != nullptr && controllerConfigWindow->TestingRumble()) {
         return;
     }
 
