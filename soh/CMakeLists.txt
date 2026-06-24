@@ -189,6 +189,14 @@ endif()
 file(GLOB_RECURSE src__ RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.c" "src/*.h")
 set_source_files_properties(${src__} PROPERTIES COMPILE_OPTIONS "${WARNING_OVERRIDE}")
 
+# Strict N64 float semantics, decomp only (so the rest keeps FMA/-O3).
+# -ffp-contract=off must follow -fno-fast-math, which resets contraction to on.
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    set_property(SOURCE ${src__} APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math -ffp-contract=off)
+elseif(MSVC)
+    set_property(SOURCE ${src__} APPEND PROPERTY COMPILE_OPTIONS /fp:precise)
+endif()
+
 list(APPEND src__ ${CMAKE_CURRENT_SOURCE_DIR}/Resource.rc)
 list(FILTER src__ EXCLUDE REGEX "src/dmadata/")
 list(FILTER src__ EXCLUDE REGEX "src/elf_message/")

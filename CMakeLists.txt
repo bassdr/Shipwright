@@ -137,14 +137,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 set(CMAKE_OBJCXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 endif()
 
-# Enforce strict, deterministic IEEE-754 floating-point to match N64 (MIPS) semantics.
-# Never enable fast-math, and disable FMA contraction: the R4300 CPU and RSP have no
-# fused multiply-add, so contracting mul+add into an FMA produces extra precision.
-add_compile_options($<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-fno-fast-math>)
-add_compile_options($<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/fp:precise>)
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/fp:except->)
-
 if(NOT CMAKE_BUILD_TYPE )
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)
 endif()
