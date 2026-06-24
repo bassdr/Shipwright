@@ -43,11 +43,18 @@ void ObjBlockstop_Update(Actor* thisx, PlayState* play) {
     ObjBlockstop* this = (ObjBlockstop*)thisx;
     DynaPolyActor* dynaPolyActor;
     Vec3f sp4C;
+    Vec3f rayStart;
     s32 bgId;
     s32 pad;
 
-    if (BgCheck_EntityLineTest2(&play->colCtx, &this->actor.home.pos, &this->actor.world.pos, &sp4C,
-                                &this->actor.floorPoly, false, false, true, true, &bgId, &this->actor)) {
+    // The block comes to rest with its base on the floor at home.pos.y. Begin the upward
+    // detection ray slightly below that plane so it reliably crosses the block's underside;
+    // starting exactly on home.pos.y can miss when the block settles right on the boundary.
+    rayStart = this->actor.home.pos;
+    rayStart.y -= 2.0f;
+
+    if (BgCheck_EntityLineTest2(&play->colCtx, &rayStart, &this->actor.world.pos, &sp4C, &this->actor.floorPoly, false,
+                                false, true, true, &bgId, &this->actor)) {
         dynaPolyActor = DynaPoly_GetActor(&play->colCtx, bgId);
 
         if (dynaPolyActor != NULL && dynaPolyActor->actor.id == ACTOR_OBJ_OSHIHIKI) {
