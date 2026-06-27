@@ -7,6 +7,7 @@
 static const std::map<Ship::AudioBackend, const char*> audioBackendsMap = {
     { Ship::AudioBackend::WASAPI, "Windows Audio Session API" },
     { Ship::AudioBackend::SDL, "SDL" },
+    { Ship::AudioBackend::SDL3, "SDL3" },
     { Ship::AudioBackend::COREAUDIO, "Core Audio" },
     { Ship::AudioBackend::NUL, "Null" },
 };
