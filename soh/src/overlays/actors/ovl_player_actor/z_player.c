@@ -9834,6 +9834,10 @@ void Player_Action_Roll(Player* this, PlayState* play) {
                 }
             }
 
+            if (GameInteractor_Should(VB_PLAYER_ROLL_CHAIN, false, this, play, sControlInput, sFloorType)) {
+                return;
+            }
+
             if ((this->skelAnime.curFrame < 15.0f) || !Player_ActionHandler_7(this, play)) {
                 if (this->skelAnime.curFrame >= 20.0f) {
                     func_8083A060(this, play);
@@ -9852,6 +9856,7 @@ void Player_Action_Roll(Player* this, PlayState* play) {
                     speedTarget = 3.0f;
                 }
 
+                GameInteractor_Should(VB_PLAYER_ROLL_STEER, false, this, play, yawTarget);
                 func_8083DF68(this, speedTarget, this->actor.shape.rot.y);
 
                 if (func_8084269C(play, this)) {

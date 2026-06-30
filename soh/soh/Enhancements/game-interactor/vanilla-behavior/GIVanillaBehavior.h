@@ -2030,6 +2030,27 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // false
+    // ```
+    // #### `args`
+    // - `*Player`
+    // - `*PlayState`
+    // - `*Input` (sControlInput)
+    // - `s32` (sFloorType)
+    VB_PLAYER_ROLL_CHAIN,
+
+    // #### `result`
+    // ```c
+    // false
+    // ```
+    // #### `args`
+    // - `*Player`
+    // - `*PlayState`
+    // - `s16 yawTarget` (stick world-space yaw, promoted to int in va_list)
+    VB_PLAYER_ROLL_STEER,
+
+    // #### `result`
+    // ```c
     // item == ITEM_SAW
     // ```
     // #### `args`
@@ -2381,6 +2402,14 @@ typedef enum {
     // #### `args`
     // - `*EnButte`
     VB_SPAWN_BUTTERFLY_FAIRY,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*EnButte`
+    VB_SPAWN_BUTTERFLY_FAIRY_EASY,
 
     // #### `result`
     // ```c
@@ -3089,6 +3118,14 @@ typedef enum {
     // #### `args`
     // - `s16* (&this->actor.parent->id)`
     VB_PREVENT_HOOKSHOT_PARENT_SOFTLOCK,
+
+    // #### `result`
+    // ```c
+    // true if Goron Link is talking
+    // ```
+    // #### `args`
+    // - `*EnGo2` (Goron Link)
+    VB_PREVENT_GORON_LINK_SOFTLOCK,
 
     // true
     // ```
