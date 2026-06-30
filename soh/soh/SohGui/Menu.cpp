@@ -102,7 +102,8 @@ void Menu::RemoveSidebarSearch() {
 void Menu::UpdateAudioBackendObjects() {
     auto backends = Ship::Context::GetRawInstance()->GetAudio()->GetAvailableAudioBackends();
     for (auto& backend : *backends) {
-        availableAudioBackends[backend] = audioBackendsMap.at(backend);
+        if (auto it = audioBackendsMap.find(backend); it != audioBackendsMap.end())
+            availableAudioBackends[backend] = it->second;
     }
 }
 
@@ -117,8 +118,9 @@ void Menu::UpdateWindowBackendObjects() {
 
     auto backends = Ship::Context::GetRawInstance()->GetWindow()->GetAvailableWindowBackends();
     for (auto& backend : *backends) {
-        availableWindowBackends[static_cast<Fast::WindowBackend>(backend)] =
-            windowBackendsMap.at(static_cast<Fast::WindowBackend>(backend));
+        auto windowBackend = (Fast::WindowBackend)backend;
+        if (auto it = windowBackendsMap.find(windowBackend); it != windowBackendsMap.end())
+            availableWindowBackends[windowBackend] = it->second;
     }
 }
 
