@@ -1598,6 +1598,12 @@ void AudioEditor::DrawElement() {
 
                         {
                             int mode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
+                            // Authentic/Enhanced shape FluidSynth's velocity modulators and
+                            // per-mode reverb; TinySoundFont honors neither (only a coarse
+                            // CC11-vs-velocity routing difference survives), so the labels no
+                            // longer mean what they say there -- disable them on TSF.
+                            bool tsfActive = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0) == 1;
+                            ImGui::BeginDisabled(tsfActive);
                             ImGui::TextUnformatted("Synth mode:");
                             ImGui::SameLine();
                             if (ImGui::RadioButton("Authentic##synthMode", mode == 0)) {
@@ -1620,6 +1626,11 @@ void AudioEditor::DrawElement() {
                                                   "NoteOn velocity so the SF's own concave attenuation\n"
                                                   "modulator shapes dynamics. Good with musically-curated\n"
                                                   "banks (MuseScore, SC-55, orchestral packs).");
+                            }
+                            ImGui::EndDisabled();
+                            if (tsfActive) {
+                                ImGui::SameLine();
+                                ImGui::TextDisabled("(FluidSynth only)");
                             }
 
                             int nowMode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
@@ -1938,6 +1949,16 @@ void AudioEditor::DrawElement() {
                                     ImGui::SetTooltip("Per-entry effects: reverb, chorus, cutoff, Q.");
                                 if (ImGui::BeginPopup("advpop")) {
                                     const SOH::ConfigEntry& e = SOH::MidiTranslator::Instance().GetEntry(idx);
+                                    // These are MIDI CC91/93/74/71 sends. TinySoundFont has no
+                                    // effects engine and ignores all four, so disable them there
+                                    // rather than present controls that do nothing.
+                                    bool tsfActive = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0) == 1;
+                                    if (tsfActive) {
+                                        ImGui::TextDisabled("TinySoundFont has no effects engine.");
+                                        ImGui::TextDisabled("Switch to FluidSynth to use these.");
+                                        ImGui::Separator();
+                                    }
+                                    ImGui::BeginDisabled(tsfActive);
                                     auto effRow = [&](const char* label, int8_t cur,
                                                       void (SOH::MidiTranslator::*setter)(int, int8_t),
                                                       const char* tip) {
@@ -1969,6 +1990,7 @@ void AudioEditor::DrawElement() {
                                     effRow("Q (CC71)", e.q, &SOH::MidiTranslator::SetEntryFilterResonance,
                                            "Filter resonance. 64 = no shift; higher emphasises the\n"
                                            "cutoff. Drag below 0 to clear.");
+                                    ImGui::EndDisabled();
                                     ImGui::EndPopup();
                                 }
                             };
