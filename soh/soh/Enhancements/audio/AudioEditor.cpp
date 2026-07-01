@@ -514,6 +514,19 @@ static float SynthMasterGainFromCVar() {
     return CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
 }
 
+// True only when TinySoundFont is BOTH compiled in and the selected backend. Kept
+// behind the compile guard so a stale SynthBackend=1 CVar (e.g. from a prior build
+// that had TSF) never grays out FluidSynth's controls in a FluidSynth-only build.
+static bool TsfBackendActive() {
+#if ENABLE_TINYSOUNDFONT && !ENABLE_FLUIDSYNTH
+    return true; // TSF is the only backend compiled in, so it is always active
+#elif ENABLE_TINYSOUNDFONT
+    return CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0) == 1;
+#else
+    return false; // TSF not compiled in
+#endif
+}
+
 // Build the soft-synth backend selected by CVAR_AUDIO("SynthBackend"): 0 =
 // FluidSynth (custom modulators + reverb), 1 = TinySoundFont (header-only, no
 // external dependency, but no custom modulators or reverb). Both implement
@@ -1563,12 +1576,14 @@ void AudioEditor::DrawElement() {
                         // ── Synth backend ────────────────────────────────
                         // FluidSynth (custom modulators + reverb) vs TinySoundFont
                         // (header-only, no external dependency; no modulators/reverb,
-                        // SF2 only). Changing it rebuilds the synth.
+                        // SF2 only). Only shown when both are compiled in -- with a
+                        // single backend there is nothing to choose, and MakeSynth
+                        // uses whichever one is available regardless of the CVar.
+#if ENABLE_FLUIDSYNTH && ENABLE_TINYSOUNDFONT
                         {
                             int backend = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0);
                             ImGui::TextUnformatted("Synth backend:");
                             ImGui::SameLine();
-#if ENABLE_FLUIDSYNTH
                             if (ImGui::RadioButton("FluidSynth##synthBackend", backend == 0)) {
                                 CVarSetInteger(CVAR_AUDIO("SynthBackend"), 0);
                                 Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
@@ -1577,8 +1592,6 @@ void AudioEditor::DrawElement() {
                                 ImGui::SetTooltip("Full-featured: custom velocity modulators and reverb.");
                             }
                             ImGui::SameLine();
-#endif
-#if ENABLE_TINYSOUNDFONT
                             if (ImGui::RadioButton("TinySoundFont##synthBackend", backend == 1)) {
                                 CVarSetInteger(CVAR_AUDIO("SynthBackend"), 1);
                                 Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
@@ -1587,7 +1600,6 @@ void AudioEditor::DrawElement() {
                                 ImGui::SetTooltip("Lightweight, no external dependency. SF2 only;\n"
                                                   "no custom velocity modulators or reverb.");
                             }
-#endif
                             int nowBackend = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0);
                             static int sLastBackend = nowBackend;
                             if (nowBackend != sLastBackend) {
@@ -1595,6 +1607,7 @@ void AudioEditor::DrawElement() {
                                 sLastBackend = nowBackend;
                             }
                         }
+#endif
 
                         {
                             int mode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
@@ -1602,7 +1615,7 @@ void AudioEditor::DrawElement() {
                             // per-mode reverb; TinySoundFont honors neither (only a coarse
                             // CC11-vs-velocity routing difference survives), so the labels no
                             // longer mean what they say there -- disable them on TSF.
-                            bool tsfActive = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0) == 1;
+                            bool tsfActive = TsfBackendActive();
                             ImGui::BeginDisabled(tsfActive);
                             ImGui::TextUnformatted("Synth mode:");
                             ImGui::SameLine();
@@ -1952,7 +1965,7 @@ void AudioEditor::DrawElement() {
                                     // These are MIDI CC91/93/74/71 sends. TinySoundFont has no
                                     // effects engine and ignores all four, so disable them there
                                     // rather than present controls that do nothing.
-                                    bool tsfActive = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0) == 1;
+                                    bool tsfActive = TsfBackendActive();
                                     if (tsfActive) {
                                         ImGui::TextDisabled("TinySoundFont has no effects engine.");
                                         ImGui::TextDisabled("Switch to FluidSynth to use these.");
