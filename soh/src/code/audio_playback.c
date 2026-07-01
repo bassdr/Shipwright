@@ -3,7 +3,7 @@
 
 extern bool gUseLegacySD;
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
 extern bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan,
                                            float channelVolume, uint8_t fontId, int16_t instOrWave, uint8_t semitone,
                                            bool isFinished, uint8_t channelIdx, float resampleRate, float pitchBend);
@@ -175,7 +175,7 @@ void Audio_NoteDisable(Note* note) {
         note->synthesisState.opusFile = NULL;
     }
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
     SOH_MidiTranslator_NoteDisabled((int)(note - gAudioContext.notes));
 #endif
 }
@@ -317,7 +317,7 @@ void Audio_ProcessNotes(void) {
             subAttrs.velocity *= scale;
             Audio_InitNoteSub(note, noteSubEu2, &subAttrs);
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
             {
                 SequenceLayer* layer = playbackState->parentLayer;
                 int16_t instOrWave = 0;

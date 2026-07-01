@@ -1054,7 +1054,7 @@ void OTRAudio_Thread() {
 
         AudioMgr_CreateNextAudioBuffer(native_s16, num_audio_samples);
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
         auto synth = SOH::MidiSynthManager::Instance().GetActiveSynth();
         const bool haveSynth = (bool)synth;
 #else
@@ -1087,7 +1087,7 @@ void OTRAudio_Thread() {
             stereo = mix_f32;
         }
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
         if (haveSynth) {
             synth->Render(synth_f32, (uint32_t)outFrames);
             // tanh-style soft clip on the summed bus keeps peaks well-behaved when

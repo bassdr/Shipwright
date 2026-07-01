@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <cmath>
 
 namespace SOH {
@@ -19,6 +20,25 @@ class IMidiSynth {
     // Load an SF soundfont from disk. Implementations that do not use
     // SF may treat this as a no-op.
     virtual void LoadSoundFont(const std::string& path) = 0;
+
+    // Add an in-memory SF (e.g. read from a mounted .o2r archive) alongside any
+    // already-loaded ones, without clearing the existing stack. The buffer is
+    // copied into the synth's own storage so the caller may free it immediately.
+    // Returns an implementation-defined soundfont id (>= 0) usable with
+    // ProgramSelect, or a negative value on failure. Stacking precedence is
+    // last-loaded-wins on (bank, program) collisions.
+    virtual int AddSoundFontFromMemory(const uint8_t* data, size_t size) = 0;
+
+    // One row per preset across every loaded SF, in load order (each sfont's
+    // full preset list grouped together). Host UIs cache this and refresh when
+    // the loaded set changes.
+    struct LoadedPreset {
+        int sfontId;
+        int bank;
+        int program;
+        std::string name;
+    };
+    virtual std::vector<LoadedPreset> EnumerateLoadedPresets() = 0;
 
     // MIDI-like note events. channel index is implementation-defined; the
     // current FluidSynth backend exposes 64 channels. Standard MIDI drum
@@ -87,6 +107,12 @@ class IMidiSynth {
     // call from the game thread. Implementations without a controllable master
     // gain may treat this as a no-op.
     virtual void SetMasterGain(float gain) {
+    }
+
+    // Configure the synth-wide reverb (roomsize/damping in [0..1], width in
+    // [0..100], level in [0..1]). The host uses this for per-mode presets.
+    // Implementations without a reverb may treat this as a no-op.
+    virtual void SetReverbParams(double roomsize, double damping, double width, double level) {
     }
 };
 

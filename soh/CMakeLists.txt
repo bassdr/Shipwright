@@ -345,6 +345,34 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(dr_libs)
 
+# TinySoundFont: header-only SF2/SF3 synth (tsf.h). Fetched headers-only -- the
+# SOURCE_SUBDIR points at a non-existent dir so its examples' CMakeLists is never
+# configured; we only add its source dir to the include path (see below) and
+# compile tsf.h's implementation in TinySoundFont.cpp.
+if(ENABLE_TINYSOUNDFONT)
+    FetchContent_Declare(
+            tinysoundfont
+            GIT_REPOSITORY https://github.com/schellingb/TinySoundFont.git
+            GIT_TAG fbc913531b85f5707f49115110bb86b1cd583885
+            SOURCE_SUBDIR "headers-only"
+    )
+    FetchContent_MakeAvailable(tinysoundfont)
+    # stb_vorbis decodes the Ogg Vorbis samples in SF3 soundfonts; TSF gates its SF3
+    # path on stb_vorbis being visible (see TinySoundFontImpl.cpp).
+    # Without it, SF3 samples render as tuned noise. LUS pulls only stb_image.h from
+    # nothings/stb, so stb_vorbis.c isn't there to reuse -- fetch just that one file,
+    # pinned to the same commit LUS uses for stb (cmake/dependencies/common.cmake).
+    set(STB_VORBIS_DIR ${CMAKE_BINARY_DIR}/_deps/stb_vorbis)
+    if(NOT EXISTS "${STB_VORBIS_DIR}/stb_vorbis.c")
+        file(DOWNLOAD
+            "https://github.com/nothings/stb/raw/0bc88af4de5fb022db643c2d8e549a0927749354/stb_vorbis.c"
+            "${STB_VORBIS_DIR}/stb_vorbis.c")
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_TINYSOUNDFONT=1)
+else()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_TINYSOUNDFONT=0)
+endif()
+
 find_package(SDL2)
 set(SDL2-INCLUDE ${SDL2_INCLUDE_DIRS})
 
@@ -373,6 +401,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE assets
     ${SDL2-NET-INCLUDE}
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/
     ${dr_libs_SOURCE_DIR}
+    ${tinysoundfont_SOURCE_DIR}
+    ${STB_VORBIS_DIR}
     .
 )
 

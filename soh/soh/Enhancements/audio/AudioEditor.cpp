@@ -19,9 +19,14 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
 #include "soh/Enhancements/audio/MidiSynthManager.h"
+#if ENABLE_FLUIDSYNTH
 #include "soh/Enhancements/audio/FluidSynth.h"
+#endif
+#if ENABLE_TINYSOUNDFONT
+#include "soh/Enhancements/audio/TinySoundFont.h"
+#endif
 #include "MidiTranslator.h"
 #include "GmInstrumentMap.h"
 #include "InstrumentNames.h"
@@ -509,6 +514,48 @@ static float SynthMasterGainFromCVar() {
     return CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
 }
 
+// Build the soft-synth backend selected by CVAR_AUDIO("SynthBackend"): 0 =
+// FluidSynth (custom modulators + reverb), 1 = TinySoundFont (header-only, no
+// external dependency, but no custom modulators or reverb). Both implement
+// IMidiSynth, so the caller treats the result polymorphically. Falls back to
+// whichever backend is compiled in if the requested one isn't; returns nullptr
+// only when neither is. 512-voice ceiling on both for custom/modded-song headroom.
+static std::shared_ptr<SOH::IMidiSynth> MakeSynth([[maybe_unused]] int backend, [[maybe_unused]] SOH::SynthMode mode,
+                                                  double sampleRate) {
+#if ENABLE_TINYSOUNDFONT
+    if (backend == 1) {
+        SOH::TinySoundFontConfig tsfConfig;
+        tsfConfig.sampleRate = static_cast<int>(sampleRate);
+        tsfConfig.polyphony = 512;
+        tsfConfig.gain = SynthMasterGainFromCVar();
+        SPDLOG_INFO("[AudioEditor] Synth backend: TinySoundFont");
+        return std::make_shared<SOH::TinySoundFont>(tsfConfig);
+    }
+#endif
+#if ENABLE_FLUIDSYNTH
+    // FluidSynth's master gain tracks the Master Volume slider so the synth scales
+    // exactly as the native engine does; loudness matching is a separate per-mode
+    // trim (ComputeSynthGlobalGain). Authentic installs softened velocity modulators.
+    SOH::FluidSynthConfig synthConfig;
+    synthConfig.sampleRate = sampleRate;
+    synthConfig.linearVelocity = mode == SOH::SynthMode::Authentic;
+    synthConfig.polyphony = 512;
+    synthConfig.gain = SynthMasterGainFromCVar();
+    SPDLOG_INFO("[AudioEditor] Synth backend: FluidSynth");
+    return std::make_shared<SOH::FluidSynth>(synthConfig);
+#elif ENABLE_TINYSOUNDFONT
+    // FluidSynth compiled out: honor any selection with the only backend present.
+    SOH::TinySoundFontConfig tsfConfig;
+    tsfConfig.sampleRate = static_cast<int>(sampleRate);
+    tsfConfig.polyphony = 512;
+    tsfConfig.gain = SynthMasterGainFromCVar();
+    SPDLOG_INFO("[AudioEditor] Synth backend: TinySoundFont (FluidSynth unavailable)");
+    return std::make_shared<SOH::TinySoundFont>(tsfConfig);
+#else
+    return nullptr;
+#endif
+}
+
 // Apply the Modern pipeline + synth config: install FluidSynth and stack every
 // enabled pack's SF (with none enabled, native plays unchanged). Returns false
 // -- surfaced as the checkbox flipping back off -- when it can't apply.
@@ -552,28 +599,22 @@ bool ApplyFluidSynthFromCVars() {
     // Render at the device rate so the mix needs no rate conversion. The device is
     // opened at this CVar's value at startup, so reading it here matches the device.
     double sampleRate = static_cast<double>(CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000));
-    SOH::FluidSynthConfig synthConfig;
-    synthConfig.sampleRate = sampleRate;
 
     // Mode-driven configuration. Authentic = richer modulators + console-era reverb.
     // Enhanced = stock SF modulators + a subtle reverb that lets the SF's musical
     // interpretation breathe through. The translator branches its NoteOn / CC11
     // routing on the same mode.
     auto mode = static_cast<SOH::SynthMode>(CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0));
-    synthConfig.linearVelocity = mode == SOH::SynthMode::Authentic;
 
-    // FluidSynth defaults to 256 voices. The game's native scores stay well under
-    // that, but custom/modded songs can approach it, so bump to 512 for headroom.
-    // If it is ever hit, the log says so and you may hear dropped or stuck notes.
-    synthConfig.polyphony = 512;
-
-    // FluidSynth's master output gain tracks the Master Volume slider, so the synth
-    // scales exactly as the native engine does (Master is applied per native note in
-    // audio_playback.c; the synth renders downstream of that). Loudness matching is a
-    // separate per-mode trim (ComputeSynthGlobalGain -> SetGlobalGain). The live
-    // slider stays in sync without a rebuild via AudioEditor_ApplySynthMasterVolume.
-    synthConfig.gain = SynthMasterGainFromCVar();
-    auto synth = std::make_shared<SOH::FluidSynth>(synthConfig);
+    // The live Master Volume slider stays in sync without a rebuild via
+    // AudioEditor_ApplySynthMasterVolume. Backend (FluidSynth vs TinySoundFont) is
+    // chosen by CVar; both implement IMidiSynth, so everything below is backend-neutral.
+    int backend = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0);
+    std::shared_ptr<SOH::IMidiSynth> synth = MakeSynth(backend, mode, sampleRate);
+    if (!synth) {
+        SetStatus("No synth backend is compiled in.", true);
+        return false;
+    }
 
     // Stack every enabled pack's SF in discovery order. FluidSynth walks
     // loaded sfonts in reverse on preset lookup, so the LAST loaded pack
@@ -688,7 +729,7 @@ namespace {
 // Enable/disable the Modern pipeline. The device already runs at the chosen rate
 // with the audio thread resampling up, so the toggle only manages the synth.
 void DisableModernAudioPipeline() {
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
     SOH::MidiSynthManager::Instance().SetSynth(nullptr);
     SOH_MidiTranslator_Reset();
     SetStatus("Modern audio pipeline disabled.");
@@ -696,7 +737,7 @@ void DisableModernAudioPipeline() {
 }
 
 bool EnableModernAudioPipeline() {
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
     // Full apply path: (optional) synth pack + status line.
     return ApplyFluidSynthFromCVars();
 #else
@@ -747,7 +788,7 @@ static WidgetInfo voicePitch;
 static WidgetInfo randomAudioGenModes;
 static WidgetInfo lowerOctaves;
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
 static WidgetInfo fluidSynthEnabled;
 // Global synth gain is per-mode: Authentic and Enhanced differ in loudness
 // (reverb level + velocity curve), so each carries its own trim calibrated to
@@ -1364,7 +1405,7 @@ void AudioEditor::DrawElement() {
             ImGui::EndTabItem();
         }
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
         if (ImGui::BeginTabItem("FluidSynth")) {
             ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, cellPadding);
             ImGui::BeginTable("FluidSynthTab", 1, ImGuiTableFlags_SizingStretchSame);
@@ -1517,6 +1558,42 @@ void AudioEditor::DrawElement() {
                             // (the translator no longer reads the CVar on the audio path).
                             SOH::MidiTranslator::Instance().SetGlobalGain(
                                 ComputeSynthGlobalGain(static_cast<SOH::SynthMode>(gmode)));
+                        }
+
+                        // ── Synth backend ────────────────────────────────
+                        // FluidSynth (custom modulators + reverb) vs TinySoundFont
+                        // (header-only, no external dependency; no modulators/reverb,
+                        // SF2 only). Changing it rebuilds the synth.
+                        {
+                            int backend = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0);
+                            ImGui::TextUnformatted("Synth backend:");
+                            ImGui::SameLine();
+#if ENABLE_FLUIDSYNTH
+                            if (ImGui::RadioButton("FluidSynth##synthBackend", backend == 0)) {
+                                CVarSetInteger(CVAR_AUDIO("SynthBackend"), 0);
+                                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                            }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::SetTooltip("Full-featured: custom velocity modulators and reverb.");
+                            }
+                            ImGui::SameLine();
+#endif
+#if ENABLE_TINYSOUNDFONT
+                            if (ImGui::RadioButton("TinySoundFont##synthBackend", backend == 1)) {
+                                CVarSetInteger(CVAR_AUDIO("SynthBackend"), 1);
+                                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                            }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::SetTooltip("Lightweight, no external dependency. SF2 only;\n"
+                                                  "no custom velocity modulators or reverb.");
+                            }
+#endif
+                            int nowBackend = CVarGetInteger(CVAR_AUDIO("SynthBackend"), 0);
+                            static int sLastBackend = nowBackend;
+                            if (nowBackend != sLastBackend) {
+                                ApplyFluidSynthFromCVars();
+                                sLastBackend = nowBackend;
+                            }
                         }
 
                         {
@@ -3297,7 +3374,7 @@ void AudioEditor::DrawElement() {
             ImGui::PopStyleVar(1);
             ImGui::EndTabItem();
         }
-#endif // #if ENABLE_FLUIDSYNTH
+#endif // ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
 
         if (ImGui::BeginTabItem("Background Music")) {
             Draw_SfxTab("backgroundMusic", SEQ_BGM_WORLD, "Background Music");
@@ -3510,7 +3587,7 @@ std::vector<SeqType> allTypes = {
 // ApplyFluidSynthFromCVars, so startup / pipeline-enable / backend-switch are
 // already covered; this handles the slider moving while a synth is running.
 void AudioEditor_ApplySynthMasterVolume() {
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
     if (auto synth = SOH::MidiSynthManager::Instance().GetActiveSynth()) {
         synth->SetMasterGain(SynthMasterGainFromCVar());
     }
@@ -3659,7 +3736,7 @@ void RegisterAudioWidgets() {
                               "sequence."));
     SohGui::mSohMenu->AddSearchWidget({ lowerOctaves, "Enhancements", "Audio Editor", "Audio Options" });
 
-#if ENABLE_FLUIDSYNTH
+#if ENABLE_FLUIDSYNTH || ENABLE_TINYSOUNDFONT
     fluidSynthEnabled = { .name = "Modern audio pipeline (floating point)", .type = WidgetType::WIDGET_CVAR_CHECKBOX };
     fluidSynthEnabled.CVar(CVAR_AUDIO("ModernAudioPipeline"))
         .Options(CheckboxOptions()

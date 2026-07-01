@@ -198,6 +198,12 @@ add_compile_definitions(CONTROLLERBUTTONS_T=uint32_t)
 if(NOT DEFINED ENABLE_FLUIDSYNTH)
     set(ENABLE_FLUIDSYNTH ON)
 endif()
+# TinySoundFont: header-only SF2/SF3 synth, no external dependency. A lightweight
+# alternative backend to FluidSynth, selectable at runtime. Default ON; override
+# with -DENABLE_TINYSOUNDFONT=OFF.
+if(NOT DEFINED ENABLE_TINYSOUNDFONT)
+    set(ENABLE_TINYSOUNDFONT ON)
+endif()
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship)
 target_compile_options(libultraship PRIVATE "${WARNING_OVERRIDE}")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)

@@ -61,7 +61,7 @@ class FluidSynth final : public IMidiSynth {
     // routes through the mem:// sentinel; the path variant uses the
     // default filesystem loader.
     int AddSoundFont(const std::string& path);
-    int AddSoundFontFromMemory(const uint8_t* data, size_t size);
+    int AddSoundFontFromMemory(const uint8_t* data, size_t size) override;
 
     // Unload every loaded SF. Safe to call when none are loaded.
     void ClearSoundFonts();
@@ -75,13 +75,7 @@ class FluidSynth final : public IMidiSynth {
     // preset list, in iteration order — which is generally the SF's
     // phdr order, grouped by sfont). Re-enumerated on demand; callers
     // typically cache the result and refresh when packs change.
-    struct LoadedPreset {
-        int sfontId;
-        int bank;
-        int program;
-        std::string name;
-    };
-    std::vector<LoadedPreset> EnumerateLoadedPresets();
+    std::vector<LoadedPreset> EnumerateLoadedPresets() override;
     void NoteOn(uint8_t channel, uint8_t note, uint8_t velocity) override;
     void NoteOff(uint8_t channel, uint8_t note) override;
     void ProgramChange(uint8_t channel, uint16_t preset) override;
@@ -100,7 +94,7 @@ class FluidSynth final : public IMidiSynth {
     //   damping  : [0..1] high-frequency damping.
     //   width    : [0..100] stereo spread.
     //   level    : [0..1] reverb wet level.
-    void SetReverbParams(double roomsize, double damping, double width, double level);
+    void SetReverbParams(double roomsize, double damping, double width, double level) override;
 
     // Set FluidSynth's master output gain at runtime (forwards to
     // fluid_synth_set_gain). Lets the host track a global volume fader without
