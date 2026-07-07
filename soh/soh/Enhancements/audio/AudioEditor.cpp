@@ -1923,7 +1923,6 @@ void AudioEditor::DrawElement() {
                                 sExplicitMutedSlots.clear();
                                 SOH::MidiTranslator::Instance().ClearAllTemporaryMutes();
                                 SOH::MidiTranslator::Instance().ClearAllTemporarySlotMutes();
-                                SOH::MidiTranslator::Instance().ClearAllTemporaryVolumes();
                             }
                             ImGui::PopStyleColor(3);
                             if (ImGui::IsItemHovered()) {
