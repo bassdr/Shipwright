@@ -195,11 +195,7 @@ add_compile_definitions(CONTROLLERBUTTONS_T=uint32_t)
 ################################################################################
 # Sub-projects
 ################################################################################
-# Synth code lives SoH-side (soh/soh/Enhancements/audio), so soh links FluidSynth.
-# Default ON; override with -DENABLE_FLUIDSYNTH=OFF.
-if(NOT DEFINED ENABLE_FLUIDSYNTH)
-    set(ENABLE_FLUIDSYNTH ON)
-endif()
+option(ENABLE_FLUIDSYNTH "Enable the FluidSynth synth backend" ON)
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship)
 target_compile_options(libultraship PRIVATE "${WARNING_OVERRIDE}")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)
