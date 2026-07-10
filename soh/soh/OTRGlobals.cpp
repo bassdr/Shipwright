@@ -1105,6 +1105,12 @@ void OTRAudio_Thread() {
             int samples_left = AudioPlayer_Buffered();
             u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
             produce_and_play(num_audio_samples);
+
+            // If the backend didn't retain what we produced (full queue or a
+            // discarding sink like the Null driver), stop — else we spin forever.
+            if (AudioPlayer_Buffered() <= samples_left) {
+                break;
+            }
         }
     }
 }
