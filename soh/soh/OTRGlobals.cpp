@@ -1124,6 +1124,18 @@ void OTRAudio_Thread() {
         AudioPlayer_Play(reinterpret_cast<u8*>(out_s16), (size_t)n * sizeof(int16_t));
     };
 
+    // The sequencer advances a fixed slice of musical time per engine update
+    // (tempoInternalToExternal in audio_heap.c assumes 60 updates/sec), so with
+    // production paced by backend buffer fill the sample count must average
+    // exactly 32000/60 = 533.33 per update or tempo drifts.
+    // Two thirds 528 one third 544 gives 533.33.
+    int32_t sample_debt_thirds = 0;
+    auto next_batch_samples = [&]() -> u32 {
+        u32 num_audio_samples = sample_debt_thirds > 0 ? SAMPLES_MID : SAMPLES_LOW;
+        sample_debt_thirds += (1600 - 3 * (int32_t)num_audio_samples) * AUDIO_FRAMES_PER_UPDATE;
+        return num_audio_samples;
+    };
+
     // Self-pump cadence. The gfx thread wakes us once per rendered frame
     // (Graph_ProcessGfxCommands sets audio.processing), but a single long
     // frame leave us asleep while the backend's queue drains to silence.
