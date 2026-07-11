@@ -277,13 +277,31 @@ if(ENABLE_FLUIDSYNTH)
     set(enable-dbus OFF CACHE BOOL "" FORCE)
     # Keep OpenMP: it parallelizes SF3 (ogg) decode, and soundfonts reload on a
     # velocity-mode switch -- single-threaded decode made that switch much slower.
-    set(enable-openmp ON CACHE BOOL "" FORCE)
+    # Disabled when cross-compiling: devkitpro toolchains don't include OpenMP.
+    if(NOT CMAKE_CROSSCOMPILING)
+        set(enable-openmp ON CACHE BOOL "" FORCE)
+    else()
+        set(enable-openmp OFF CACHE BOOL "" FORCE)
+    endif()
     # DLS/GIG loading is unused (SF2/SF3 only).
     set(enable-native-dls OFF CACHE BOOL "" FORCE)
     # Match soh's static CRT: FluidSynth honors CMP0091 but defaults to the DLL
     # runtime, which mismatches soh's MultiThreaded (/MT) runtime at link time.
     if(MSVC)
         set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+    # libsndfile is not in devkitpro portlibs; build from source when
+    # cross-compiling. ppc-libogg/ppc-libvorbis/ppc-flac portlibs supply
+    # the codec backends needed for SF3 support.
+    if(CMAKE_CROSSCOMPILING)
+        set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SndFile
+            GIT_REPOSITORY https://github.com/libsndfile/libsndfile.git
+            GIT_TAG v1.2.2
+            GIT_SHALLOW TRUE
+            OVERRIDE_FIND_PACKAGE)
+        FetchContent_MakeAvailable(SndFile)
     endif()
     FetchContent_Declare(fluidsynth
         GIT_REPOSITORY https://github.com/FluidSynth/fluidsynth.git
