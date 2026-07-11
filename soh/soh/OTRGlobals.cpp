@@ -828,9 +828,13 @@ void OTRGlobals::Initialize() {
                                               CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
     context->GetWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
 
-    // Output rate is user-selectable (restart-applied); native synth is 32 kHz and
-    // the audio thread resamples up to it. Default 32 kHz matches the console.
+    // Wii U audio device only supports 44100 Hz; other platforms let the user pick
+    // (restart-applied). Native synth is 32 kHz, resampled up on output.
+#ifdef __WIIU__
+    constexpr int audioOutputRate = 44100;
+#else
     const int audioOutputRate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000);
+#endif
     // ~128 ms reservoir scaled to the rate, capped below the LUS SDL backend's hard
     // limit (DoPlay drops past ~6000 frames, which would spin the fill loop).
     int desiredBuffered = 4096 * audioOutputRate / 32000;
@@ -1032,7 +1036,11 @@ void OTRAudio_Thread() {
 #define NUM_AUDIO_CHANNELS 2
 
     constexpr int kSourceRate = 32000;
+#ifdef __WIIU__
+    constexpr int outRate = 44100;
+#else
     const int outRate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000);
+#endif
 
     // Null at 32 kHz so the native path stays byte-identical to stock; otherwise a
     // stateful stereo resampler lifts the native bus to the device rate.

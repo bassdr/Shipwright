@@ -196,6 +196,25 @@ add_compile_definitions(CONTROLLERBUTTONS_T=uint32_t)
 # Sub-projects
 ################################################################################
 option(ENABLE_FLUIDSYNTH "Enable the FluidSynth synth backend" ON)
+# When cross-compiling (Wii U), libzip and nlohmann/json are not in devkitpro
+# portlibs; declare FetchContent overrides before libultraship so its
+# find_package(libzip/nlohmann_json REQUIRED) calls are satisfied.
+if(CMAKE_CROSSCOMPILING)
+    include(FetchContent)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(libzip
+        GIT_REPOSITORY https://github.com/nih-at/libzip.git
+        GIT_TAG v1.10.1
+        GIT_SHALLOW TRUE
+        OVERRIDE_FIND_PACKAGE)
+    set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.3
+        GIT_SHALLOW TRUE
+        OVERRIDE_FIND_PACKAGE)
+    FetchContent_MakeAvailable(libzip nlohmann_json)
+endif()
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship)
 target_compile_options(libultraship PRIVATE "${WARNING_OVERRIDE}")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)

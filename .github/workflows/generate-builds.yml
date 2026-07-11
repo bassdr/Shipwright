@@ -212,8 +212,11 @@ jobs:
     steps:
     - name: Install build tools
       run: |
-        apt-get update && apt-get install -y ninja-build git
-        dkp-pacman -Sy --noconfirm ppc-libogg ppc-libvorbis ppc-flac
+        apt-get update && apt-get install -y ninja-build git wget
+        apt-get remove -y cmake
+        wget https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.sh -O /tmp/cmake.sh
+        sh /tmp/cmake.sh --prefix=/usr/local/ --exclude-subdir
+        dkp-pacman -Sy --noconfirm ppc-zlib ppc-libogg ppc-libvorbis ppc-flac
     - name: Git Checkout
       uses: actions/checkout@v7
       with:
