@@ -1670,5 +1670,13 @@ void ConfigVersion7Updater::Update(Ship::Config* conf) {
 
     // Kakariko Gate setting removed; the gate opens when starting with an unshuffled letter
     CVarClear("gRandoSettings.KakarikoGate");
+
+    // PauseWarp was split into PauseMenuSongs (covers all songs) + WarpSongSkipAnimation.
+    // Old behavior skipped the animation, so migrate both flags on.
+    if (CVarGetInteger("gEnhancements.PauseWarp", 0)) {
+        CVarSetInteger("gEnhancements.PauseMenuSongs", 1);
+        CVarSetInteger("gEnhancements.WarpSongSkipAnimation", 1);
+    }
+    CVarClear("gEnhancements.PauseWarp");
 }
 } // namespace SOH
