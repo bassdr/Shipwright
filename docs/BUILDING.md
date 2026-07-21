@@ -134,7 +134,6 @@ zypper in gcc gcc-c++ $(cat linux-build-deps/zypper.txt)
 # or using clang
 zypper in clang libstdc++-devel $(cat linux-build-deps/zypper.txt)
 ```
-_Optional: install SDL3 (`libsdl3-dev` on Debian 13+/Ubuntu 24.10+, `sdl3` on Arch, `SDL3-devel` on Fedora 40+) to enable the SDL3 audio backend. It is compiled in only when SDL3 development files are present; without them the backend is simply left out._
 #### Nix
 This repository provides a [`linux-build-deps/flake.nix`](../linux-build-deps/flake.nix) for setting up a development environment using [Nix](https://nixos.org/).
 
@@ -156,6 +155,15 @@ If your cmake is too old, you can install a newer version via:
 - [pypi](https://pypi.org/project/cmake/)
 - [kitware apt repo](https://apt.kitware.com/) (Ubuntu only)
 - [Homebrew](https://formulae.brew.sh/formula/cmake)
+
+### Optional: SDL3 audio backend
+On Linux the default audio backend uses SDL2. An alternative SDL3 backend is also
+available and is recommended where SDL3 is present. It is **compiled in** only when
+SDL3 development files are found at build time (`libsdl3-dev` on Debian 13+/Ubuntu
+24.10+, `sdl3` on Arch, `SDL3-devel` on Fedora 40+); otherwise it is silently left out.
+It is **loaded at runtime** from the system SDL3, so the `libsdl3` runtime package must
+also be installed to select the backend in-game. Windows and macOS use their native
+WASAPI / CoreAudio backends, so this backend is primarily useful on Linux.
 
 ### Build
 
@@ -237,8 +245,6 @@ cmake --build build-cmake --target ExtractAssetHeaders
 
 ## macOS
 Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
-
-_Optional: also install SDL3 (`sdl3` via homebrew, `SDL3` via MacPorts) to enable the SDL3 audio backend; it is compiled in only when present._
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
