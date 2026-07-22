@@ -754,8 +754,8 @@ void EnMd_BlockPath(EnMd* this, PlayState* play) {
     if ((this->interactInfo.talkState == NPC_TALK_STATE_IDLE) && (play->sceneNum == SCENE_LOST_WOODS)) {
         if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
             player->stateFlags2 |= PLAYER_STATE2_PLAY_FOR_ACTOR;
-            player->unk_6A8 = &this->actor;
-            func_8010BD58(play, OCARINA_ACTION_CHECK_SARIA);
+            player->ocarinaTargetActor = &this->actor;
+            Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_SARIA);
             this->actionFunc = EnMd_ListenToOcarina;
             return;
         }

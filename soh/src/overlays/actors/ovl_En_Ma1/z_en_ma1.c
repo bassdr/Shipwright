@@ -376,7 +376,7 @@ void EnMa1_IdleTeachSong(EnMa1* this, PlayState* play) {
     if (Flags_GetEventChkInf(EVENTCHKINF_INVITED_TO_SING_WITH_CHILD_MALON)) {
         if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
             player->stateFlags2 |= PLAYER_STATE2_PLAY_FOR_ACTOR;
-            player->unk_6A8 = &this->actor;
+            player->ocarinaTargetActor = &this->actor;
             this->actor.textId = 0x2061;
             Message_StartTextbox(play, this->actor.textId, NULL);
             this->interactInfo.talkState = NPC_TALK_STATE_TALKING;
@@ -392,7 +392,7 @@ void EnMa1_StartTeachSong(EnMa1* this, PlayState* play) {
     GET_PLAYER(play)->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
     if (this->interactInfo.talkState == NPC_TALK_STATE_ACTION) {
         AudioOcarina_SetInstrument(2);
-        func_8010BD58(play, OCARINA_ACTION_TEACH_EPONA);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_TEACH_EPONA);
         this->actor.flags &= ~ACTOR_FLAG_TALK_OFFER_AUTO_ACCEPTED;
         this->actionFunc = EnMa1_TeachSong;
     }
@@ -401,7 +401,7 @@ void EnMa1_StartTeachSong(EnMa1* this, PlayState* play) {
 void EnMa1_TeachSong(EnMa1* this, PlayState* play) {
     GET_PLAYER(play)->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
     if (Message_GetState(&play->msgCtx) == TEXT_STATE_SONG_DEMO_DONE) {
-        func_8010BD58(play, OCARINA_ACTION_PLAYBACK_EPONA);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_PLAYBACK_EPONA);
         this->actionFunc = EnMa1_WaitForPlayback;
     }
 }

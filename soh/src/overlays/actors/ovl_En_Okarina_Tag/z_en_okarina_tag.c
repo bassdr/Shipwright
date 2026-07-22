@@ -16,12 +16,12 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play);
 void EnOkarinaTag_Destroy(Actor* thisx, PlayState* play);
 void EnOkarinaTag_Update(Actor* thisx, PlayState* play);
 
-void func_80ABEF2C(EnOkarinaTag* this, PlayState* play);
-void func_80ABF708(EnOkarinaTag* this, PlayState* play);
-void func_80ABF28C(EnOkarinaTag* this, PlayState* play);
-void func_80ABF0CC(EnOkarinaTag* this, PlayState* play);
-void func_80ABF4C8(EnOkarinaTag* this, PlayState* play);
-void func_80ABF7CC(EnOkarinaTag* this, PlayState* play);
+void EnOkarinaTag_WaitForPlayer(EnOkarinaTag* this, PlayState* play);
+void EnOkarinaTag_OfferTalk(EnOkarinaTag* this, PlayState* play);
+void EnOkarinaTag_WaitForOcarina(EnOkarinaTag* this, PlayState* play);
+void EnOkarinaTag_WaitForPlaybackResult(EnOkarinaTag* this, PlayState* play);
+void EnOkarinaTag_HandleSongEvent(EnOkarinaTag* this, PlayState* play);
+void EnOkarinaTag_WaitForDialogue(EnOkarinaTag* this, PlayState* play);
 
 const ActorInit En_Okarina_Tag_InitVars = {
     ACTOR_EN_OKARINA_TAG,
@@ -57,7 +57,7 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play) {
     }
     if (this->ocarinaSong == 0xF) {
         this->ocarinaSong = 0;
-        this->unk_158 = 1;
+        this->success = 1;
     }
     this->actor.targetMode = 1;
     if (this->actor.world.rot.z > 0) {
@@ -75,7 +75,7 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play) {
     // "Processing range information"
     osSyncPrintf(VT_FGCOL(CYAN) "☆☆☆☆☆ 処理範囲情報\t ☆☆☆☆☆ %f\n" VT_RST, this->interactRange);
     // "Hit?"
-    osSyncPrintf(VT_FGCOL(GREEN) "☆☆☆☆☆ 当り？\t\t ☆☆☆☆☆ %d\n" VT_RST, this->unk_158);
+    osSyncPrintf(VT_FGCOL(GREEN) "☆☆☆☆☆ 当り？\t\t ☆☆☆☆☆ %d\n" VT_RST, this->success);
     osSyncPrintf("\n\n");
 
     if (GameInteractor_Should(VB_OKARINA_TAG_COMPLETED,
@@ -84,7 +84,7 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play) {
     } else {
         switch (this->type) {
             case 7:
-                this->actionFunc = func_80ABEF2C;
+                this->actionFunc = EnOkarinaTag_WaitForPlayer;
                 break;
             case 2:
                 if (LINK_IS_ADULT) {
@@ -94,11 +94,11 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play) {
             case 1:
             case 4:
             case 6:
-                this->actionFunc = func_80ABF28C;
+                this->actionFunc = EnOkarinaTag_WaitForOcarina;
                 break;
             case 5:
                 this->actor.textId = 0x5021;
-                this->actionFunc = func_80ABF708;
+                this->actionFunc = EnOkarinaTag_OfferTalk;
                 break;
             default:
                 Actor_Kill(&this->actor);
@@ -107,7 +107,7 @@ void EnOkarinaTag_Init(Actor* thisx, PlayState* play) {
     }
 }
 
-void func_80ABEF2C(EnOkarinaTag* this, PlayState* play) {
+void EnOkarinaTag_WaitForPlayer(EnOkarinaTag* this, PlayState* play) {
     Player* player;
     u16 ocarinaSong;
 
@@ -130,23 +130,23 @@ void func_80ABEF2C(EnOkarinaTag* this, PlayState* play) {
                         ocarinaSong = 0xA;
                     }
                     player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
-                    func_8010BD58(play, ocarinaSong + OCARINA_ACTION_CHECK_SARIA);
-                    this->actionFunc = func_80ABF0CC;
+                    Message_StartOcarinaWithSongEffect(play, ocarinaSong + OCARINA_ACTION_CHECK_SARIA);
+                    this->actionFunc = EnOkarinaTag_WaitForPlaybackResult;
                 } else if ((this->actor.xzDistToPlayer < (50.0f + this->interactRange) &&
                             ((fabsf(player->actor.world.pos.y - this->actor.world.pos.y) < 40.0f)))) {
                     this->unk_15A = 0;
-                    player->unk_6A8 = &this->actor;
+                    player->ocarinaTargetActor = &this->actor;
                 }
             }
         }
     }
 }
 
-void func_80ABF0CC(EnOkarinaTag* this, PlayState* play) {
+void EnOkarinaTag_WaitForPlaybackResult(EnOkarinaTag* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
-        this->actionFunc = func_80ABEF2C;
+        this->actionFunc = EnOkarinaTag_WaitForPlayer;
     } else {
         if (play->msgCtx.ocarinaMode == OCARINA_MODE_03) {
             if (GameInteractor_Should(VB_OKARINA_TAG_COMPLETE, this->switchFlag >= 0, this)) {
@@ -160,10 +160,10 @@ void func_80ABF0CC(EnOkarinaTag* this, PlayState* play) {
                 play->msgCtx.ocarinaMode = OCARINA_MODE_04;
             }
             Sfx_PlaySfxCentered(NA_SE_SY_CORRECT_CHIME);
-            this->actionFunc = func_80ABEF2C;
+            this->actionFunc = EnOkarinaTag_WaitForPlayer;
             return;
         }
-        if (this->unk_158 != 0) {
+        if (this->success != 0) {
             if ((play->msgCtx.ocarinaMode == OCARINA_MODE_05) || (play->msgCtx.ocarinaMode == OCARINA_MODE_06) ||
                 (play->msgCtx.ocarinaMode == OCARINA_MODE_07) || (play->msgCtx.ocarinaMode == OCARINA_MODE_08) ||
                 (play->msgCtx.ocarinaMode == OCARINA_MODE_09) || (play->msgCtx.ocarinaMode == OCARINA_MODE_0A) ||
@@ -173,20 +173,20 @@ void func_80ABF0CC(EnOkarinaTag* this, PlayState* play) {
                 }
                 play->msgCtx.ocarinaMode = OCARINA_MODE_04;
                 Sfx_PlaySfxCentered(NA_SE_SY_CORRECT_CHIME);
-                this->actionFunc = func_80ABEF2C;
+                this->actionFunc = EnOkarinaTag_WaitForPlayer;
                 return;
             }
         }
         if ((play->msgCtx.ocarinaMode >= OCARINA_MODE_05) && (play->msgCtx.ocarinaMode < OCARINA_MODE_0E)) {
             play->msgCtx.ocarinaMode = OCARINA_MODE_04;
-            this->actionFunc = func_80ABEF2C;
+            this->actionFunc = EnOkarinaTag_WaitForPlayer;
         } else if (play->msgCtx.ocarinaMode == OCARINA_MODE_01) {
             player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
         }
     }
 }
 
-void func_80ABF28C(EnOkarinaTag* this, PlayState* play) {
+void EnOkarinaTag_WaitForOcarina(EnOkarinaTag* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     this->unk_15A++;
@@ -203,16 +203,16 @@ void func_80ABF28C(EnOkarinaTag* this, PlayState* play) {
             if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
                 switch (this->type) {
                     case 1:
-                        func_8010BD58(play, OCARINA_ACTION_CHECK_LULLABY);
+                        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_LULLABY);
                         break;
                     case 2:
-                        func_8010BD58(play, OCARINA_ACTION_CHECK_STORMS);
+                        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_STORMS);
                         break;
                     case 4:
-                        func_8010BD58(play, OCARINA_ACTION_CHECK_TIME);
+                        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_TIME);
                         break;
                     case 6:
-                        func_8010BD58(play, OCARINA_ACTION_CHECK_LULLABY);
+                        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_LULLABY);
                         break;
                     default:
                         // "Ocarina Invisible-kun demo start check error source"
@@ -222,7 +222,7 @@ void func_80ABF28C(EnOkarinaTag* this, PlayState* play) {
                         break;
                 }
                 player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
-                this->actionFunc = func_80ABF4C8;
+                this->actionFunc = EnOkarinaTag_HandleSongEvent;
             } else if ((this->actor.xzDistToPlayer < (50.0f + this->interactRange)) &&
                        (fabsf(player->actor.world.pos.y - this->actor.world.pos.y) < 40.0f)) {
                 this->unk_15A = 0;
@@ -232,11 +232,11 @@ void func_80ABF28C(EnOkarinaTag* this, PlayState* play) {
     }
 }
 
-void func_80ABF4C8(EnOkarinaTag* this, PlayState* play) {
+void EnOkarinaTag_HandleSongEvent(EnOkarinaTag* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
-        this->actionFunc = func_80ABF28C;
+        this->actionFunc = EnOkarinaTag_WaitForOcarina;
     } else if (play->msgCtx.ocarinaMode == OCARINA_MODE_03) {
         Sfx_PlaySfxCentered(NA_SE_SY_CORRECT_CHIME);
         if (GameInteractor_Should(VB_OKARINA_TAG_COMPLETE, this->switchFlag >= 0, this)) {
@@ -273,12 +273,12 @@ void func_80ABF4C8(EnOkarinaTag* this, PlayState* play) {
                 break;
         }
         play->msgCtx.ocarinaMode = OCARINA_MODE_04;
-        this->actionFunc = func_80ABF28C;
+        this->actionFunc = EnOkarinaTag_WaitForOcarina;
     } else {
         if (play->msgCtx.ocarinaMode >= OCARINA_MODE_05) {
             if (play->msgCtx.ocarinaMode < OCARINA_MODE_0E) {
                 play->msgCtx.ocarinaMode = OCARINA_MODE_04;
-                this->actionFunc = func_80ABF28C;
+                this->actionFunc = EnOkarinaTag_WaitForOcarina;
                 return;
             }
         }
@@ -288,12 +288,12 @@ void func_80ABF4C8(EnOkarinaTag* this, PlayState* play) {
     }
 }
 
-void func_80ABF708(EnOkarinaTag* this, PlayState* play) {
+void EnOkarinaTag_OfferTalk(EnOkarinaTag* this, PlayState* play) {
     s16 yawDiff;
     s16 yawDiffNew;
 
     if (Actor_ProcessTalkRequest(&this->actor, play)) {
-        this->actionFunc = func_80ABF7CC;
+        this->actionFunc = EnOkarinaTag_WaitForDialogue;
     } else {
         yawDiff = this->actor.yawTowardsPlayer - this->actor.world.rot.y;
         this->unk_15A++;
@@ -310,7 +310,7 @@ void func_80ABF708(EnOkarinaTag* this, PlayState* play) {
     }
 }
 
-void func_80ABF7CC(EnOkarinaTag* this, PlayState* play) {
+void EnOkarinaTag_WaitForDialogue(EnOkarinaTag* this, PlayState* play) {
     // "Open sesame sesame!"
     osSyncPrintf(VT_FGCOL(PURPLE) "☆☆☆☆☆ 開けゴマゴマゴマ！ ☆☆☆☆☆ %d\n" VT_RST, Message_GetState(&play->msgCtx));
 
@@ -320,7 +320,7 @@ void func_80ABF7CC(EnOkarinaTag* this, PlayState* play) {
             play->csCtx.segment = SEGMENTED_TO_VIRTUAL(&gSunSongGraveSunSongTeachCs);
             gSaveContext.cutsceneTrigger = 1;
         }
-        this->actionFunc = func_80ABF708;
+        this->actionFunc = EnOkarinaTag_OfferTalk;
     }
 }
 

@@ -268,9 +268,9 @@ void EnMa2_WaitForOcarina(EnMa2* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
-        player->unk_6A8 = &this->actor;
+        player->ocarinaTargetActor = &this->actor;
         player->stateFlags2 |= PLAYER_STATE2_PLAY_FOR_ACTOR;
-        func_8010BD58(play, OCARINA_ACTION_CHECK_EPONA);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_EPONA);
         this->actionFunc = EnMa2_WaitForEponasSong;
     } else if (this->actor.xzDistToPlayer < 30.0f + (f32)this->collider.dim.radius) {
         player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;

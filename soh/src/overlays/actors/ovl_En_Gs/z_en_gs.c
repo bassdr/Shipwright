@@ -147,7 +147,7 @@ void func_80A4E470(EnGs* this, PlayState* play) {
         if (this->unk_19D == 0) {
             player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
             if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
-                func_8010BD58(play, OCARINA_ACTION_FREE_PLAY);
+                Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_FREE_PLAY);
                 this->unk_19D |= 1;
             }
         } else if (GameInteractor_Should(VB_SPAWN_GOSSIP_STONE_FAIRY, this->unk_19D & 1, this)) {

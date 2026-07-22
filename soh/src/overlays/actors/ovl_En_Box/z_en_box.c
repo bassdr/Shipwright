@@ -47,7 +47,7 @@ void EnBox_Update(Actor* thisx, PlayState* play);
 void EnBox_Draw(Actor* thisx, PlayState* play);
 
 void EnBox_FallOnSwitchFlag(EnBox*, PlayState*);
-void func_809C9700(EnBox*, PlayState*);
+void EnBox_WaitForOcarina(EnBox*, PlayState*);
 void EnBox_AppearOnSwitchFlag(EnBox*, PlayState*);
 void EnBox_AppearOnRoomClear(EnBox*, PlayState*);
 void EnBox_AppearInit(EnBox*, PlayState*);
@@ -161,7 +161,7 @@ void EnBox_Init(Actor* thisx, PlayState* play2) {
         this->alpha = 0;
         this->dyna.actor.flags |= ACTOR_FLAG_UPDATE_CULLING_DISABLED;
     } else if (this->type == ENBOX_TYPE_9 || this->type == ENBOX_TYPE_10) {
-        EnBox_SetupAction(this, func_809C9700);
+        EnBox_SetupAction(this, EnBox_WaitForOcarina);
         this->dyna.actor.flags |= ACTOR_FLAG_UPDATE_DURING_OCARINA;
         func_8003EBF8(play, &play->colCtx.dyna, this->dyna.bgId);
         this->movementFlags |= ENBOX_MOVE_IMMOBILE;
@@ -305,7 +305,7 @@ void EnBox_FallOnSwitchFlag(EnBox* this, PlayState* play) {
 }
 
 // used for types 9, 10
-void func_809C9700(EnBox* this, PlayState* play) {
+void EnBox_WaitForOcarina(EnBox* this, PlayState* play) {
     s32 treasureFlag = this->dyna.actor.params & 0x1F;
     Player* player = GET_PLAYER(play);
 
@@ -325,7 +325,7 @@ void func_809C9700(EnBox* this, PlayState* play) {
         }
 
         if (this->unk_1FB == ENBOX_STATE_1) {
-            func_8010BD58(play, OCARINA_ACTION_FREE_PLAY);
+            Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_FREE_PLAY);
             this->unk_1FB = ENBOX_STATE_2;
         } else if (this->unk_1FB == ENBOX_STATE_2 && play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
             if ((play->msgCtx.lastPlayedSong == OCARINA_SONG_LULLABY && this->type == ENBOX_TYPE_9) ||

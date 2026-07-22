@@ -270,7 +270,7 @@ void func_80A91348(EnKakasi3* this, PlayState* play) {
 void func_80A915B8(EnKakasi3* this, PlayState* play) {
     if (Message_GetState(&play->msgCtx) == TEXT_STATE_EVENT && Message_ShouldAdvance(play)) {
         Message_CloseTextbox(play);
-        func_8010BD58(play, OCARINA_ACTION_SCARECROW_RECORDING);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_SCARECROW_RECORDING);
         this->actionFunc = func_80A91620;
     }
 }
@@ -313,7 +313,7 @@ void func_80A91760(EnKakasi3* this, PlayState* play) {
     SkelAnime_Update(&this->skelAnime);
     if (this->dialogState == Message_GetState(&play->msgCtx) && Message_ShouldAdvance(play)) {
         play->msgCtx.msgMode = MSGMODE_PAUSED;
-        func_8010BD58(play, OCARINA_ACTION_SCARECROW_PLAYBACK);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_SCARECROW_PLAYBACK);
         this->actionFunc = func_80A917FC;
         this->camId = OnePointCutscene_Init(play, 2280, -99, &this->actor, CAM_ID_MAIN);
     }
@@ -334,7 +334,7 @@ void func_80A917FC(EnKakasi3* this, PlayState* play) {
 void func_80A9187C(EnKakasi3* this, PlayState* play) {
     if (Message_GetState(&play->msgCtx) == TEXT_STATE_EVENT && Message_ShouldAdvance(play)) {
         Message_CloseTextbox(play);
-        func_8010BD58(play, OCARINA_ACTION_CHECK_SCARECROW);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_SCARECROW);
         this->actionFunc = func_80A918E4;
     }
 }

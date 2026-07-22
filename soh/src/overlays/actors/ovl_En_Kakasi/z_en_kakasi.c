@@ -216,7 +216,7 @@ void func_80A8F75C(EnKakasi* this, PlayState* play) {
                     if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
                         this->camId = OnePointCutscene_Init(play, 2260, -99, &this->actor, CAM_ID_MAIN);
 
-                        func_8010BD58(play, OCARINA_ACTION_SCARECROW_LONG_RECORDING);
+                        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_SCARECROW_LONG_RECORDING);
                         this->unk_19A = 0;
                         this->unk_1B8 = 0.0;
                         player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
@@ -270,7 +270,7 @@ void func_80A8F9C8(EnKakasi* this, PlayState* play) {
         this->camId = OnePointCutscene_Init(play, 2270, -99, &this->actor, CAM_ID_MAIN);
         play->msgCtx.msgMode = MSGMODE_PAUSED;
         Player_SetCsActionWithHaltedActors(play, NULL, 8);
-        func_8010BD58(play, OCARINA_ACTION_SCARECROW_LONG_PLAYBACK);
+        Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_SCARECROW_LONG_PLAYBACK);
         this->actionFunc = func_80A8FAA4;
     }
 }

@@ -6105,10 +6105,11 @@ s32 Player_ActionHandler_13(Player* this, PlayState* play) {
                     Player_SetupActionPreserveItemAction(play, this, Player_Action_8084E3C4, 0);
                     Player_AnimPlayOnceAdjusted(play, this, &gPlayerAnim_link_normal_okarina_start);
                     this->stateFlags2 |= PLAYER_STATE2_OCARINA_PLAYING;
-                    Player_SetTurnAroundCamera(play, (this->unk_6A8 != NULL) ? CAM_ITEM_TYPE_91 : CAM_ITEM_TYPE_90);
-                    if (this->unk_6A8 != NULL) {
+                    Player_SetTurnAroundCamera(play, (this->ocarinaTargetActor != NULL) ? CAM_ITEM_TYPE_91
+                                                                                        : CAM_ITEM_TYPE_90);
+                    if (this->ocarinaTargetActor != NULL) {
                         this->stateFlags2 |= PLAYER_STATE2_PLAY_FOR_ACTOR;
-                        Camera_SetParam(Play_GetCamera(play, 0), 8, this->unk_6A8);
+                        Camera_SetParam(Play_GetCamera(play, 0), 8, this->ocarinaTargetActor);
                     }
                 }
             } else if (func_8083AD4C(play, this)) {
@@ -12111,7 +12112,7 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         this->naviTextId = 0;
 
         if (!(this->stateFlags2 & PLAYER_STATE2_PLAY_FOR_ACTOR)) {
-            this->unk_6A8 = NULL;
+            this->ocarinaTargetActor = NULL;
         }
 
         this->stateFlags2 &= ~PLAYER_STATE2_NEAR_OCARINA_ACTOR;
@@ -14202,7 +14203,7 @@ void Player_Action_8084E3C4(Player* this, PlayState* play) {
         if (this->stateFlags2 & (PLAYER_STATE2_NEAR_OCARINA_ACTOR | PLAYER_STATE2_PLAY_FOR_ACTOR)) {
             this->stateFlags2 |= PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR;
         } else {
-            func_8010BD58(play, OCARINA_ACTION_FREE_PLAY);
+            Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_FREE_PLAY);
         }
         return;
     }
@@ -14214,7 +14215,7 @@ void Player_Action_8084E3C4(Player* this, PlayState* play) {
     if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
         func_8005B1A4(Play_GetCamera(play, 0));
 
-        if ((this->talkActor != NULL) && (this->talkActor == this->unk_6A8)) {
+        if ((this->talkActor != NULL) && (this->talkActor == this->ocarinaTargetActor)) {
             Player_StartTalking(play, this->talkActor);
         } else if (this->naviTextId < 0) {
             this->talkActor = this->naviActor;
@@ -14226,7 +14227,7 @@ void Player_Action_8084E3C4(Player* this, PlayState* play) {
 
         this->stateFlags2 &=
             ~(PLAYER_STATE2_NEAR_OCARINA_ACTOR | PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR | PLAYER_STATE2_PLAY_FOR_ACTOR);
-        this->unk_6A8 = NULL;
+        this->ocarinaTargetActor = NULL;
     } else if (play->msgCtx.ocarinaMode == OCARINA_MODE_02) {
         gSaveContext.respawn[RESPAWN_MODE_RETURN].entranceIndex = sWarpSongEntrances[play->msgCtx.lastPlayedSong];
         gSaveContext.respawn[RESPAWN_MODE_RETURN].playerParams = 0x5FF;

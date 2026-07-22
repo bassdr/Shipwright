@@ -19,11 +19,11 @@ void ObjWarp2block_Update(Actor* thisx, PlayState* play);
 void ObjWarp2block_Draw(Actor* thisx, PlayState* play);
 
 void ObjWarp2block_Spawn(ObjWarp2block* this, PlayState* play);
-s32 func_80BA1ECC(ObjWarp2block* this, PlayState* play);
+s32 ObjWarp2block_PlayerIsInRange(ObjWarp2block* this, PlayState* play);
 void ObjWarp2block_SwapWithChild(ObjWarp2block* this, PlayState* play);
-s32 func_80BA2218(ObjWarp2block* this, PlayState* play);
-s32 func_80BA228C(ObjWarp2block* this, PlayState* play);
-s32 func_80BA2304(ObjWarp2block* this, PlayState* play);
+s32 ObjWarp2block_WaitForOcarina(ObjWarp2block* this, PlayState* play);
+s32 ObjWarp2block_WaitForSong(ObjWarp2block* this, PlayState* play);
+s32 ObjWarp2block_UpdateSongObserver(ObjWarp2block* this, PlayState* play);
 void ObjWarp2block_SetInactive(ObjWarp2block* this);
 void ObjWarp2block_DoNothing(ObjWarp2block* this, PlayState* play);
 void func_80BA24E8(ObjWarp2block* this);
@@ -77,7 +77,7 @@ void ObjWarp2block_Spawn(ObjWarp2block* this, PlayState* play) {
                 sSpawnData[(this->dyna.actor.child->params >> 8) & 1].params);
 }
 
-s32 func_80BA1ECC(ObjWarp2block* this, PlayState* play) {
+s32 ObjWarp2block_PlayerIsInRange(ObjWarp2block* this, PlayState* play) {
     s32 pad;
     Actor* temp_a3;
     Player* player;
@@ -157,13 +157,13 @@ void ObjWarp2block_SwapWithChild(ObjWarp2block* this, PlayState* play) {
     }
 }
 
-s32 func_80BA2218(ObjWarp2block* this, PlayState* play) {
+s32 ObjWarp2block_WaitForOcarina(ObjWarp2block* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
-    if (func_80BA1ECC(this, play)) {
+    if (ObjWarp2block_PlayerIsInRange(this, play)) {
         if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
-            func_8010BD58(play, OCARINA_ACTION_FREE_PLAY);
-            this->func_168 = func_80BA228C;
+            Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_FREE_PLAY);
+            this->songObserverFunc = ObjWarp2block_WaitForSong;
         } else {
             player->stateFlags2 |= PLAYER_STATE2_NEAR_OCARINA_ACTOR;
         }
@@ -172,17 +172,17 @@ s32 func_80BA2218(ObjWarp2block* this, PlayState* play) {
     return 0;
 }
 
-s32 func_80BA228C(ObjWarp2block* this, PlayState* play) {
+s32 ObjWarp2block_WaitForSong(ObjWarp2block* this, PlayState* play) {
     if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
-        this->func_168 = func_80BA2218;
+        this->songObserverFunc = ObjWarp2block_WaitForOcarina;
     }
 
     if (play->msgCtx.lastPlayedSong == OCARINA_SONG_TIME) {
         if (this->unk_172 == 0xFE) {
-            this->unk_16E = 0x6E;
+            this->songEndTimer = 0x6E;
         } else {
-            this->unk_16E--;
-            if (this->unk_16E == 0) {
+            this->songEndTimer--;
+            if (this->songEndTimer == 0) {
                 return 1;
             }
         }
@@ -190,8 +190,8 @@ s32 func_80BA228C(ObjWarp2block* this, PlayState* play) {
     return 0;
 }
 
-s32 func_80BA2304(ObjWarp2block* this, PlayState* play) {
-    s32 ret = this->func_168(this, play);
+s32 ObjWarp2block_UpdateSongObserver(ObjWarp2block* this, PlayState* play) {
+    s32 ret = this->songObserverFunc(this, play);
 
     this->unk_172 = play->msgCtx.lastPlayedSong;
 
@@ -208,7 +208,7 @@ void ObjWarp2block_Init(Actor* thisx, PlayState* play2) {
     Actor_ProcessInitChain(&this->dyna.actor, sInitChain);
 
     Actor_SetScale(&this->dyna.actor, sSpawnData[(this->dyna.actor.params >> 8) & 1].scale);
-    this->func_168 = func_80BA2218;
+    this->songObserverFunc = ObjWarp2block_WaitForOcarina;
     Actor_SetFocus(&this->dyna.actor, sSpawnData[(this->dyna.actor.params >> 8) & 1].focus);
 
     if ((this->dyna.actor.params >> 0xF) & 1) {
@@ -278,7 +278,7 @@ void func_80BA2600(ObjWarp2block* this) {
 }
 
 void func_80BA2610(ObjWarp2block* this, PlayState* play) {
-    if ((func_80BA2304(this, play) != 0) && (this->unk_16C <= 0)) {
+    if ((ObjWarp2block_UpdateSongObserver(this, play) != 0) && (this->unk_16C <= 0)) {
         ObjWarp2block_Spawn(this, play);
         this->unk_16C = 0xA0;
         if (GameInteractor_Should(VB_PLAY_TIMEBLOCK_CS, true, this)) {

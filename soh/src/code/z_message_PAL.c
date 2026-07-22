@@ -3032,13 +3032,13 @@ void Message_StartOcarina(PlayState* play, u16 ocarinaActionId) {
     }
 }
 
-void func_8010BD58(PlayState* play, u16 ocarinaActionId) {
-    play->msgCtx.unk_E40E = 0;
+void Message_StartOcarinaWithSongEffect(PlayState* play, u16 ocarinaActionId) {
+    play->msgCtx.disableSongEffect = 0;
     Message_StartOcarina(play, ocarinaActionId);
 }
 
-void func_8010BD88(PlayState* play, u16 ocarinaActionId) {
-    play->msgCtx.unk_E40E = 1;
+void Message_StartOcarinaNoSongEffect(PlayState* play, u16 ocarinaActionId) {
+    play->msgCtx.disableSongEffect = 1;
     Message_StartOcarina(play, ocarinaActionId);
 }
 
@@ -3875,7 +3875,7 @@ void Message_DrawMain(PlayState* play, Gfx** p) {
                     Message_DrawText(play, &gfx);
                 }
                 if (Message_ShouldAdvance(play)) {
-                    func_8010BD58(play, msgCtx->ocarinaAction);
+                    Message_StartOcarinaWithSongEffect(play, msgCtx->ocarinaAction);
                 }
                 break;
             case MSGMODE_SCARECROW_LONG_RECORDING_START:

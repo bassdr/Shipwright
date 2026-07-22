@@ -626,7 +626,7 @@ void EnFr_Idle(EnFr* this, PlayState* play) {
         this->reward = GI_NONE;
         this->actionFunc = EnFr_Activate;
     } else if (EnFr_IsAboveAndWithin30DistXZ(player, this)) {
-        player->unk_6A8 = &this->actor;
+        player->ocarinaTargetActor = &this->actor;
     }
 }
 
@@ -673,7 +673,7 @@ void func_80A1BE98(EnFr* this, PlayState* play) {
         }
     }
 
-    func_8010BD58(play, OCARINA_ACTION_CHECK_NOWARP);
+    Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_CHECK_NOWARP);
     this->actionFunc = EnFr_ListeningToOcarinaNotes;
 }
 
@@ -832,7 +832,7 @@ void EnFr_SetupFrogSong(EnFr* this, PlayState* play) {
                 EnFr_SetupReward(this, play, false);
             } else {
                 this->ocarinaNoteIndex = 0;
-                func_8010BD58(play, OCARINA_ACTION_FROGS);
+                Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_FROGS);
                 this->ocarinaNote = EnFr_GetNextNoteFrogSong(this->ocarinaNoteIndex);
                 EnFr_CheckOcarinaInputFrogSong(this->ocarinaNote);
                 this->actionFunc = EnFr_ContinueFrogSong;
@@ -841,7 +841,7 @@ void EnFr_SetupFrogSong(EnFr* this, PlayState* play) {
         } else {
             this->frogSongTimer = 40;
             this->ocarinaNoteIndex = 0;
-            func_8010BD58(play, OCARINA_ACTION_FROGS);
+            Message_StartOcarinaWithSongEffect(play, OCARINA_ACTION_FROGS);
             this->ocarinaNote = EnFr_GetNextNoteFrogSong(this->ocarinaNoteIndex);
             EnFr_CheckOcarinaInputFrogSong(this->ocarinaNote);
             this->actionFunc = EnFr_ContinueFrogSong;

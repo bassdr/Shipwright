@@ -11,10 +11,10 @@ void EnDu_Update(Actor* thisx, PlayState* play);
 void EnDu_Draw(Actor* thisx, PlayState* play);
 
 void func_809FE3B4(EnDu* this, PlayState* play);
-void func_809FE3C0(EnDu* this, PlayState* play);
+void EnDu_WaitForOcarina(EnDu* this, PlayState* play);
 void func_809FE638(EnDu* this, PlayState* play);
 void func_809FE890(EnDu* this, PlayState* play);
-void func_809FE4A4(EnDu* this, PlayState* play);
+void EnDu_ListenToOcarina(EnDu* this, PlayState* play);
 void func_809FE6CC(EnDu* this, PlayState* play);
 void func_809FE740(EnDu* this, PlayState* play);
 void func_809FE798(EnDu* this, PlayState* play);
@@ -336,7 +336,7 @@ void EnDu_Init(Actor* thisx, PlayState* play) {
     } else if (play->sceneNum == SCENE_FIRE_TEMPLE) {
         EnDu_SetupAction(this, func_809FE638);
     } else if (!LINK_IS_ADULT) {
-        EnDu_SetupAction(this, func_809FE3C0);
+        EnDu_SetupAction(this, EnDu_WaitForOcarina);
     } else {
         EnDu_SetupAction(this, func_809FE3B4);
     }
@@ -352,14 +352,14 @@ void EnDu_Destroy(Actor* thisx, PlayState* play) {
 void func_809FE3B4(EnDu* this, PlayState* play) {
 }
 
-void func_809FE3C0(EnDu* this, PlayState* play) {
+void EnDu_WaitForOcarina(EnDu* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     if (player->stateFlags2 & PLAYER_STATE2_ATTEMPT_PLAY_FOR_ACTOR) {
-        func_8010BD88(play, OCARINA_ACTION_CHECK_SARIA);
+        Message_StartOcarinaNoSongEffect(play, OCARINA_ACTION_CHECK_SARIA);
         player->stateFlags2 |= PLAYER_STATE2_PLAY_FOR_ACTOR;
-        player->unk_6A8 = &this->actor;
-        EnDu_SetupAction(this, func_809FE4A4);
+        player->ocarinaTargetActor = &this->actor;
+        EnDu_SetupAction(this, EnDu_ListenToOcarina);
         return;
     }
     if (this->interactInfo.talkState == NPC_TALK_STATE_ACTION) {
@@ -371,12 +371,12 @@ void func_809FE3C0(EnDu* this, PlayState* play) {
     }
 }
 
-void func_809FE4A4(EnDu* this, PlayState* play) {
+void EnDu_ListenToOcarina(EnDu* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     if (play->msgCtx.ocarinaMode == OCARINA_MODE_04) {
         play->msgCtx.ocarinaMode = OCARINA_MODE_00;
-        EnDu_SetupAction(this, func_809FE3C0);
+        EnDu_SetupAction(this, EnDu_WaitForOcarina);
     } else if (play->msgCtx.ocarinaMode >= OCARINA_MODE_06) {
         if (GameInteractor_Should(VB_PLAY_DARUNIAS_JOY_CS, true)) {
             play->csCtx.segment = SEGMENTED_TO_VIRTUAL(gGoronCityDaruniaWrongCs);
@@ -553,7 +553,7 @@ void func_809FEB08(EnDu* this, PlayState* play) {
     if (this->unk_1E8 == 1) {
         Player_SetCsActionWithHaltedActors(play, &this->actor, 7);
         Animation_ChangeByInfo(&this->skelAnime, sAnimationInfo, ENDU_ANIM_1);
-        EnDu_SetupAction(this, func_809FE3C0);
+        EnDu_SetupAction(this, EnDu_WaitForOcarina);
         return;
     }
     if (GameInteractor_Should(VB_BE_ELIGIBLE_FOR_DARUNIAS_JOY_REWARD, CUR_UPG_VALUE(UPG_STRENGTH) <= 0)) {
@@ -562,7 +562,7 @@ void func_809FEB08(EnDu* this, PlayState* play) {
         EnDu_SetupAction(this, func_809FEC14);
     } else {
         this->actor.textId = 0x301F;
-        EnDu_SetupAction(this, func_809FE3C0);
+        EnDu_SetupAction(this, EnDu_WaitForOcarina);
     }
     Message_StartTextbox(play, this->actor.textId, NULL);
     Animation_ChangeByInfo(&this->skelAnime, sAnimationInfo, ENDU_ANIM_14);
@@ -591,7 +591,7 @@ void func_809FEC70(EnDu* this, PlayState* play) {
 void func_809FECE4(EnDu* this, PlayState* play) {
     if (this->interactInfo.talkState == NPC_TALK_STATE_ITEM_GIVEN) {
         this->interactInfo.talkState = NPC_TALK_STATE_IDLE;
-        EnDu_SetupAction(this, func_809FE3C0);
+        EnDu_SetupAction(this, EnDu_WaitForOcarina);
     }
 }
 
@@ -621,7 +621,7 @@ void EnDu_Update(Actor* thisx, PlayState* play) {
 
     Actor_UpdateBgCheckInfo(play, &this->actor, 0.0f, 0.0f, 0.0f, 4);
 
-    if (this->actionFunc != func_809FE4A4) {
+    if (this->actionFunc != EnDu_ListenToOcarina) {
         Npc_UpdateTalking(play, &this->actor, &this->interactInfo.talkState, this->collider.dim.radius + 116.0f,
                           EnDu_GetTextId, EnDu_UpdateTalkState);
     }
