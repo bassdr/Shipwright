@@ -15,10 +15,13 @@ extern PlayState* gPlayState;
 u8 Randomizer_GetSettingValue(RandomizerSettingKey);
 
 // Staff-spot (En_Okarina_Tag) idle/listening handlers, not exposed in a header.
-void func_80ABEF2C(EnOkarinaTag* tag, PlayState* play);
-void func_80ABF0CC(EnOkarinaTag* tag, PlayState* play);
-void func_80ABF28C(EnOkarinaTag* tag, PlayState* play);
-void func_80ABF4C8(EnOkarinaTag* tag, PlayState* play);
+void EnOkarinaTag_WaitForPlayer(EnOkarinaTag* tag, PlayState* play);
+void EnOkarinaTag_OfferTalk(EnOkarinaTag* tag, PlayState* play);
+void EnOkarinaTag_WaitForOcarina(EnOkarinaTag* tag, PlayState* play);
+void EnOkarinaTag_WaitForPlaybackResult(EnOkarinaTag* tag, PlayState* play);
+void EnOkarinaTag_HandleSongEvent(EnOkarinaTag* tag, PlayState* play);
+void EnOkarinaTag_WaitForDialogue(EnOkarinaTag* tag, PlayState* play);
+
 // Mido (En_Md) block/listen handlers, not exposed in a header.
 void EnMd_BlockPath(EnMd* actor, PlayState* play);
 void EnMd_ListenToOcarina(EnMd* actor, PlayState* play);
@@ -150,14 +153,14 @@ static bool PauseSong_ActivateOkarinaTags() {
         EnOkarinaTag* tag = (EnOkarinaTag*)actor;
         if ((tag->actor.xzDistToPlayer < (90.0f + tag->interactRange)) &&
             (fabsf(player->actor.world.pos.y - tag->actor.world.pos.y) < 80.0f)) {
-            if (tag->actionFunc == func_80ABEF2C && tag->ocarinaSong == songIndex) {
-                func_80ABF0CC(tag, gPlayState);
+            if (tag->actionFunc == EnOkarinaTag_WaitForPlayer && tag->ocarinaSong == songIndex) {
+                EnOkarinaTag_WaitForPlaybackResult(tag, gPlayState);
                 matched = true;
-            } else if (tag->actionFunc == func_80ABF28C &&
+            } else if (tag->actionFunc == EnOkarinaTag_WaitForOcarina &&
                        ((song == OCARINA_SONG_LULLABY && (tag->type == 1 || tag->type == 6)) ||
                         (song == OCARINA_SONG_STORMS && tag->type == 2) ||
                         (song == OCARINA_SONG_TIME && tag->type == 4))) {
-                func_80ABF4C8(tag, gPlayState);
+                EnOkarinaTag_HandleSongEvent(tag, gPlayState);
                 matched = true;
             }
         }
