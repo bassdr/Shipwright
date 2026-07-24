@@ -18,19 +18,22 @@ extern PlayState* gPlayState;
 
 u8 Randomizer_GetSettingValue(RandomizerSettingKey);
 
-// Staff-spot (En_Okarina_Tag) idle/listening handlers, not exposed in a header.
-void EnOkarinaTag_WaitForPlayer(EnOkarinaTag* tag, PlayState* play);
-void EnOkarinaTag_OfferTalk(EnOkarinaTag* tag, PlayState* play);
-void EnOkarinaTag_WaitForOcarina(EnOkarinaTag* tag, PlayState* play);
-void EnOkarinaTag_WaitForPlaybackResult(EnOkarinaTag* tag, PlayState* play);
-void EnOkarinaTag_HandleSongEvent(EnOkarinaTag* tag, PlayState* play);
-void EnOkarinaTag_WaitForDialogue(EnOkarinaTag* tag, PlayState* play);
+// Staff-spot (En_Okarina_Tag) idle/listening handlers. These decomp functions have no descriptive names
+// yet, so we reference them by their raw symbols:
+//   func_80ABEF2C - idle, waiting for the player to approach
+//   func_80ABF28C - listening for the ocarina
+//   func_80ABF0CC - waiting for the type-7 playback result
+//   func_80ABF4C8 - handling a matched song event (types 1/2/4/6)
+void func_80ABEF2C(EnOkarinaTag* tag, PlayState* play);
+void func_80ABF28C(EnOkarinaTag* tag, PlayState* play);
+void func_80ABF0CC(EnOkarinaTag* tag, PlayState* play);
+void func_80ABF4C8(EnOkarinaTag* tag, PlayState* play);
 
 // NPC ocarina idle/listen handlers (Mido, Darunia, adult Malon), not exposed in a header.
 void EnMd_BlockPath(EnMd* actor, PlayState* play);
 void EnMd_ListenToOcarina(EnMd* actor, PlayState* play);
-void EnDu_WaitForOcarina(EnDu* actor, PlayState* play);
-void EnDu_ListenToOcarina(EnDu* actor, PlayState* play);
+void func_809FE3C0(EnDu* actor, PlayState* play); // Darunia: idle, waiting for the ocarina
+void func_809FE4A4(EnDu* actor, PlayState* play); // Darunia: listening for Saria's Song
 void EnMa2_WaitForOcarina(EnMa2* actor, PlayState* play);
 void EnMa2_WaitForEponasSong(EnMa2* actor, PlayState* play);
 void Player_StartTalking(PlayState* play, Actor* actor);
@@ -167,18 +170,18 @@ static bool PauseSong_ActivateOkarinaTags() {
         EnOkarinaTag* tag = (EnOkarinaTag*)actor;
         if ((tag->actor.xzDistToPlayer < (90.0f + tag->interactRange)) &&
             (fabsf(player->actor.world.pos.y - tag->actor.world.pos.y) < 80.0f)) {
-            if (tag->actionFunc == EnOkarinaTag_WaitForPlayer && tag->ocarinaSong == songIndex) {
-                EnOkarinaTag_WaitForPlaybackResult(tag, gPlayState);
+            if (tag->actionFunc == func_80ABEF2C && tag->ocarinaSong == songIndex) {
+                func_80ABF0CC(tag, gPlayState); // waiting for the playback result
                 matched = true;
-            } else if (tag->actionFunc == EnOkarinaTag_WaitForOcarina) {
+            } else if (tag->actionFunc == func_80ABF28C) { // listening for the ocarina
                 // Type 1/6 react to Zelda's Lullaby, type 2 to Song of Storms, type 4 to Song of Time.
                 bool songMatchesType = (((tag->type == 1) || (tag->type == 6)) && (song == OCARINA_SONG_LULLABY)) ||
                                        ((tag->type == 2) && (song == OCARINA_SONG_STORMS)) ||
                                        ((tag->type == 4) && (song == OCARINA_SONG_TIME));
                 if (songMatchesType) {
-                    // Like the type-7 spots, run the listening handler now while MODE_03 is set so it
-                    // fires this frame (its actionFunc is EnOkarinaTag_WaitForOcarina, so it consumes it).
-                    EnOkarinaTag_HandleSongEvent(tag, gPlayState);
+                    // Like the type-7 spots, run the listening handler now while MODE_03 is set so it fires
+                    // this frame (its actionFunc is the ocarina-listening state, so it consumes it).
+                    func_80ABF4C8(tag, gPlayState); // handle the matched song event
                     matched = true;
                 }
             }
@@ -252,8 +255,8 @@ static bool PauseSong_ActivateNpcActors() {
         // Darunia, in Goron City as a child, dances (a cutscene) for Saria's Song.
         if (actor->id == ACTOR_EN_DU && scene == SCENE_GORON_CITY && song == OCARINA_SONG_SARIAS) {
             EnDu* darunia = (EnDu*)actor;
-            if (darunia->actionFunc == EnDu_WaitForOcarina && actor->xzDistToPlayer < 120.0f) {
-                darunia->actionFunc = EnDu_ListenToOcarina;
+            if (darunia->actionFunc == func_809FE3C0 && actor->xzDistToPlayer < 120.0f) {
+                darunia->actionFunc = func_809FE4A4;
                 PauseSong_HoldMode(OCARINA_MODE_03);
                 return true;
             }
