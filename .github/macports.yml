@@ -3,6 +3,10 @@ ports:
     select: [ universal ]
   - name: libsdl2_net
     select: [ universal ]
+  # SDL3 provides the optional SDL3 audio backend (loaded at runtime); its headers/config
+  # are needed at build time to compile the backend in.
+  - name: SDL3
+    select: [ universal ]
   - name: libpng
     select: [ universal ]
   - name: glew

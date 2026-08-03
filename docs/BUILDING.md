@@ -156,6 +156,15 @@ If your cmake is too old, you can install a newer version via:
 - [kitware apt repo](https://apt.kitware.com/) (Ubuntu only)
 - [Homebrew](https://formulae.brew.sh/formula/cmake)
 
+### Optional: SDL3 audio backend
+On Linux the default audio backend uses SDL2. An alternative SDL3 backend is also
+available and is recommended where SDL3 is present. It is **compiled in** only when
+SDL3 development files are found at build time (`libsdl3-dev` on Debian 13+/Ubuntu
+24.10+, `sdl3` on Arch, `SDL3-devel` on Fedora 40+); otherwise it is silently left out.
+It is **loaded at runtime** from the system SDL3, so the `libsdl3` runtime package must
+also be installed to select the backend in-game. Windows and macOS use their native
+WASAPI / CoreAudio backends, so this backend is primarily useful on Linux.
+
 ### Build
 
 _Note: If you're using Visual Studio Code, the [CMake Tools plugin](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools) makes it very easy to just press run and debug._
