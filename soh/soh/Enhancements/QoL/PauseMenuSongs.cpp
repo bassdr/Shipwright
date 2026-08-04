@@ -145,18 +145,17 @@ static void PauseWarp_Execute() {
         return;
     }
 
-    // Set up respawn destination before spawning the warp actor
-    if (IS_RANDO) {
-        Entrance_SetWarpSongEntrance();
-    } else {
-        for (int i = 0; i < ARRAY_COUNT(ocarinaSongMap); i++) {
-            if (gPlayState->msgCtx.lastPlayedSong == ocarinaSongMap[i]) {
-                gSaveContext.respawn[RESPAWN_MODE_RETURN].entranceIndex = entranceIndexMap[i];
-                gSaveContext.respawn[RESPAWN_MODE_RETURN].playerParams = 0x5FF;
-                gSaveContext.respawn[RESPAWN_MODE_RETURN].data = (s8)gPlayState->msgCtx.lastPlayedSong;
-                Interface_SetSubTimerToFinalSecond(gPlayState);
-                break;
-            }
+    // Set the warp-return entrance from the played song, like the vanilla ocarina warp (z_player.c
+    // OCARINA_MODE_02): the DEMO_KANKYO actor spawned below warps to respawn[RETURN], and in rando its
+    // init hook applies entrance-shuffle on top. (The old rando branch skipped this and warped to a
+    // stale respawn[RETURN] -- the last genuinely-played song, or the save default.)
+    for (int i = 0; i < ARRAY_COUNT(ocarinaSongMap); i++) {
+        if (gPlayState->msgCtx.lastPlayedSong == ocarinaSongMap[i]) {
+            gSaveContext.respawn[RESPAWN_MODE_RETURN].entranceIndex = entranceIndexMap[i];
+            gSaveContext.respawn[RESPAWN_MODE_RETURN].playerParams = 0x5FF;
+            gSaveContext.respawn[RESPAWN_MODE_RETURN].data = (s8)gPlayState->msgCtx.lastPlayedSong;
+            Interface_SetSubTimerToFinalSecond(gPlayState);
+            break;
         }
     }
 
