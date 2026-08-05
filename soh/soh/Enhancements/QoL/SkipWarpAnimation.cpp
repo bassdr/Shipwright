@@ -20,10 +20,14 @@ static void RegisterSkipWarpHooks() {
     COND_HOOK(OnActorInit, CVAR_SKIP_WARP_VALUE, [](void* refActor) {
         Actor* actor = static_cast<Actor*>(refActor);
         if (actor->id == ACTOR_DEMO_KANKYO && actor->params == DEMOKANKYO_WARP_OUT_PARAM) {
+            // Leaves right away, and settles the destination: entrance rando redirects from inside it.
             Environment_WarpSongLeave(gPlayState);
-            // Switch arrival spawn mode from WARP_SONG to IDLE so DEMO_KANKYO WARP_IN is never spawned
-            gSaveContext.respawn[RESPAWN_MODE_RETURN].playerParams =
-                (gSaveContext.respawn[RESPAWN_MODE_RETURN].playerParams & ~(0xF << 8)) | (PLAYER_START_MODE_IDLE << 8);
+            // Switch arrival spawn mode from WARP_SONG to IDLE so DEMO_KANKYO WARP_IN is never spawned.
+            // Another mode means something else owns the arrival (a rando grotto return), with no cutscene.
+            RespawnData* respawn = &gSaveContext.respawn[RESPAWN_MODE_RETURN];
+            if (((respawn->playerParams & 0xF00) >> 8) == PLAYER_START_MODE_WARP_SONG) {
+                respawn->playerParams = (respawn->playerParams & ~0xF00) | (PLAYER_START_MODE_IDLE << 8);
+            }
             Actor_Kill(actor);
         }
     });

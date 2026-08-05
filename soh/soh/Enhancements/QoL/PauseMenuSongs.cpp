@@ -146,9 +146,7 @@ static void PauseWarp_Execute() {
     }
 
     // Set the warp-return entrance from the played song, like the vanilla ocarina warp (z_player.c
-    // OCARINA_MODE_02): the DEMO_KANKYO actor spawned below warps to respawn[RETURN], and in rando its
-    // init hook applies entrance-shuffle on top. (The old rando branch skipped this and warped to a
-    // stale respawn[RETURN] -- the last genuinely-played song, or the save default.)
+    // OCARINA_MODE_02): the DEMO_KANKYO actor spawned below warps to respawn[RETURN].
     for (int i = 0; i < ARRAY_COUNT(ocarinaSongMap); i++) {
         if (gPlayState->msgCtx.lastPlayedSong == ocarinaSongMap[i]) {
             gSaveContext.respawn[RESPAWN_MODE_RETURN].entranceIndex = entranceIndexMap[i];
@@ -216,7 +214,7 @@ static bool PauseSong_ActivateOkarinaTags() {
 // The Song of Time blocks, Great Fairy spawners, and ocarina NPCs update before this hook and just poll
 // ocarinaMode + lastPlayedSong. We can't use the real play-for-actor flow (it opens a note-input prompt the
 // menu can't satisfy), so we push the matching in-range actor into its song-finished state, hold the
-// matching mode a couple frames for it to read, then restore it. Only Mido needs its dialogue started here.
+// matching mode a couple frames for it to read, then restore it.
 static u8 pendingMode = OCARINA_MODE_00;
 static Actor* pendingTalkActor = NULL;
 static int pendingTimer = 0;
