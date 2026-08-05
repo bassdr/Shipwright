@@ -86,7 +86,7 @@
                     "StartingNotes": 5
                 },
                 "PauseMenuAnimatedLink": 1,
-                "PauseWarp": 1,
+                "PauseMenuSongs": 1,
                 "PersistentMasks": 1,
                 "PulsateBossIcon": 1,
                 "QuickBongoKill": 1,
@@ -129,6 +129,7 @@
                 "ToggleStrength": 1,
                 "TwoHandedIdle": 1,
                 "VisualAgony": 1,
+                "WarpSongSkipAnimation": 1,
                 "WidescreenActorCulling": 1
             },
             "gRandoEnhancements": null
