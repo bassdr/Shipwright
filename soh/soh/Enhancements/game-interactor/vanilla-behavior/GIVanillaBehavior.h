@@ -2600,6 +2600,30 @@ typedef enum {
 
     // #### `result`
     // ```c
+    // this->actor.xyzDistToPlayerSq < 900.0f
+    // ```
+    // #### `args`
+    // - *EnGSwitch
+    VB_SILVER_COLLECT,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - *EnGSwitch
+    VB_SILVER_COUNT_CHECK,
+
+    // #### `result`
+    // ```c
+    // Flags_GetSwitch(play, this->switchFlag)
+    // ```
+    // #### `args`
+    // - *EnGSwitch
+    VB_SILVER_DESPAWN,
+
+    // #### `result`
+    // ```c
     // true
     // ```
     // #### `args`
@@ -2843,6 +2867,14 @@ typedef enum {
     // #### `args`
     // - `*Input`
     VB_THROW_OR_PUT_DOWN_HELD_ITEM,
+
+    // #### `result`
+    // ```c
+    // true
+    // ```
+    // #### `args`
+    // - `*Actor`
+    VB_ON_ACTOR_THROW_ONLY_CHECK,
 
     // #### `result`
     // ```c
