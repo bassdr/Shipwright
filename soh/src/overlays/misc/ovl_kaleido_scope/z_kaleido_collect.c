@@ -4,6 +4,7 @@
 #include "soh/Enhancements/cosmetics/cosmeticsTypes.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Enhancements/assignableSongs.h"
 
 extern const char* digitTextures[];
 
@@ -191,6 +192,37 @@ void KaleidoScope_DrawQuestStatus(PlayState* play, GraphicsContext* gfxCtx) {
             }
 
             KaleidoScope_SetCursorVtx(pauseCtx, sp216 * 4, pauseCtx->questVtx);
+
+            // #region SoH [Enhancements]
+            // Assign the highlighted song to a C-Button or D-pad, the way the Item and Equipment screens do.
+            if (CVarGetInteger(CVAR_ASSIGNABLE_SONGS, 0) && (pauseCtx->state == 6) &&
+                (pauseCtx->cursorSpecialPos == 0) && ((pauseCtx->unk_1E4 == 0) || (pauseCtx->unk_1E4 == 8)) &&
+                (sp216 >= QUEST_SONG_MINUET) && (sp216 < QUEST_KOKIRI_EMERALD)) {
+                u16 songButtons = BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT;
+
+                if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) &&
+                    (!CVarGetInteger(CVAR_SETTING("DPadOnPause"), 0) || CHECK_BTN_ALL(input->cur.button, BTN_CUP))) {
+                    songButtons |= BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT;
+                }
+
+                if (CHECK_BTN_ANY(input->press.button, songButtons)) {
+                    if (!CHECK_QUEST_ITEM(sp216)) {
+                        // Not learned yet: refuse it the way the Select Item screen refuses an empty slot.
+                        Audio_PlaySfxGeneral(NA_SE_SY_ERROR, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
+                                             &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+                    } else {
+                        u16 songItem = ITEM_SONG_MINUET + (sp216 - QUEST_SONG_MINUET);
+
+                        // Songs live outside the inventory, so they carry no slot.
+                        if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, SLOT_NONE, songItem)) {
+                            KaleidoScope_SetupItemEquip(play, songItem, SLOT_NONE,
+                                                        pauseCtx->questVtx[sp216 * 4].v.ob[0] * 10,
+                                                        pauseCtx->questVtx[sp216 * 4].v.ob[1] * 10);
+                        }
+                    }
+                }
+            }
+            // #endregion
 
             if ((pauseCtx->state == 6) && (pauseCtx->unk_1E4 == 0) && (pauseCtx->cursorSpecialPos == 0)) {
                 if ((sp216 >= QUEST_SONG_MINUET) && (sp216 < QUEST_KOKIRI_EMERALD)) {

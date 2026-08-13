@@ -1,6 +1,8 @@
 #include <string>
 #include "soh/Enhancements/custom-message/CustomMessageManager.h"
 #include "soh/Enhancements/custom-message/CustomMessageTypes.h"
+#include "soh/Enhancements/enhancementTypes.h"
+#include "soh/Enhancements/assignableSongs.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"
 
@@ -19,6 +21,7 @@ extern "C" {
 extern PlayState* gPlayState;
 
 u8 Randomizer_GetSettingValue(RandomizerSettingKey);
+s32 Player_GetItemOnButton(PlayState* play, s32 index);
 
 // Staff-spot (En_Okarina_Tag) idle/listening handlers. These decomp functions have no descriptive names
 // yet, so we reference them by their raw symbols:
@@ -54,6 +57,8 @@ void ShotSun_UpdateFairySpawner(ShotSun* shotSun, PlayState* play);
 static constexpr int32_t CVAR_PAUSE_SONGS_DEFAULT = 0;
 #define CVAR_PAUSE_SONGS_NAME CVAR_ENHANCEMENT("PauseMenuSongs")
 #define CVAR_PAUSE_SONGS_VALUE CVarGetInteger(CVAR_PAUSE_SONGS_NAME, CVAR_PAUSE_SONGS_DEFAULT)
+
+#define CVAR_ASSIGNABLE_SONGS_VALUE CVarGetInteger(CVAR_ASSIGNABLE_SONGS, 0)
 
 // --- Warp songs (QUEST_SONG_MINUET through QUEST_SONG_PRELUDE) ---
 
@@ -540,6 +545,59 @@ static void PauseCannotPlay_Execute() {
     }
 }
 
+// --- Assignable songs: a song sitting on a C-Button or D-pad direction, played like an item ---
+
+static u16 songButtons[] = { BTN_B, BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT, BTN_DUP, BTN_DDOWN, BTN_DLEFT, BTN_DRIGHT };
+
+// The song on the button the player just pressed, or ITEM_NONE. A greyed-out button answers with nothing,
+// the way a disabled item button does.
+static int32_t PressedSongItem(Input* input) {
+    for (int32_t i = 0; i < ARRAY_COUNT(songButtons); i++) {
+        if (CHECK_BTN_ALL(input->press.button, songButtons[i])) {
+            int32_t item = Player_GetItemOnButton(gPlayState, i);
+            if (!IS_ASSIGNED_SONG(item) || gSaveContext.buttonStatus[(i >= 4) ? (i + 1) : i] == BTN_DISABLED) {
+                return ITEM_NONE;
+            }
+            return item;
+        }
+    }
+    return ITEM_NONE;
+}
+
+// Play the song on the pressed button, ignoring presses the Ocarina itself couldn't have honoured.
+static void UseAssignedSong(Input* input) {
+    int32_t item = PressedSongItem(input);
+    if (item == ITEM_NONE || gPlayState->pauseCtx.state != 0) {
+        return;
+    }
+    // Don't stack a second song on one still being handed off, warping, or waiting on the grace retry.
+    if (isWarpActive || isSongActive || pendingTimer > 0 || retryTimer > 0) {
+        return;
+    }
+
+    int song = QUEST_SONG_MINUET + (item - ITEM_SONG_MINUET);
+    bool isWarpSong = song <= QUEST_SONG_PRELUDE;
+    if ((isWarpSong && !WarpSongButtonsUnlocked(song)) || !PauseSong_CanPlayOcarina()) {
+        return;
+    }
+
+    if (isWarpSong) {
+        StartWarpPlayback(song);
+    } else {
+        StartSongPlayback(song);
+    }
+}
+
+// Assignments left by the enhancement would sit on buttons that no longer do anything.
+static void ClearAssignedSongs(int32_t unused = 0) {
+    for (int32_t i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
+        if (IS_ASSIGNED_SONG(gSaveContext.equips.buttonItems[i])) {
+            gSaveContext.equips.buttonItems[i] = ITEM_NONE;
+            gSaveContext.equips.cButtonSlots[i - 1] = SLOT_NONE;
+        }
+    }
+}
+
 static void PauseMenuSongs_HandleSelection() {
     // Also checked here so a song picked with no Ocarina leaves the menu open instead of closing it to fail.
     if (gSaveContext.inventory.items[SLOT_OCARINA] == ITEM_NONE) {
@@ -585,14 +643,42 @@ static void RegisterPauseMenuHooks() {
             PauseMenuSongs_HandleSelection();
         }
     });
-    COND_HOOK(OnGameFrameUpdate, CVAR_PAUSE_SONGS_VALUE, [] {
+    // Both entry points feed the same playback engine, so either one needs these running.
+    COND_HOOK(OnGameFrameUpdate, CVAR_PAUSE_SONGS_VALUE || CVAR_ASSIGNABLE_SONGS_VALUE, [] {
         if (GameInteractor::IsSaveLoaded()) {
             PauseWarp_Execute();
             PauseSong_Execute();
             PauseSong_RetryPlay();
             PauseCannotPlay_Execute();
+            // Last, so a song started here executes on the next frame, as it does coming out of the menu.
+            if (CVAR_ASSIGNABLE_SONGS_VALUE) {
+                UseAssignedSong(&gPlayState->state.input[0]);
+            }
         }
     });
+    // A song on a button is not an item: keep the player from trying to hold or use it, and play it instead.
+    COND_VB_SHOULD(VB_ITEM_ACTION_BE_NONE, CVAR_ASSIGNABLE_SONGS_VALUE, {
+        int32_t item = va_arg(args, int32_t);
+
+        if (IS_ASSIGNED_SONG(item)) {
+            *should = true;
+        }
+    });
+
+    COND_VB_SHOULD(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, CVAR_ASSIGNABLE_SONGS_VALUE, {
+        int32_t item = va_arg(args, int32_t);
+
+        if (IS_ASSIGNED_SONG(item)) {
+            *should = false;
+        }
+    });
+
+    // Clear assignments made while the enhancement was on, so they can't linger on dead buttons.
+    if (GameInteractor::IsSaveLoaded(true) && !CVAR_ASSIGNABLE_SONGS_VALUE) {
+        ClearAssignedSongs();
+    }
+    COND_HOOK(OnLoadGame, !CVAR_ASSIGNABLE_SONGS_VALUE, ClearAssignedSongs);
+
     COND_ID_HOOK(OnOpenText, TEXT_CANNOT_PLAY_OCARINA_MSG, CVAR_PAUSE_SONGS_VALUE,
                  [](uint16_t* textId, bool* loadFromMessageTable) {
                      cannotPlayHereMsg.LoadIntoFont();
@@ -600,4 +686,4 @@ static void RegisterPauseMenuHooks() {
                  });
 }
 
-static RegisterShipInitFunc initFunc(RegisterPauseMenuHooks, { CVAR_PAUSE_SONGS_NAME });
+static RegisterShipInitFunc initFunc(RegisterPauseMenuHooks, { CVAR_PAUSE_SONGS_NAME, CVAR_ASSIGNABLE_SONGS });

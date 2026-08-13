@@ -5,6 +5,7 @@
 #include "soh/Enhancements/randomizer/RocsFeatherCycle.h"
 #include "soh/Enhancements/randomizer/randomizerTypes.h"
 #include "soh/Enhancements/cosmetics/cosmeticsTypes.h"
+#include "soh/Enhancements/assignableSongs.h"
 #include "soh/OTRGlobals.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
@@ -722,7 +723,9 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     gDPSetEnvColor(POLY_OPA_DISP++, 0, 0, 0, 0);
 
     for (i = 0, j = 24 * 4; i < ARRAY_COUNT(gSaveContext.equips.cButtonSlots); i++, j += 4) {
+        // SoH: songs, like equipment, have no slot on this screen to outline
         if ((gSaveContext.equips.buttonItems[i + 1] != ITEM_NONE) &&
+            !IS_ASSIGNED_SONG(gSaveContext.equips.buttonItems[i + 1]) &&
             !((gSaveContext.equips.buttonItems[i + 1] >= ITEM_SHIELD_DEKU) &&
               (gSaveContext.equips.buttonItems[i + 1] <= ITEM_BOOTS_HOVER))) {
             gSPVertex(POLY_OPA_DISP++, &pauseCtx->itemVtx[j], 4, 0);
@@ -1196,7 +1199,13 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
                     continue;
                 }
 
-                if (pauseCtx->equipTargetSlot == gSaveContext.equips.cButtonSlots[otherSlotIndex]) {
+                // SoH: songs have no inventory slot, so they can only be recognised by the item itself
+                bool alreadyAssigned =
+                    IS_ASSIGNED_SONG(pauseCtx->equipTargetItem)
+                        ? (gSaveContext.equips.buttonItems[otherButtonIndex] == pauseCtx->equipTargetItem)
+                        : (pauseCtx->equipTargetSlot == gSaveContext.equips.cButtonSlots[otherSlotIndex]);
+
+                if (alreadyAssigned) {
                     // Assign the other button to the target's current item
                     if (gSaveContext.equips.buttonItems[targetButtonIndex] != ITEM_NONE) {
                         gSaveContext.equips.buttonItems[otherButtonIndex] =

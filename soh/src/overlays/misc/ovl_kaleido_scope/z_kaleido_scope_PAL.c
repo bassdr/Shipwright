@@ -17,6 +17,7 @@
 #include <libultraship/bridge/resourcebridge.h>
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/cosmetics/cosmeticsTypes.h"
+#include "soh/Enhancements/assignableSongs.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
@@ -1271,8 +1272,9 @@ void KaleidoScope_SwitchPage(PauseContext* pauseCtx, u8 pt) {
         gSaveContext.buttonStatus[buttonIndex] = D_8082AB6C[pauseCtx->pageIndex + pt][buttonIndex];
     }
 
-    if ((CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0) != 0) &&
-        (D_8082ABEC[pauseCtx->mode] == PAUSE_EQUIP)) {
+    if (((CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0) != 0) &&
+         (D_8082ABEC[pauseCtx->mode] == PAUSE_EQUIP)) ||
+        ((CVarGetInteger(CVAR_ASSIGNABLE_SONGS, 0) != 0) && (D_8082ABEC[pauseCtx->mode] == PAUSE_QUEST))) {
         gSaveContext.buttonStatus[1] = BTN_ENABLED;
         gSaveContext.buttonStatus[2] = BTN_ENABLED;
         gSaveContext.buttonStatus[3] = BTN_ENABLED;
@@ -2289,9 +2291,15 @@ void KaleidoScope_DrawInfoPanel(PlayState* play) {
             bool pauseAnyCursor =
                 (CVarGetInteger(CVAR_ENHANCEMENT("PauseAnyCursor"), 0) == PAUSE_ANY_CURSOR_RANDO_ONLY && IS_RANDO) ||
                 (CVarGetInteger(CVAR_ENHANCEMENT("PauseAnyCursor"), 0) == PAUSE_ANY_CURSOR_ALWAYS_ON);
-            if (!pauseCtx->pageIndex &&
-                (!pauseAnyCursor || (gSaveContext.inventory.items[pauseCtx->cursorPoint[PAUSE_ITEM]] !=
-                                     ITEM_NONE))) { // pageIndex == PAUSE_ITEM
+            // SoH: a song the player can assign gets the Select Item screen's prompt instead of "to play melody"
+            bool songAssignable =
+                (pauseCtx->pageIndex == PAUSE_QUEST) && (CVarGetInteger(CVAR_ASSIGNABLE_SONGS, 0) != 0) &&
+                (pauseCtx->cursorSlot[PAUSE_QUEST] >= QUEST_SONG_MINUET) &&
+                (pauseCtx->cursorSlot[PAUSE_QUEST] <= QUEST_SONG_STORMS) && (pauseCtx->namedItem != PAUSE_ITEM_NONE);
+
+            if ((!pauseCtx->pageIndex &&
+                 (!pauseAnyCursor || (gSaveContext.inventory.items[pauseCtx->cursorPoint[PAUSE_ITEM]] != ITEM_NONE))) ||
+                songAssignable) { // pageIndex == PAUSE_ITEM
                 pauseCtx->infoPanelVtx[16].v.ob[0] = pauseCtx->infoPanelVtx[18].v.ob[0] = WREG(49 + languageOffset);
 
                 pauseCtx->infoPanelVtx[17].v.ob[0] = pauseCtx->infoPanelVtx[19].v.ob[0] =
@@ -3566,8 +3574,9 @@ void func_808265BC(PlayState* play) {
 
         pauseCtx->pageIndex = D_8082ABEC[pauseCtx->mode];
 
-        if ((CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0) != 0) &&
-            (pauseCtx->pageIndex == PAUSE_EQUIP)) {
+        if (((CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0) != 0) &&
+             (pauseCtx->pageIndex == PAUSE_EQUIP)) ||
+            ((CVarGetInteger(CVAR_ASSIGNABLE_SONGS, 0) != 0) && (pauseCtx->pageIndex == PAUSE_QUEST))) {
             gSaveContext.buttonStatus[1] = BTN_ENABLED;
             gSaveContext.buttonStatus[2] = BTN_ENABLED;
             gSaveContext.buttonStatus[3] = BTN_ENABLED;

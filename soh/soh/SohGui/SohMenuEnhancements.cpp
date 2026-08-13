@@ -1,5 +1,6 @@
 ﻿#include "SohMenu.h"
 #include <soh/Enhancements/enhancementTypes.h>
+#include <soh/Enhancements/assignableSongs.h>
 #include "soh/Enhancements/SwitchAge.h"
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/BunnyHood.h"
@@ -850,6 +851,11 @@ void SohMenu::AddMenuEnhancements() {
     AddWidget(path, "Assignable Shields, Tunics and Boots", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"))
         .Options(CheckboxOptions().Tooltip("Allows equipping Shields, Tunics and Boots to C-Buttons/D-pad."));
+    AddWidget(path, "Assignable Songs", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ASSIGNABLE_SONGS)
+        .Options(CheckboxOptions().Tooltip(
+            "Allows assigning learned Ocarina songs to C-Buttons/D-pad from the Quest Status subscreen. "
+            "An assigned song plays on a button press, wherever the Ocarina itself could be played."));
     // TODO: Revist strength toggle, it's currently separate but should probably be locked behind the
     // Equipment toggle settings or be absorbed by it completely.
     AddWidget(path, "Equipment Toggle", WIDGET_CVAR_CHECKBOX)
