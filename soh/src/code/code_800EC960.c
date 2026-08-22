@@ -5083,6 +5083,15 @@ void Audio_SetSequenceMode(u8 seqMode) {
     u8 volumeFadeOutTimer;
 
     sSeqModeInput = seqMode;
+    {
+        static u8 sDbgLastMode = 0xFF;
+        if (seqMode != sDbgLastMode) {
+            sDbgLastMode = seqMode;
+            LUSLOG_INFO("BGM-DIAG SetSeqMode in=%d prevMode=0x%x mainBgm=0x%x prevMainBgm=0x%x dist=%.0f cut=%d",
+                        seqMode, sPrevSeqMode, gActiveSeqs[SEQ_PLAYER_BGM_MAIN].seqId, sPrevMainBgmSeqId,
+                        sAudioEnemyDist, sAudioCutsceneFlag);
+        }
+    }
     if (sPrevMainBgmSeqId == NA_BGM_DISABLED) {
         if (sAudioCutsceneFlag) {
             seqMode = SEQ_MODE_IGNORE;
@@ -5094,6 +5103,20 @@ void Audio_SetSequenceMode(u8 seqMode) {
             seqMode = SEQ_MODE_IGNORE;
         }
 
+        if (seqMode == SEQ_MODE_ENEMY) {
+            // Log only when the decision changes, otherwise this fires every frame.
+            u8 gate = (seqId == NA_BGM_DISABLED) || (Audio_GetSeqFlags((u8)(seqId & 0xFF)) & 1) ||
+                      ((sPrevSeqMode & 0x7F) == SEQ_MODE_ENEMY);
+            u8 changed = seqMode != (sPrevSeqMode & 0x7F);
+            static u8 sDiagLastGate = 0xFF;
+            static u8 sDiagLastChanged = 0xFF;
+            if (gate != sDiagLastGate || changed != sDiagLastChanged) {
+                sDiagLastGate = gate;
+                sDiagLastChanged = changed;
+                LUSLOG_INFO("BGM-DIAG enemy requested: mainSeq=0x%x flags=0x%x prevMode=0x%x gate=%d changed=%d", seqId,
+                            Audio_GetSeqFlags((u8)(seqId & 0xFF)), sPrevSeqMode, gate, changed);
+            }
+        }
         if ((seqId == NA_BGM_DISABLED) || (Audio_GetSeqFlags((u8)(seqId & 0xFF)) & 1) ||
             ((sPrevSeqMode & 0x7F) == SEQ_MODE_ENEMY)) {
             if (seqMode != (sPrevSeqMode & 0x7F)) {
@@ -5106,6 +5129,7 @@ void Audio_SetSequenceMode(u8 seqMode) {
                     }
 
                     Audio_SetVolScale(SEQ_PLAYER_BGM_SUB, 3, sAudioEnemyVol, volumeFadeInTimer);
+                    LUSLOG_INFO("BGM-DIAG enemy-mode ENTER (start NA_BGM_ENEMY on SUB)");
                     Audio_StartSeq(SEQ_PLAYER_BGM_SUB, 10, NA_BGM_ENEMY | 0x800);
 
                     if (seqId != NA_BGM_NATURE_AMBIENCE) {
@@ -5114,6 +5138,7 @@ void Audio_SetSequenceMode(u8 seqMode) {
                     }
                 } else if ((sPrevSeqMode & 0x7F) == SEQ_MODE_ENEMY) {
                     // Stop playing enemy bgm
+                    LUSLOG_INFO("BGM-DIAG enemy-mode EXIT (stop SUB)");
                     Audio_SeqCmd1(SEQ_PLAYER_BGM_SUB, 10);
                     if (seqMode == SEQ_MODE_IGNORE) {
                         volumeFadeOutTimer = 0;

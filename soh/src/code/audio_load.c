@@ -596,6 +596,8 @@ s32 AudioLoad_SyncInitSeqPlayerInternal(s32 playerIdx, s32 seqId, s32 arg2) {
     // seqId is the resolved 16-bit id from func_800F9280(). Reject ids with no loaded sequence; the
     // map has sequenceMapSize + 0xF slots (custom ids skip the reserved 129-135 range).
     if (seqId < 0 || (size_t)seqId >= sequenceMapSize + 0xF || sequenceMap[seqId] == NULL) {
+        LUSLOG_ERROR("BGM-DIAG reject player=%d seqId=%d mapSize=%d entry=%s", playerIdx, seqId, (int)sequenceMapSize,
+                     ((size_t)seqId < sequenceMapSize + 0xF && seqId >= 0) ? "NULL" : "OOB");
         return 0;
     }
     SequenceData seqData2 = ResourceMgr_LoadSeqByName(sequenceMap[seqId]);
@@ -609,8 +611,12 @@ s32 AudioLoad_SyncInitSeqPlayerInternal(s32 playerIdx, s32 seqId, s32 arg2) {
     seqData = AudioLoad_SyncLoadSeq(seqId);
 
     if (seqData == NULL) {
+        LUSLOG_ERROR("BGM-DIAG seqData NULL player=%d seqId=%d name=%s", playerIdx, seqId,
+                     sequenceMap[seqId] ? sequenceMap[seqId] : "(null)");
         return 0;
     }
+    LUSLOG_INFO("BGM-DIAG started player=%d seqId=%d name=%s", playerIdx, seqId,
+                sequenceMap[seqId] ? sequenceMap[seqId] : "(null)");
 
     AudioSeq_ResetSequencePlayer(seqPlayer);
     seqPlayer->seqId = seqId;
@@ -644,6 +650,7 @@ u8* AudioLoad_SyncLoadSeq(s32 seqId) {
     s32 didAllocate;
 
     if ((size_t)seqId < sequenceMapSize && gAudioContext.seqLoadStatus[seqId] == 1) {
+        LUSLOG_ERROR("BGM-DIAG SyncLoadSeq in-progress seqId=%d", seqId);
         return NULL;
     }
 
@@ -774,18 +781,24 @@ uintptr_t AudioLoad_SyncLoad(u32 tableType, u32 id, s32* didAllocate) {
             case 0:
                 ret = AudioHeap_AllocPermanent(tableType, realId, size);
                 if (ret == NULL) {
+                    LUSLOG_ERROR("BGM-DIAG alloc fail table=%d id=%d size=%d policy=%d", tableType, (int)id, (int)size,
+                                 cachePolicy);
                     return ret;
                 }
                 break;
             case 1:
                 ret = AudioHeap_AllocCached(tableType, size, CACHE_PERSISTENT, realId);
                 if (ret == NULL) {
+                    LUSLOG_ERROR("BGM-DIAG alloc fail table=%d id=%d size=%d policy=%d", tableType, (int)id, (int)size,
+                                 cachePolicy);
                     return ret;
                 }
                 break;
             case 2:
                 ret = AudioHeap_AllocCached(tableType, size, CACHE_TEMPORARY, realId);
                 if (ret == NULL) {
+                    LUSLOG_ERROR("BGM-DIAG alloc fail table=%d id=%d size=%d policy=%d", tableType, (int)id, (int)size,
+                                 cachePolicy);
                     return ret;
                 }
                 break;
@@ -793,6 +806,8 @@ uintptr_t AudioLoad_SyncLoad(u32 tableType, u32 id, s32* didAllocate) {
             case 4:
                 ret = AudioHeap_AllocCached(tableType, size, CACHE_EITHER, realId);
                 if (ret == NULL) {
+                    LUSLOG_ERROR("BGM-DIAG alloc fail table=%d id=%d size=%d policy=%d", tableType, (int)id, (int)size,
+                                 cachePolicy);
                     return ret;
                 }
                 break;
@@ -1012,6 +1027,7 @@ void* AudioLoad_AsyncLoadInner(s32 tableType, s32 id, s32 nChunks, s32 retData, 
     u32 temp_v0;
     u32 realId;
 
+    LUSLOG_ERROR("BGM-DIAG AsyncLoadInner reached: table=%d id=%d", tableType, id);
     switch (tableType) {
         case SEQUENCE_TABLE:
             if (gAudioContext.seqLoadStatus[realId] == 1) {
@@ -1450,6 +1466,7 @@ void AudioLoad_Init(void* heap, size_t heapSize) {
         }
 
         AudioCollection_AddToCollection(customSeqList[j], seqNum);
+        LUSLOG_INFO("BGM-DIAG custom seq id=%d name=%s", seqNum, customSeqList[j]);
 
         sDat->seqNumber = seqNum;
         LUSLOG_DEBUG("Registered custom sequence \"%s\" as seqNum %d", customSeqList[j], seqNum);

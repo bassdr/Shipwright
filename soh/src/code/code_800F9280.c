@@ -53,6 +53,9 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
             resolvedSeqId = AudioEditor_GetReplacementSeq(seqId);
         }
 
+        if (playerIdx == SEQ_PLAYER_BGM_SUB) {
+            LUSLOG_INFO("BGM-DIAG StartSequence SUB seqId=%d -> resolved=%d", seqId, resolvedSeqId);
+        }
         arg2 &= 0x7F;
         if (arg2 == 0x7F) {
             dur = (fadeTimer >> 3) * 60 * gAudioContext.audioBufferParameters.updatesPerFrame;
