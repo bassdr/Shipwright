@@ -1101,6 +1101,12 @@ void SohMenu::AddMenuEnhancements() {
         .CVar(CVAR_ENHANCEMENT("BushDropFix"))
         .Options(CheckboxOptions().Tooltip(
             "Fixes the bushes to drop items correctly rather than spawning undefined items."));
+    AddWidget(path, "Fix Enemy Background Music Volume", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ENHANCEMENT("FixEnemyBgmVolume"))
+        .Options(CheckboxOptions().Tooltip(
+            "Enemy background music fades in at a volume set by how far away the enemy was during the previous "
+            "encounter rather than the current one, so it can start silent next to an enemy, or drown out the "
+            "area music when the enemy is far away. This scales it to the current distance instead."));
     AddWidget(path, "Fix Flex Drops", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("FixFlexDrops"))
         .Options(CheckboxOptions().Tooltip(

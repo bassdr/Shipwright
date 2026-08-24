@@ -5077,6 +5077,22 @@ void Audio_PlaySequenceWithSeqPlayerIO(u8 playerIdx, u16 seqId, u8 fadeTimer, s8
     Audio_StartSeq(playerIdx, fadeTimer, seqId);
 }
 
+// SOH [Bugfix] Shared with the enemy branch of Audio_SetSequenceMode(), so entering enemy mode
+// scales to the distance the enemy is at now rather than the one the last encounter ended on.
+static s8 Audio_GetBgmEnemyVolume(f32 dist) {
+    f32 adjDist;
+
+    if (dist < 150.0f) {
+        adjDist = 0.0f;
+    } else if (dist > 500.0f) {
+        adjDist = 350.0f;
+    } else {
+        adjDist = dist - 150.0f;
+    }
+
+    return ((350.0f - adjDist) * 127.0f) / 350.0f;
+}
+
 void Audio_SetSequenceMode(u8 seqMode) {
     s32 volumeFadeInTimer;
     u16 seqId;
@@ -5099,6 +5115,12 @@ void Audio_SetSequenceMode(u8 seqMode) {
             if (seqMode != (sPrevSeqMode & 0x7F)) {
                 if (seqMode == SEQ_MODE_ENEMY) {
                     // Start playing enemy bgm
+                    // SOH [Enhancement] Audio_SetBgmEnemyVolume() records the distance every frame but
+                    // only rescales while enemy bgm is already playing, so on this frame sAudioEnemyVol
+                    // still holds the value the previous encounter ended on.
+                    if (CVarGetInteger(CVAR_ENHANCEMENT("FixEnemyBgmVolume"), 0)) {
+                        sAudioEnemyVol = Audio_GetBgmEnemyVolume(sAudioEnemyDist);
+                    }
                     if (gActiveSeqs[SEQ_PLAYER_BGM_SUB].volScales[1] - sAudioEnemyVol < 0) {
                         volumeFadeInTimer = -(gActiveSeqs[SEQ_PLAYER_BGM_SUB].volScales[1] - sAudioEnemyVol);
                     } else {
@@ -5151,19 +5173,9 @@ void Audio_SetSequenceMode(u8 seqMode) {
 }
 
 void Audio_SetBgmEnemyVolume(f32 dist) {
-    f32 adjDist;
-
     if (sPrevSeqMode == (0x80 | SEQ_MODE_ENEMY)) {
         if (dist != sAudioEnemyDist) {
-            if (dist < 150.0f) {
-                adjDist = 0.0f;
-            } else if (dist > 500.0f) {
-                adjDist = 350.0f;
-            } else {
-                adjDist = dist - 150.0f;
-            }
-
-            sAudioEnemyVol = ((350.0f - adjDist) * 127.0f) / 350.0f;
+            sAudioEnemyVol = Audio_GetBgmEnemyVolume(dist);
             Audio_SetVolScale(SEQ_PLAYER_BGM_SUB, 3, sAudioEnemyVol, 10);
             if (gActiveSeqs[SEQ_PLAYER_BGM_MAIN].seqId != NA_BGM_NATURE_AMBIENCE) {
                 Audio_SetVolScale(SEQ_PLAYER_BGM_MAIN, 3, (0x7F - sAudioEnemyVol), 10);
