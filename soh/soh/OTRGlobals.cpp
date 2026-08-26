@@ -28,6 +28,7 @@
 #endif
 #include <ship/resource/archive/O2rArchive.h>
 #include <ship/utils/binarytools/MemoryStream.h>
+#include "soh/Enhancements/audio/AudioResampler.h"
 #include "Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 #include "Enhancements/controls/SohInputEditorWindow.h"
 #include "Enhancements/audio/AudioCollection.h"
@@ -806,6 +807,22 @@ void InitGfxDebugger() {
     }
 }
 
+// Whitelisted rather than clamped: the resample buffer below is sized for the largest
+// rate offered, so an out-of-range value edited into the config would overrun it. Nothing
+// above 48000 is offered because the engine bus is band limited to 16 kHz and a higher
+// rate only shrinks the reservoir against the backend's fixed frame cap.
+static int SohAudioOutputRate() {
+    const int rate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000);
+    switch (rate) {
+        case 32000:
+        case 44100:
+        case 48000:
+            return rate;
+        default:
+            return 32000;
+    }
+}
+
 void OTRGlobals::Initialize() {
     std::string mqPath = Ship::Context::LocateFileAcrossAppDirs("oot-mq.o2r", appShortName);
     if (std::filesystem::exists(mqPath)) {
@@ -847,11 +864,17 @@ void OTRGlobals::Initialize() {
                                               CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
     context->GetWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
 
-    context->InitAudio({ .SampleRate = 32000,
-                         .SampleLength = 1024,
-                         // 4096 frames at 32 kHz (~128 ms) gives enough reservoir for frame
-                         // jitter and slow-frame spikes without perceptible audio latency.
-                         .DesiredBuffered = 4096 });
+    // SDL is opened with allowed_changes = 0, so it converts 32 kHz to the device rate
+    // itself whatever we do here. Opening at the device rate moves that conversion to a
+    // filter we control instead of the platform's.
+    const int audioOutputRate = SohAudioOutputRate();
+    // 4096 frames at 32 kHz (~128 ms) covers frame jitter without audible latency; scale
+    // it with the rate but stay under the backend's ~6000 frame cap, past which it drops.
+    int desiredBuffered = 4096 * audioOutputRate / 32000;
+    if (desiredBuffered > 5500) {
+        desiredBuffered = 5500;
+    }
+    context->InitAudio({ .SampleRate = audioOutputRate, .SampleLength = 1024, .DesiredBuffered = desiredBuffered });
 
     // The menu is set up before audio is initialized, so its list of available audio backends has to be
     // populated here rather than in Menu::InitElement (where the window backends are handled).
@@ -1046,6 +1069,18 @@ void OTRAudio_Thread() {
 #define AUDIO_FRAMES_PER_UPDATE (R_UPDATE_RATE > 0 ? R_UPDATE_RATE : 1)
 #define NUM_AUDIO_CHANNELS 2
 
+    constexpr int kEngineRate = 32000;
+    const int outRate = SohAudioOutputRate();
+
+    // Left null at the engine rate so that path stays exactly as it was.
+    std::unique_ptr<SOH::AudioResampler> resampler;
+    if (outRate != kEngineRate) {
+        resampler = std::make_unique<SOH::AudioResampler>(kEngineRate, outRate, NUM_AUDIO_CHANNELS);
+    }
+
+    // The backend reports buffer levels in device frames, not engine frames.
+    auto toDeviceFrames = [&](u32 engineFrames) -> int { return (int)((int64_t)engineFrames * outRate / kEngineRate); };
+
     // The sequencer advances a fixed slice of musical time per engine update
     // (tempoInternalToExternal in audio_heap.c assumes 60 updates/sec), so with
     // production paced by backend buffer fill the sample count must average
@@ -1070,7 +1105,20 @@ void OTRAudio_Thread() {
                                            num_audio_samples);
         }
 
-        AudioPlayer_Play(reinterpret_cast<u8*>(audio_buffer), total_samples * sizeof(int16_t));
+        if (!resampler) {
+            AudioPlayer_Play(reinterpret_cast<u8*>(audio_buffer), total_samples * sizeof(int16_t));
+            return;
+        }
+
+        // SAMPLES_HIGH frames per update, frame divisor 3, stereo, and a ratio bound of 2
+        // covering every rate offered, plus slack for the resampler's phase rounding.
+        static constexpr size_t kMaxResampledSamples = SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3 * 2 + 64;
+        static thread_local s16 resampled[kMaxResampledSamples];
+
+        const int outFrames = resampler->Process(audio_buffer, (int)total_frames, resampled,
+                                                 resampler->MaxOutputFrames((int)total_frames));
+
+        AudioPlayer_Play(reinterpret_cast<u8*>(resampled), (size_t)outFrames * NUM_AUDIO_CHANNELS * sizeof(int16_t));
     };
 
     // Self-pump cadence. The gfx thread wakes us once per rendered frame
@@ -1115,7 +1163,8 @@ void OTRAudio_Thread() {
             // Generating PCM that DoPlay() would refuse creates a discontinuity
             // audible as a click. The pre-buffer loop below will catch up once
             // the backend drains enough.
-            if (AudioPlayer_Buffered() + SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
+            if (AudioPlayer_Buffered() + toDeviceFrames(SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE) >
+                AudioPlayer_GetDesiredBuffered()) {
                 audio.processing = false;
             } else {
                 produce_next_batch();
@@ -1129,7 +1178,8 @@ void OTRAudio_Thread() {
         // The producer guard (same as above) prevents advancing the audio engine
         // when the backend ring is already at capacity.
         while (audio.running && AudioPlayer_Buffered() < AudioPlayer_GetDesiredBuffered()) {
-            if (AudioPlayer_Buffered() + SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
+            if (AudioPlayer_Buffered() + toDeviceFrames(SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE) >
+                AudioPlayer_GetDesiredBuffered()) {
                 break;
             }
             produce_next_batch();

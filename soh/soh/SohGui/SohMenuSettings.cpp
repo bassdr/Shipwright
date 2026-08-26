@@ -323,6 +323,18 @@ void SohMenu::AddMenuSettings() {
             Audio_SetGameVolume(SEQ_PLAYER_SFX, ((float)CVarGetInteger(CVAR_SETTING("Volume.SFX"), 100) / 100.0f));
         });
     AddWidget(path, "Audio API (Needs reload)", WIDGET_AUDIO_BACKEND).RaceDisable(false);
+    AddWidget(path, "Output Sample Rate (Restart required)", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_AUDIO("OutputSampleRate"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .ComboMap({ { 32000, "32000 Hz (engine rate)" }, { 44100, "44100 Hz" }, { 48000, "48000 Hz" } })
+                     .Tooltip("Sample rate the audio device is opened at. The engine renders at 32 kHz, "
+                              "which almost no output device supports natively, so something converts it "
+                              "either way. Picking the rate your device actually runs at (usually 48000) "
+                              "does that conversion here instead of leaving it to the audio stack, which "
+                              "on some systems does it poorly. 32000 keeps the previous behaviour. "
+                              "Takes effect after restarting the game.")
+                     .DefaultIndex(32000));
 
     // Graphics Settings
     static int32_t maxFps = 360;
