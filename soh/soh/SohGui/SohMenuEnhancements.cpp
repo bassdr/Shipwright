@@ -1088,6 +1088,12 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions().Tooltip("Fixes the two raised floor switches, the one in the Forest Temple basement "
                                            "and the one at the top of the Fire "
                                            "Temple. This will lower them, making activating them easier."));
+    AddWidget(path, "Fix Battle Music Dropouts", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ENHANCEMENT("FixBattleMusicDropout"))
+        .Options(CheckboxOptions().Tooltip(
+            "While the area music and the battle music cross-fade near an enemy, the game silences the channels of "
+            "both at once for part of the fade, so the music thins out or drops for a moment instead of blending. "
+            "Fixes that, keeping both audible throughout the fade."));
     AddWidget(path, "Fix Zora Hint Dialogue", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("FixZoraHintDialogue"))
         .Options(CheckboxOptions().Tooltip(

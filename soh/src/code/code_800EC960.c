@@ -4768,6 +4768,17 @@ void Audio_SplitBgmChannels(s8 volSplit) {
             // would otherwise take the outgoing and incoming music with it. Leaving the
             // channels running costs this player note priority when the pool is contended,
             // which is the lesser of the two.
+            // Main is given volSplit and sub is given 0x7F - volSplit, and each stops all
+            // of its channels once its own volume reaches 40. Both are therefore stopped
+            // while volSplit is between 40 and 87 -- the middle of the crossfade, roughly
+            // 260 to 390 units from the enemy -- so the area music and the battle music
+            // are silenced together at the moment both are supposed to be heard. Gated
+            // because it is how the original game behaves.
+            if (CVarGetInteger(CVAR_ENHANCEMENT("FixBattleMusicDropout"), 0)) {
+                Audio_SeqCmdA(bgmPlayers[i], channelBits);
+                continue;
+            }
+
             // A player with nothing loaded is about to be handed a sequence -- the enemy
             // bgm is queued a moment before this runs -- and stopping its channels now
             // means the sequence starts into stopped channels. A streamed track cannot
