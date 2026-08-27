@@ -4728,6 +4728,49 @@ void Audio_ClearSariaBgmAtPos(Vec3f* pos) {
     }
 }
 
+// Whether a BGM player is playing streamed audio rather than a sequence.
+//
+// A streamed track is a single note that lasts the whole song: the sequence emits one
+// note of maximum length and then waits in a long delay. Only the codecs the port added
+// for whole-song playback are matched here; vanilla sample data is ADPCM or S8 and never
+// reaches this test.
+static s32 Audio_SeqPlayerPlaysStreamedSample(u8 playerIdx) {
+    SequencePlayer* seqPlayer = &gAudioContext.seqPlayers[playerIdx];
+    u8 channelIdx;
+    u8 layerIdx;
+
+    if (!seqPlayer->enabled) {
+        return false;
+    }
+
+    for (channelIdx = 0; channelIdx < ARRAY_COUNT(seqPlayer->channels); channelIdx++) {
+        SequenceChannel* channel = seqPlayer->channels[channelIdx];
+
+        if ((channel == NULL) || !channel->enabled) {
+            continue;
+        }
+
+        for (layerIdx = 0; layerIdx < ARRAY_COUNT(channel->layers); layerIdx++) {
+            SequenceLayer* layer = channel->layers[layerIdx];
+
+            if ((layer == NULL) || (layer->sound == NULL) || (layer->sound->sample == NULL)) {
+                continue;
+            }
+
+            switch (layer->sound->sample->codec) {
+                case CODEC_OPUS:
+                case CODEC_S16:
+                case CODEC_S16_INMEMORY:
+                    return true;
+                default:
+                    break;
+            }
+        }
+    }
+
+    return false;
+}
+
 /**
  * Turns on and off channels from both bgm players in a way that splits
  * equally between the two bgm channels. Split based on note priority
@@ -4739,6 +4782,7 @@ void Audio_SplitBgmChannels(s8 volSplit) {
     u8 bgmPlayers[2] = { SEQ_PLAYER_BGM_MAIN, SEQ_PLAYER_BGM_SUB };
     u8 channelIdx;
     u8 i;
+    s32 streamed;
 
     if ((func_800FA0B4(SEQ_PLAYER_FANFARE) == NA_BGM_DISABLED) &&
         (func_800FA0B4(SEQ_PLAYER_BGM_SUB) != NA_BGM_LONLON)) {
@@ -4760,7 +4804,17 @@ void Audio_SplitBgmChannels(s8 volSplit) {
             }
 
             channelBits = 0;
-            for (channelIdx = 0; channelIdx < 16; channelIdx++) {
+
+            // Stopping the channels of a streamed track silences it outright, and the
+            // sequence is waiting on its delay so nothing issues a replacement note: the
+            // track stays silent even after the mask is cleared. Both players are stopped
+            // at once while volSplit is between 40 and 87, so a crossfade across that band
+            // would otherwise take the outgoing and incoming music with it. Leaving the
+            // channels running costs this player note priority when the pool is contended,
+            // which is the lesser of the two.
+            streamed = Audio_SeqPlayerPlaysStreamedSample(bgmPlayers[i]);
+
+            for (channelIdx = 0; !streamed && channelIdx < 16; channelIdx++) {
                 if (notePriority > gAudioContext.seqPlayers[bgmPlayers[i]].channels[channelIdx]->notePriority) {
                     // If the note currently playing in the channel is a high enough priority,
                     // then keep the channel on by setting a channelBit
