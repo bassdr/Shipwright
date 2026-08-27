@@ -4768,7 +4768,13 @@ void Audio_SplitBgmChannels(s8 volSplit) {
             // would otherwise take the outgoing and incoming music with it. Leaving the
             // channels running costs this player note priority when the pool is contended,
             // which is the lesser of the two.
-            if (!gSeqPlayerIsStreamed[bgmPlayers[i]]) {
+            // A player with nothing loaded is about to be handed a sequence -- the enemy
+            // bgm is queued a moment before this runs -- and stopping its channels now
+            // means the sequence starts into stopped channels. A streamed track cannot
+            // survive that: its one note is born stopped and dies, and the script waits
+            // on its delay rather than issuing another. There is also nothing to gain,
+            // since a player that is not playing has no notes to deprioritise.
+            if (gAudioContext.seqPlayers[bgmPlayers[i]].enabled && !gSeqPlayerIsStreamed[bgmPlayers[i]]) {
                 for (channelIdx = 0; channelIdx < 16; channelIdx++) {
                     if (notePriority > gAudioContext.seqPlayers[bgmPlayers[i]].channels[channelIdx]->notePriority) {
                         // If the note currently playing in the channel is a high enough priority,
