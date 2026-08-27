@@ -26,6 +26,11 @@ extern "C" {
 
 //#define MAX_SEQUENCES 0x800
 extern size_t sequenceMapSize;
+// Indexed like sequenceMap: whether that sequence is streamed audio rather than a
+// sequence script. gSeqPlayerIsStreamed answers the same question per sequence player,
+// recorded when the player is handed a sequence.
+extern u8* gSeqIsStreamed;
+extern u8 gSeqPlayerIsStreamed[4];
 extern size_t fontMapSize;
 extern char** fontMap;
 
