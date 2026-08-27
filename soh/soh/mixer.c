@@ -113,6 +113,12 @@ void aOPUSdecImpl(void* source_addr, uint16_t dest_addr, uint16_t nbytes, struct
     int readSamples = 0;
     if (*decState == NULL) {
         *decState = op_open_memory(source_addr, size, NULL);
+        if (*decState == NULL) {
+            // Nothing to decode from, and seeking a null handle would take the process
+            // down. The caller retries on the next frame, so a transient failure just
+            // costs silence rather than the game.
+            return;
+        }
     }
     op_pcm_seek(*decState, pos);
     int ret = op_read(*decState, BUF_S16(dest_addr), nbytes / 2, NULL);
