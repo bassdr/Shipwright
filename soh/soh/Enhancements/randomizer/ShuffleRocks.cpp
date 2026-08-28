@@ -1,4 +1,5 @@
 #include "ShuffleRocks.h"
+#include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "static_data.h"
 #include "soh/ObjectExtension/ObjectExtension.h"
 #include "item_category_adj.h"
@@ -9,7 +10,6 @@
 #include "soh/Enhancements/randomizer/RCToRandInf.h"
 
 extern "C" {
-#include "variables.h"
 #include "macros.h"
 #include "functions.h"
 #include "overlays/actors/ovl_En_Ishi/z_en_ishi.h"

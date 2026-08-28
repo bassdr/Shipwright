@@ -5,7 +5,6 @@
 
 #include <array>
 #include <unordered_map>
-#include <nlohmann/json.hpp>
 
 namespace Rando {
 class Settings {
@@ -21,6 +20,11 @@ class Settings {
      * @brief Hides or Unhides the UI of Mixed Entrance Pools
      */
     void HandleMixedEntrancePoolsUI();
+
+    /**
+     * @brief Hides or Unhides the UI of the keyring options, and updates the max keyring count.
+     */
+    void HandleKeyringUI();
 
     /**
      * @brief UI Callback for handling UI state of Starting Age shuffle.

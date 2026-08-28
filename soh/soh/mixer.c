@@ -7,6 +7,7 @@
 #include <math.h>
 
 #include "mixer.h"
+
 #ifndef __clang__
 #ifndef _MSC_VER
 #pragma GCC optimize("unroll-loops")
@@ -116,7 +117,6 @@ void aLoadBufferImpl(const void* source_addr, uint16_t dest_addr, uint16_t nbyte
 #endif
 }
 
-#include <opus/opus.h>
 #include <opusfile.h>
 
 void aOPUSdecImpl(void* source_addr, uint16_t dest_addr, uint16_t nbytes, struct OggOpusFile** decState, int32_t pos,

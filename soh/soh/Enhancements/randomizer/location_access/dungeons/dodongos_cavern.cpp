@@ -61,8 +61,6 @@ void RegionTable_Init_DodongosCavern() {
         LOCATION(RC_DODONGOS_CAVERN_SIDE_ROOM_POT_2, logic->CanBreakPots()),
         LOCATION(RC_DODONGOS_CAVERN_SIDE_ROOM_POT_3, logic->CanBreakPots()),
         LOCATION(RC_DODONGOS_CAVERN_SIDE_ROOM_POT_4, logic->CanBreakPots()),
-        LOCATION(RC_DODONGOS_CAVERN_SIDE_ROOM_POT_5, logic->CanBreakPots()),
-        LOCATION(RC_DODONGOS_CAVERN_SIDE_ROOM_POT_6, logic->CanBreakPots()),
     }, {
         //Exits
         ENTRANCE(RR_DODONGOS_CAVERN_LOBBY,               true),
@@ -79,7 +77,11 @@ void RegionTable_Init_DodongosCavern() {
         ENTRANCE(RR_DODONGOS_CAVERN_SE_CORRIDOR, true),
     });
 
-    areaTable[RR_DODONGOS_CAVERN_NEAR_LOWER_LIZALFOS] = Region("Dodongos Cavern Near Lower Lizalfos", SCENE_DODONGOS_CAVERN, {}, {}, {
+    areaTable[RR_DODONGOS_CAVERN_NEAR_LOWER_LIZALFOS] = Region("Dodongos Cavern Near Lower Lizalfos", SCENE_DODONGOS_CAVERN, {}, {
+        //Locations
+        LOCATION(RC_DODONGOS_CAVERN_NEAR_LOWER_LIZALFOS_POT_1, logic->CanBreakPots()),
+        LOCATION(RC_DODONGOS_CAVERN_NEAR_LOWER_LIZALFOS_POT_2, logic->CanBreakPots()),
+    }, {
         //Exits
         ENTRANCE(RR_DODONGOS_CAVERN_SE_CORRIDOR,    true),
         ENTRANCE(RR_DODONGOS_CAVERN_LOWER_LIZALFOS, true),
@@ -392,7 +394,7 @@ void RegionTable_Init_DodongosCavern() {
         LOCATION(RC_DODONGOS_CAVERN_MQ_STAIRCASE_UPPER_CRATE_3, logic->CanBreakCrates()),
         LOCATION(RC_DODONGOS_CAVERN_MQ_STAIRCASE_UPPER_CRATE_4, logic->CanBreakCrates()),
         LOCATION(RC_DODONGOS_CAVERN_MQ_LOWER_2F_CRATE_SILVER,   logic->CanBreakCrates() || (ctx->GetTrickOption(RT_VISIBLE_COLLISION) && (logic->IsChild || logic->CanUse(RG_HOOKSHOT)))),
-        // possible with the hookshot method and longshot, but precise and would be it's own trick
+        // possible with the hookshot method and longshot, but precise and would be its own trick
         LOCATION(RC_DODONGOS_CAVERN_MQ_UPPER_2F_CRATE_SILVER,   logic->CanBreakCrates() || (ctx->GetTrickOption(RT_VISIBLE_COLLISION) && logic->IsChild)),
     }, {
         //Exits
@@ -548,12 +550,12 @@ void RegionTable_Init_DodongosCavern() {
         LOCATION(RC_DODONGOS_CAVERN_MQ_RIGHT_SIDE_POT_3,     logic->CanBreakPots()),
         LOCATION(RC_DODONGOS_CAVERN_MQ_RIGHT_SIDE_POT_4,     logic->CanBreakPots()),
         LOCATION(RC_DODONGOS_CAVERN_MQ_RIGHT_SIDE_BOULDER_1, logic->BlastOrSmash() || logic->HasItem(RG_GORONS_BRACELET) || logic->CanUse(RG_DINS_FIRE) || (ctx->GetTrickOption(RT_BOULDER_COLLISION) && logic->CanUse(RG_FAIRY_BOW))),
-        LOCATION(RC_DODONGOS_CAVERN_MQ_RIGHT_SIDE_BOULDER_2, logic->CanDetonateBombFlowers() || logic->HasItem(RG_GORONS_BRACELET) || (ctx->GetTrickOption(RT_BLUE_FIRE_MUD_WALLS) && logic->CanUse(RG_BOTTLE_WITH_BLUE_FIRE) && (logic->EffectiveHealth() != 1 || logic->CanUse(RG_NAYRUS_LOVE)))),
+        LOCATION(RC_DODONGOS_CAVERN_MQ_RIGHT_SIDE_BOULDER_2, logic->CanDetonateBombFlowers() || logic->HasItem(RG_GORONS_BRACELET) || (ctx->GetTrickOption(RT_BLUE_FIRE_MUD_WALLS) && logic->CanUse(RG_BOTTLE_WITH_BLUE_FIRE) && (logic->EffectiveHealth() > 8 || logic->CanUse(RG_NAYRUS_LOVE)))),
     }, {
         //Exits
         ENTRANCE(RR_DODONGOS_CAVERN_MQ_LOBBY,                  true),
         ENTRANCE(RR_DODONGOS_CAVERN_MQ_LOWER_RIGHT_SIDE_SCRUB, logic->CanBreakMudWalls() || logic->HasItem(RG_GORONS_BRACELET)),
-        ENTRANCE(RR_DODONGOS_CAVERN_MQ_LOWER_LIZALFOS,         AnyAgeTime([]{return logic->CanDetonateBombFlowers() || logic->HasItem(RG_GORONS_BRACELET);}) && logic->CanHitEyeTargets()),
+        ENTRANCE(RR_DODONGOS_CAVERN_MQ_LOWER_LIZALFOS,         AnyAgeTime([]{return logic->CanDetonateBombFlowers() || logic->HasItem(RG_GORONS_BRACELET) || ctx->GetTrickOption(RT_BOULDER_COLLISION);}) && logic->CanHitEyeTargets()),
     });
 
     areaTable[RR_DODONGOS_CAVERN_MQ_LOWER_RIGHT_SIDE_SCRUB] = Region("Dodongos Cavern MQ Lower Right Side Scrub", SCENE_DODONGOS_CAVERN, {}, {
