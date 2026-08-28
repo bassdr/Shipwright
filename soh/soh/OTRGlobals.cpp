@@ -1183,14 +1183,7 @@ void OTRAudio_Thread() {
             if (AudioPlayer_Buffered() + toDeviceFrames(SAMPLES_MID) > AudioPlayer_GetDesiredBuffered()) {
                 break;
             }
-            int samples_left = AudioPlayer_Buffered();
             produce_next_batch();
-
-            // If the backend didn't retain what we produced (full queue or a
-            // discarding sink), stop -- else we race the sequencer against silence.
-            if (AudioPlayer_Buffered() <= samples_left) {
-                break;
-            }
         }
     }
 }
