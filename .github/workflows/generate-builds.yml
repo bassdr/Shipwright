@@ -125,16 +125,17 @@ jobs:
         echo "/usr/local/opt/ccache/libexec" >> "$GITHUB_PATH"
     - name: Install latest SDL
       run: |
-        if [ ! -d "deps/SDL2-2.30.3" ]; then
-          wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.3/SDL2-2.30.3.tar.gz
-          tar -xzf SDL2-2.30.3.tar.gz -C deps
+        if [ ! -d "deps/SDL3-3.4.12" ]; then
+          wget https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz
+          tar -xzf SDL3-3.4.12.tar.gz -C deps
         fi
-        cd deps/SDL2-2.30.3
-        ./configure --enable-hidapi-libusb
-        make -j 10
-        sudo make install
+        cmake -S deps/SDL3-3.4.12 -B deps/SDL3-3.4.12/build -GNinja -DCMAKE_BUILD_TYPE=Release
+        cmake --build deps/SDL3-3.4.12/build --parallel 10
+        sudo cmake --install deps/SDL3-3.4.12/build --prefix /usr/local
+        # PipeWire and PulseAudio are dlopened by SDL3 at runtime, but only if their
+        # headers were present here: a missing dev package silently drops the driver.
+        cmake -LA -N deps/SDL3-3.4.12/build | grep -E "SDL_(PIPEWIRE|PULSEAUDIO|ALSA)(_SHARED)?:" || true
         sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
-    - uses: ./.github/actions/install-sdl2-net
     - name: Copy SDL libs to multiarch dir
       run: sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
     - name: Remove distro tinyxml2

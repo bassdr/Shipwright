@@ -1,5 +1,11 @@
 #include "Network.h"
 #include <spdlog/spdlog.h>
+#include <cstring>
+
+// SDL3_net resolves hostnames asynchronously; bound the waits so a dead DNS or a
+// refused port cannot wedge the caller or the receive thread.
+static constexpr Sint32 kResolveTimeoutMs = 5000;
+static constexpr Sint32 kConnectTimeoutMs = 1000;
 
 // MARK: - Public
 
@@ -8,10 +14,22 @@ void Network::Enable(const char* host, uint16_t port) {
         return;
     }
 
-    if (SDLNet_ResolveHost(&networkAddress, host, port) == -1) {
-        SPDLOG_ERROR("[Network] SDLNet_ResolveHost: {}", SDLNet_GetError());
+    if (!NET_Init()) {
+        SPDLOG_ERROR("[Network] NET_Init: {}", SDL_GetError());
+        return;
     }
 
+    networkAddress = NET_ResolveHostname(host);
+    if (networkAddress == nullptr || NET_WaitUntilResolved(networkAddress, kResolveTimeoutMs) != NET_SUCCESS) {
+        SPDLOG_ERROR("[Network] could not resolve {}: {}", host, SDL_GetError());
+        NET_UnrefAddress(networkAddress);
+        networkAddress = nullptr;
+        NET_Quit();
+        return;
+    }
+
+    // SDL3_net takes the port when the client is created, not when the host resolves.
+    networkPort = port;
     isEnabled = true;
 
     // First check if there is a thread running, if so, join it
@@ -29,6 +47,10 @@ void Network::Disable() {
 
     isEnabled = false;
     receiveThread.join();
+
+    NET_UnrefAddress(networkAddress);
+    networkAddress = nullptr;
+    NET_Quit();
 }
 
 void Network::OnIncomingData(char payload[512]) {
@@ -48,7 +70,9 @@ void Network::ProcessOutgoingPackets() {
 
 void Network::SendDataToRemote(const char* payload) {
     SPDLOG_DEBUG("[Network] Sending data: {}", payload);
-    SDLNet_TCP_Send(networkSocket, payload, static_cast<int>(strlen(payload) + 1));
+    if (!NET_WriteToStreamSocket(networkSocket, payload, static_cast<int>(strlen(payload) + 1))) {
+        SPDLOG_ERROR("[Network] NET_WriteToStreamSocket: {}", SDL_GetError());
+    }
 }
 
 void Network::SendJsonToRemote(nlohmann::json payload) {
@@ -61,9 +85,8 @@ void Network::ReceiveFromServer() {
     while (isEnabled) {
         while (!isConnected && isEnabled) {
             SPDLOG_TRACE("[Network] Attempting to make connection to server...");
-            networkSocket = SDLNet_TCP_Open(&networkAddress);
-
-            if (networkSocket) {
+            networkSocket = NET_CreateClient(networkAddress, networkPort, 0);
+            if (networkSocket != nullptr && NET_WaitUntilConnected(networkSocket, kConnectTimeoutMs) == NET_SUCCESS) {
                 isConnected = true;
                 receivedData.clear();
                 SPDLOG_INFO("[Network] Connection to server established!");
@@ -71,20 +94,19 @@ void Network::ReceiveFromServer() {
                 OnConnected();
                 break;
             }
-        }
 
-        SDLNet_SocketSet socketSet = SDLNet_AllocSocketSet(1);
-        if (networkSocket) {
-            SDLNet_TCP_AddSocket(socketSet, networkSocket);
+            NET_DestroyStreamSocket(networkSocket);
+            networkSocket = nullptr;
         }
 
         // Listen to socket messages
         while (isConnected && networkSocket && isEnabled) {
-            // we check first if socket has data, to not block in the TCP_Recv
-            int socketsReady = SDLNet_CheckSockets(socketSet, 0);
+            // we check first if socket has data, to not block in the read
+            void* sockets[1] = { networkSocket };
+            int socketsReady = NET_WaitUntilInputAvailable(sockets, 1, 0);
 
             if (socketsReady == -1) {
-                SPDLOG_ERROR("[Network] SDLNet_CheckSockets: {}", SDLNet_GetError());
+                SPDLOG_ERROR("[Network] NET_WaitUntilInputAvailable: {}", SDL_GetError());
                 break;
             }
 
@@ -98,10 +120,15 @@ void Network::ReceiveFromServer() {
 
             char remoteDataReceived[512];
             memset(remoteDataReceived, 0, sizeof(remoteDataReceived));
-            int len = SDLNet_TCP_Recv(networkSocket, &remoteDataReceived, sizeof(remoteDataReceived));
-            if (!len || !networkSocket || len == -1) {
-                SPDLOG_ERROR("[Network] SDLNet_TCP_Recv: {}", SDLNet_GetError());
+            int len = NET_ReadFromStreamSocket(networkSocket, remoteDataReceived, sizeof(remoteDataReceived));
+            // Unlike SDL2_net, 0 means "nothing available right now" rather than a closed
+            // connection; only a negative result is a real failure.
+            if (len < 0) {
+                SPDLOG_ERROR("[Network] NET_ReadFromStreamSocket: {}", SDL_GetError());
                 break;
+            }
+            if (len == 0) {
+                continue;
             }
 
             HandleRemoteData(remoteDataReceived);
@@ -121,12 +148,8 @@ void Network::ReceiveFromServer() {
             }
         }
 
-        if (socketSet) {
-            SDLNet_FreeSocketSet(socketSet);
-        }
-
         if (isConnected) {
-            SDLNet_TCP_Close(networkSocket);
+            NET_DestroyStreamSocket(networkSocket);
             networkSocket = nullptr;
             isConnected = false;
             receivedData.clear();

@@ -357,15 +357,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(dr_libs)
 
-find_package(SDL2)
-set(SDL2-INCLUDE ${SDL2_INCLUDE_DIRS})
+find_package(SDL3)
+set(SDL3-INCLUDE ${SDL3_INCLUDE_DIRS})
 
-find_package(SDL2_net)
+# SDL3_net is too new to be packaged on most distros (Gentoo has no ebuild yet), so
+# build it rather than making the remote features depend on the platform.
+find_package(SDL3_net QUIET)
 
-if(NOT SDL2_net_FOUND)
-    message(STATUS "SDL2_net not found (it's possible the version installed is too old).")
+if(NOT SDL3_net_FOUND)
+    message(STATUS "SDL3_net not found; building it from source.")
+    set(SDLNET_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDLNET_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3_net
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL_net.git
+        GIT_TAG release-3.2.0
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(SDL3_net)
 else()
-    set(SDL2-NET-INCLUDE ${SDL_NET_INCLUDE_DIRS})
+    set(SDL3-NET-INCLUDE ${SDL3_net_INCLUDE_DIRS})
 endif()
 
 if (ESPEAK)
@@ -384,8 +393,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-    ${SDL2-INCLUDE}
-    ${SDL2-NET-INCLUDE}
+    ${SDL3-INCLUDE}
+    ${SDL3-NET-INCLUDE}
     ${dr_libs_SOURCE_DIR}
 )
 
@@ -694,9 +703,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "libultraship;"
             "torch;"
             "glu32;"
-            "SDL2::SDL2;"
-            "SDL2::SDL2main;"
-            "SDL2_net::SDL2_net-static"
+            "SDL3::SDL3;"
+            "SDL3_net::SDL3_net-static"
             "glfw;"
             "winmm;"
             "imm32;"
@@ -714,8 +722,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "libultraship;"
             "torch;"
             "glu32;"
-            "SDL2::SDL2;"
-            "SDL2::SDL2main;"
+            "SDL3::SDL3;"
             "glfw;"
             "winmm;"
             "imm32;"
@@ -723,29 +730,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "setupapi"
         )
     endif()
-elseif(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
-    find_package(SDL2)
-    set(THREADS_PREFER_PTHREAD_FLAG ON)
-    find_package(Threads REQUIRED)
-    set(ADDITIONAL_LIBRARY_DEPENDENCIES
-        "libultraship;"
-        SDL2::SDL2
-        -lglad
-        Threads::Threads
-    )
-elseif(CMAKE_SYSTEM_NAME STREQUAL "CafeOS")
-    find_package(SDL2 REQUIRED)
-    set(ADDITIONAL_LIBRARY_DEPENDENCIES
-        "libultraship;"
-        SDL2::SDL2-static
-
-        "$<$<CONFIG:Debug>:-Wl,--wrap=abort>"
-    )
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-        ${DEVKITPRO}/portlibs/wiiu/include/
-    )
 else()
-    find_package(SDL2)
+    find_package(SDL3)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     find_package(Ogg REQUIRED)
@@ -757,14 +743,14 @@ else()
     set(ADDITIONAL_LIBRARY_DEPENDENCIES
     "libultraship;"
         "torch;"
-        SDL2::SDL2
+        SDL3::SDL3
         "Ogg::ogg"
         "Vorbis::vorbis"
         "Vorbis::vorbisenc"
         "Vorbis::vorbisfile"
         "Opus::opus"
         "Opusfile::Opusfile"
-        "SDL2_net::SDL2_net"
+        "SDL3_net::SDL3_net"
         ${CMAKE_DL_LIBS}
         Threads::Threads
     )

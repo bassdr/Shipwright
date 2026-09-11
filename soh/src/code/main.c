@@ -1,6 +1,8 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include <locale.h>
+// SDL3 removed the SDLmain library; SDL_main.h replaces it.
+#include <SDL3/SDL_main.h>
 #endif
 
 #include "global.h"

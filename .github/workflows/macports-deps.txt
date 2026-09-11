@@ -1,0 +1,11 @@
+SDL3-devel +universal
+libpng +universal
+glew +universal
+libzip +universal
+nlohmann-json +universal
+tinyxml2 +universal
+libogg +universal
+libopus +universal
+opusfile +universal
+libvorbis +universal
+libsndfile +universal

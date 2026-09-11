@@ -148,20 +148,6 @@ jobs:
         fi
     - uses: ./.github/actions/install-tinyxml2
       if: ${{ steps.tinyxml2-check.outputs.needs_install == 'true' }}
-    - name: Verify/update SDL2_net
-      id: sdl2-net-check
-      if: ${{ matrix.distro.packageManager == 'apt' }}
-      run: |
-        if find /usr -iname 'sdl2_net*config.cmake' 2>/dev/null | grep -q .; then
-          echo "ok"
-          echo "needs_install=false" >> "$GITHUB_OUTPUT"
-        else
-          apt-get install -y curl
-          echo "needs_install=true" >> "$GITHUB_OUTPUT"
-        fi
-    - uses: ./.github/actions/install-sdl2-net
-      if: ${{ steps.sdl2-net-check.outputs.needs_install == 'true' }}
-    # https://github.com/fmtlib/fmt/issues/4807
     - name: Check fmt/clang consteval compat
       id: fmt-check
       shell: bash

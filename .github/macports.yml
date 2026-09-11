@@ -1,7 +1,5 @@
 ports:
-  - name: libsdl2
-    select: [ universal ]
-  - name: libsdl2_net
+  - name: SDL3-devel
     select: [ universal ]
   - name: libpng
     select: [ universal ]
