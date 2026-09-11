@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <utility>
 
 #include <spdlog/spdlog.h>
@@ -26,6 +27,17 @@
 #include "soh/cvar_prefixes.h"
 
 #include <fast/Fast3dGui.h>
+
+// SDL hands back ownership of these allocations; a unique_ptr frees them on every
+// path, including the early return between acquiring a mapping and parsing it.
+namespace {
+template <typename T> struct SdlFree {
+    void operator()(T* ptr) const noexcept {
+        SDL_free(ptr);
+    }
+};
+template <typename T> using SdlOwned = std::unique_ptr<T, SdlFree<T>>;
+} // namespace
 
 namespace SohGui {
 extern std::shared_ptr<SohMenu> mSohMenu;
@@ -1033,10 +1045,10 @@ void MapperWindow::RefreshDeviceList() {
 
     // SDL3 dropped device indices: joysticks are addressed by instance ID throughout.
     int numJoysticks = 0;
-    SDL_JoystickID* joystickIds = SDL_GetJoysticks(&numJoysticks);
+    const SdlOwned<SDL_JoystickID> joystickIds{ SDL_GetJoysticks(&numJoysticks) };
 
     for (int32_t i = 0; i < numJoysticks; i++) {
-        const SDL_JoystickID instanceId = joystickIds[i];
+        const SDL_JoystickID instanceId = joystickIds.get()[i];
         char guidString[33] = "";
         SDL_GUIDToString(SDL_GetJoystickGUIDForID(instanceId), guidString, sizeof(guidString));
 
@@ -1062,8 +1074,6 @@ void MapperWindow::RefreshDeviceList() {
 
         mDevices.push_back(info);
     }
-
-    SDL_free(joystickIds);
 
     for (int32_t i = 0; i < (int32_t)mDevices.size(); i++) {
         if (mDevices[i].instanceId == previousInstanceId) {
@@ -1119,12 +1129,11 @@ void MapperWindow::LoadBindingsForDevice() {
     const char* joystickName = SDL_GetJoystickName(mJoystick);
     mCustomName = joystickName != nullptr ? joystickName : "";
 
-    char* existing = SDL_GetGamepadMappingForGUID(SDL_GetJoystickGUID(mJoystick));
+    const SdlOwned<char> existing{ SDL_GetGamepadMappingForGUID(SDL_GetJoystickGUID(mJoystick)) };
     if (existing == nullptr) {
         return;
     }
-    ParseMappingString(existing, mBindings);
-    SDL_free(existing);
+    ParseMappingString(existing.get(), mBindings);
 }
 
 void MapperWindow::StartSession(const std::vector<int32_t>& order) {
