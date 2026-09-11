@@ -1,6 +1,39 @@
 ![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
 ![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
 
+> [!IMPORTANT]
+> **This is a fork, not Ship of Harkinian.** It carries features that are still in review — or too
+> large to land — upstream, and is moving onto libultraship's `main` (the 2.0.0 line, SDL3) rather
+> than the `port-maintenance` branch upstream SoH ships. Report bugs you hit here to
+> [this fork](https://github.com/bassdr/Shipwright/issues), not to HarbourMasters.
+>
+> If you want the stable, supported game, use
+> [Ship of Harkinian](https://github.com/HarbourMasters/Shipwright) instead.
+
+## What this fork adds
+
+| Feature | Upstream PR | Status upstream |
+| --- | --- | --- |
+| FluidSynth SoundFont replacement | [#6668](https://github.com/HarbourMasters/Shipwright/pull/6668) | open, stalled on size |
+| Ocarina songs from the pause menu | [#6951](https://github.com/HarbourMasters/Shipwright/pull/6951) | open |
+| Streamed music kept alive across the enemy BGM crossfade | [#7126](https://github.com/HarbourMasters/Shipwright/pull/7126) | open |
+| Song of Time plays out before the age shift | [#7058](https://github.com/HarbourMasters/Shipwright/pull/7058) | open |
+| Undefined left-shift fixes | [#6640](https://github.com/HarbourMasters/Shipwright/pull/6640) | approved, unmerged |
+
+It also pins [a libultraship fork](https://github.com/bassdr/libultraship/tree/main) carrying audio
+and rendering fixes that are open upstream: the WASAPI device-change deadlock, the WASAPI
+buffer-size boot hang, the SDL pull-model audio path, CVar thread-safety, the stb download retry,
+and the GBI undefined-shift fixes.
+
+The libultraship fork is on `main`/SDL3; the game side is still pinned to an SDL2 build of it while
+that migration is in progress.
+
+### Why a fork
+
+Upstream targets `port-maintenance` and moves deliberately. This fork exists to run the above
+together, and to get onto the SDL3 engine line, without waiting for each piece to land. Everything
+here is intended to go upstream eventually — the fork is a staging area, not a divergence.
+
 ## Website
 
 Official Website: https://www.shipofharkinian.com/
