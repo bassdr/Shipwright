@@ -1,11 +1,12 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <ship/window/gui/GuiWindow.h>
 
 #ifdef __cplusplus
-class TimeSplitWindow final : public Ship::GuiWindow {
+class TimeSplitWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void Draw() override;

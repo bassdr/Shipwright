@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <imgui.h>
 #include <unordered_map>
 #include <memory>
@@ -20,9 +21,9 @@ typedef struct {
     N64ButtonMask defaultBtn;
 } CustomButtonMap;
 
-class SohInputEditorWindow final : public Ship::GuiWindow {
+class SohInputEditorWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     ~SohInputEditorWindow();
 
     void DrawButton(const char* label, int32_t n64Btn, int32_t currentPort, int32_t* btnReading);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <map>
 #include <string>
 #include <vector>
@@ -444,9 +445,9 @@ const std::vector<std::string> state3 = {
     "Travelling to Hook Target",
 };
 
-class SaveEditorWindow final : public Ship::GuiWindow {
+class SaveEditorWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override;

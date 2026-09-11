@@ -29,6 +29,7 @@ typedef enum {
 } CosmeticGroup;
 
 #ifdef __cplusplus
+#include "soh/SohGui/SohGuiWindow.h"
 #include <string>
 #include <map>
 #include <ship/window/gui/GuiWindow.h>
@@ -177,9 +178,9 @@ void DrawCustomCosmetics();
 void ApplyCustomCosmetics();
 void UpdateCustomCosmeticsRainbow(int hue, float rainbowSpeed, int& index);
 
-class CosmeticsEditorWindow final : public Ship::GuiWindow {
+class CosmeticsEditorWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override;

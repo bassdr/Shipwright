@@ -113,12 +113,12 @@ static const int32_t kCoreBindingOrder[] = {
     SDL_GAMEPAD_BUTTON_EAST,
     SDL_GAMEPAD_BUTTON_WEST,
     SDL_GAMEPAD_BUTTON_NORTH,
-    SDL_GAMEPAD_BUTTON_EASTACK,
+    SDL_GAMEPAD_BUTTON_BACK,
     SDL_GAMEPAD_BUTTON_START,
-    SDL_GAMEPAD_BUTTON_LEFTSHOULDER,
-    SDL_GAMEPAD_BUTTON_RIGHTSHOULDER,
-    SDL_GAMEPAD_BUTTON_LEFTSTICK,
-    SDL_GAMEPAD_BUTTON_RIGHTSTICK,
+    SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+    SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+    SDL_GAMEPAD_BUTTON_LEFT_STICK,
+    SDL_GAMEPAD_BUTTON_RIGHT_STICK,
     SDL_GAMEPAD_BUTTON_DPAD_UP,
     SDL_GAMEPAD_BUTTON_DPAD_DOWN,
     SDL_GAMEPAD_BUTTON_DPAD_LEFT,
@@ -275,7 +275,7 @@ std::string GenerateMappingString(SDL_Joystick* joystick, const ExtendedBind (&b
 #endif
 
     char guidString[33] = "";
-    SDL_GetJoystickGUIDString(guid, guidString, sizeof(guidString));
+    SDL_GUIDToString(guid, guidString, sizeof(guidString));
 
     const char* rawName = SDL_GetJoystickName(joystick);
     std::string name = SanitizeName(nameOverride);
@@ -927,20 +927,20 @@ static constexpr ImU32 NAME_COLOR = IM_COL32(138, 144, 156, 255);
 
 static const DiagramEntry kDiagram[] = {
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_TRIGGERLEFT, ImVec2(0.081f, 0.110f), false },
-    { SDL_GAMEPAD_BUTTON_LEFTSHOULDER, ImVec2(0.234f, 0.092f), false },
-    { SDL_GAMEPAD_BUTTON_EASTACK, ImVec2(0.426f, 0.408f), false },
+    { SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, ImVec2(0.234f, 0.092f), false },
+    { SDL_GAMEPAD_BUTTON_BACK, ImVec2(0.426f, 0.408f), false },
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_LEFTY_NEGATIVE, ImVec2(0.241f, 0.315f), false },
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_LEFTX_NEGATIVE, ImVec2(0.185f, 0.401f), false },
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_LEFTX_POSITIVE, ImVec2(0.297f, 0.401f), false },
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_LEFTY_POSITIVE, ImVec2(0.241f, 0.487f), false },
-    { SDL_GAMEPAD_BUTTON_LEFTSTICK, ImVec2(0.241f, 0.401f), false },
+    { SDL_GAMEPAD_BUTTON_LEFT_STICK, ImVec2(0.241f, 0.401f), false },
     { SDL_GAMEPAD_BUTTON_DPAD_UP, ImVec2(0.368f, 0.540f), false },
     { SDL_GAMEPAD_BUTTON_DPAD_LEFT, ImVec2(0.310f, 0.614f), false },
     { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, ImVec2(0.416f, 0.614f), false },
     { SDL_GAMEPAD_BUTTON_DPAD_DOWN, ImVec2(0.368f, 0.690f), false },
 
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_TRIGGERRIGHT, ImVec2(0.919f, 0.110f), true },
-    { SDL_GAMEPAD_BUTTON_RIGHTSHOULDER, ImVec2(0.766f, 0.092f), true },
+    { SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, ImVec2(0.766f, 0.092f), true },
     { SDL_GAMEPAD_BUTTON_START, ImVec2(0.570f, 0.408f), true },
     { SDL_GAMEPAD_BUTTON_NORTH, ImVec2(0.752f, 0.328f), true },
     { SDL_GAMEPAD_BUTTON_WEST, ImVec2(0.689f, 0.412f), true },
@@ -950,7 +950,7 @@ static const DiagramEntry kDiagram[] = {
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_RIGHTX_NEGATIVE, ImVec2(0.570f, 0.595f), true },
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_RIGHTX_POSITIVE, ImVec2(0.686f, 0.595f), true },
     { SDL_GAMEPAD_BUTTON_COUNT + AXIS_RIGHTY_POSITIVE, ImVec2(0.628f, 0.682f), true },
-    { SDL_GAMEPAD_BUTTON_RIGHTSTICK, ImVec2(0.628f, 0.595f), true },
+    { SDL_GAMEPAD_BUTTON_RIGHT_STICK, ImVec2(0.628f, 0.595f), true },
 };
 
 // ---------------------------------------------------------------------------------------------------
@@ -1117,7 +1117,7 @@ void MapperWindow::LoadBindingsForDevice() {
     }
 
     char guidString[33] = "";
-    SDL_GetJoystickGUIDString(SDL_GetJoystickGUID(mJoystick), guidString, sizeof(guidString));
+    SDL_GUIDToString(SDL_GetJoystickGUID(mJoystick), guidString, sizeof(guidString));
 
     const std::string userMapping = FindUserMapping(guidString);
     if (!userMapping.empty()) {
@@ -1558,7 +1558,7 @@ void MapperWindow::DrawActionButtons() {
     PushStyleButton(THEME_COLOR);
     if (ImGui::Button("Save Mapping")) {
         char guidString[33] = "";
-        SDL_GetJoystickGUIDString(SDL_GetJoystickGUID(mJoystick), guidString, sizeof(guidString));
+        SDL_GUIDToString(SDL_GetJoystickGUID(mJoystick), guidString, sizeof(guidString));
 
         bool ok;
         if (!HasAnyBinding(mBindings)) {

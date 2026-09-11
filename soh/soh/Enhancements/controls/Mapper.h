@@ -9,6 +9,7 @@
 // The binding state machine (axis commit/return distances, binding override rules, mapping string layout)
 // is adapted from https://github.com/General-Arcade/sdl2-gamepad-tool (MIT).
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -119,9 +120,9 @@ bool LoadUserMappings();
 bool SaveUserMapping(const std::string& mapping);
 bool DeleteUserMapping(const std::string& guid);
 
-class MapperWindow final : public Ship::GuiWindow {
+class MapperWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     ~MapperWindow();
 
   protected:
