@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <imgui.h>
 #include <ship/window/gui/GuiWindow.h>
 
@@ -32,10 +32,10 @@ enum AxisBinding {
     AXIS_BINDING_MAX,
 };
 
-constexpr int32_t BINDING_COUNT = SDL_CONTROLLER_BUTTON_MAX + AXIS_BINDING_MAX;
+constexpr int32_t BINDING_COUNT = SDL_GAMEPAD_BUTTON_COUNT + AXIS_BINDING_MAX;
 
 struct ExtendedBind {
-    SDL_GameControllerBindType bindType;
+    SDL_GamepadBindingType bindType;
     union {
         int32_t button;
 
@@ -131,7 +131,6 @@ class MapperWindow final : public Ship::GuiWindow {
 
   private:
     struct DeviceInfo {
-        int32_t deviceIndex;
         SDL_JoystickID instanceId;
         std::string name;
         std::string guid;
