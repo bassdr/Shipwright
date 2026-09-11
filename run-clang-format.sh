@@ -1,6 +1,6 @@
 # Default to clang-format-14; override CLANG_FORMAT to use another 14.x binary
 # (distro pkg, muttleyxd static binary, uvx clang-format@14, ...). See docs/FORMATTING.md.
-CLANG_FORMAT="${CLANG_FORMAT:-clang-format-14}"
+CLANG_FORMAT="${CLANG_FORMAT:-clang-format-20}"
 
 # this line does quite a bit, so let's break it down
 #

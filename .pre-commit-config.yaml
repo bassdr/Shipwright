@@ -4,7 +4,7 @@
 #   pre-commit install --install-hooks   # enable (downloads clang-format up front)
 repos:
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v14.0.6
+    rev: v20.1.8
     hooks:
       - id: clang-format
         files: '^soh/.*\.(c|cpp|h|hpp)$'
