@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "soh/SohContext.h"
 #include <cctype>
 #include <map>
 #include <mutex>
@@ -350,7 +351,7 @@ static HintTrackerViewMode DrawViewTabs() {
             if (viewMode != mode && tabRestored) {
                 viewMode = mode;
                 CVarSetInteger(CVAR_TRACKER_HINT("ViewMode"), mode);
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             }
             ImGui::EndTabItem();
         }
@@ -650,9 +651,7 @@ void HintTrackerWindow::DrawElement() {
         if (CVarGetInteger(CVAR_TRACKER_HINT("DisplayType"), TRACKER_DISPLAY_ALWAYS) == TRACKER_DISPLAY_COMBO_BUTTON) {
             int comboButton1Mask = buttons[CVarGetInteger(CVAR_TRACKER_HINT("ComboButton1"), TRACKER_COMBO_BUTTON_L)];
             int comboButton2Mask = buttons[CVarGetInteger(CVAR_TRACKER_HINT("ComboButton2"), TRACKER_COMBO_BUTTON_R)];
-            OSContPad* trackerButtonsPressed =
-                std::dynamic_pointer_cast<LUS::ControlDeck>(Ship::Context::GetRawInstance()->GetControlDeck())
-                    ->GetPads();
+            OSContPad* trackerButtonsPressed = std::dynamic_pointer_cast<LUS::ControlDeck>(SohControlDeck())->GetPads();
             bool comboButtonsHeld = trackerButtonsPressed != nullptr &&
                                     trackerButtonsPressed[0].button & comboButton1Mask &&
                                     trackerButtonsPressed[0].button & comboButton2Mask;

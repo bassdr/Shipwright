@@ -1,4 +1,5 @@
 #include "SohMenu.h"
+#include "soh/SohContext.h"
 #include <soh/Notification/Notification.h>
 #include "SohGui.hpp"
 #include "soh/OTRGlobals.h"
@@ -75,11 +76,11 @@ void SohMenu::AddMenuNetwork() {
         .Callback([](WidgetInfo& info) {
             if (Sail::Instance->isEnabled) {
                 CVarClear(CVAR_REMOTE_SAIL("Enabled"));
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 Sail::Instance->Disable();
             } else {
                 CVarSetInteger(CVAR_REMOTE_SAIL("Enabled"), 1);
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 Sail::Instance->Enable();
             }
         });
@@ -141,11 +142,11 @@ void SohMenu::AddMenuNetwork() {
         .Callback([](WidgetInfo& info) {
             if (CrowdControl::Instance->isEnabled) {
                 CVarClear(CVAR_REMOTE_CROWD_CONTROL("Enabled"));
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 CrowdControl::Instance->Disable();
             } else {
                 CVarSetInteger(CVAR_REMOTE_CROWD_CONTROL("Enabled"), 1);
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 CrowdControl::Instance->Enable();
             }
         });

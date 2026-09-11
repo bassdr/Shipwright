@@ -5,7 +5,6 @@
 
 void SohGfxDebuggerWindow::OnInit(const nlohmann::json& initArgs) {
     LUS::GfxDebuggerWindow::OnInit(initArgs);
-    GfxDebuggerWindow::InitElement();
 }
 
 void SohGfxDebuggerWindow::UpdateElement() {

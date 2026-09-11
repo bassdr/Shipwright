@@ -1,4 +1,5 @@
 #include "randomizer_entrance_tracker.h"
+#include "soh/SohContext.h"
 #include "randomizer_tracker_windows.h"
 #include "soh/OTRGlobals.h"
 #include "soh/SohGui/SohGui.hpp"
@@ -822,9 +823,7 @@ void EntranceTrackerWindow::DrawElement() {
                 buttons[CVarGetInteger(CVAR_TRACKER_ENTRANCE("ComboButton1"), TRACKER_COMBO_BUTTON_L)];
             int comboButton2Mask =
                 buttons[CVarGetInteger(CVAR_TRACKER_ENTRANCE("ComboButton2"), TRACKER_COMBO_BUTTON_R)];
-            OSContPad* trackerButtonsPressed =
-                std::dynamic_pointer_cast<LUS::ControlDeck>(Ship::Context::GetRawInstance()->GetControlDeck())
-                    ->GetPads();
+            OSContPad* trackerButtonsPressed = std::dynamic_pointer_cast<LUS::ControlDeck>(SohControlDeck())->GetPads();
             bool comboButtonsHeld = trackerButtonsPressed != nullptr &&
                                     trackerButtonsPressed[0].button & comboButton1Mask &&
                                     trackerButtonsPressed[0].button & comboButton2Mask;

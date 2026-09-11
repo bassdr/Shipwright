@@ -1,4 +1,7 @@
 ﻿#include "OTRGlobals.h"
+#include <SDL3_net/SDL_net.h>
+#include <spdlog/spdlog.h>
+#include "soh/SohContext.h"
 #include "OTRAudio.h"
 #include <algorithm>
 #include <atomic>
@@ -15,7 +18,7 @@
 #include <libultraship/bridge/audiobridge.h>
 #include <libultraship/bridge/gfxdebuggerbridge.h>
 #include <libultraship/bridge/windowbridge.h>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/File.h>
 #include <ship/window/Window.h>
 #include <soh/GameVersions.h>
@@ -47,7 +50,7 @@
 #include "z64.h"
 #include "macros.h"
 #include <ship/window/gui/Fonts.h>
-#include <ship/window/FileDropMgr.h>
+#include <ship/window/FileDrop.h>
 #include <ship/window/gui/resource/Font.h>
 #include <ship/utils/StringHelper.h>
 #include "Enhancements/custom-message/CustomMessageManager.h"
@@ -271,16 +274,11 @@ std::string portArchivePath = "";
 static bool sohArchiveVersionMatch = false;
 
 OTRGlobals::OTRGlobals() {
-    context = Ship::Context::CreateUninitializedInstance("Ship of Harkinian", appShortName, "shipofharkinian.json");
-
     portArchivePath = Ship::Context::LocateFileAcrossAppDirs("soh.o2r");
     OTRVersion portArchiveVersion = DetectOTRVersion("soh.o2r", false);
     sohArchiveVersionMatch = portArchiveVersion.major == gBuildVersionMajor &&
                              portArchiveVersion.minor == gBuildVersionMinor &&
                              portArchiveVersion.patch == gBuildVersionPatch;
-
-    context->InitConfiguration();
-    context->InitConsoleVariables();
 
     auto controlDeck = std::make_shared<LUS::ControlDeck>(std::vector<CONTROLLERBUTTONS_T>({
         BTN_CUSTOM_MODIFIER1,
@@ -294,21 +292,22 @@ OTRGlobals::OTRGlobals() {
         BTN_CUSTOM_OCARINA_PITCH_UP,
         BTN_CUSTOM_OCARINA_PITCH_DOWN,
     }));
-    context->InitControlDeck(controlDeck);
-    context->InitResourceManager({ portArchivePath }, {}, 3, true);
-    context->InitConsole();
 
     auto sohInputEditorWindow =
         std::make_shared<SohInputEditorWindow>(CVAR_WINDOW("ControllerConfiguration"), "Configure Controller");
     sohFast3dWindow =
         std::make_shared<Fast::Fast3dWindow>(std::vector<std::shared_ptr<Ship::GuiWindow>>({ sohInputEditorWindow }));
-    context->InitWindow(sohFast3dWindow);
+
+    // Epoch 2 builds the whole component graph up front; the explicit Init* calls are gone.
+    contextOwner = Ship::Context::CreateDefaultInstance("Ship of Harkinian", appShortName, "shipofharkinian.json",
+                                                        { portArchivePath }, {}, 3, {}, sohFast3dWindow, controlDeck);
+    context = contextOwner.get();
 
     SohGui::SetupMenu();
 
     if (sohArchiveVersionMatch) {
 
-        auto overlay = context->GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay();
+        auto overlay = SohWindow()->GetGui()->GetGameOverlay();
         overlay->LoadFont("Press Start 2P", 12.0f, "fonts/PressStart2P-Regular.ttf");
         overlay->LoadFont("Fipps", 32.0f, "fonts/Fipps-Regular.otf");
         overlay->SetCurrentFont(CVarGetString(CVAR_GAME_OVERLAY_FONT, "Press Start 2P"));
@@ -407,7 +406,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
     bool extractDone = false;
     ExtractSteps extractStep = ES_PORT_ARCHIVE;
     WindowsSteps windowsStep = WS_TEMP;
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->context->GetWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->SohWindow());
     auto gui = wnd->GetGui();
 
     OTRVersion vanillaVersion = DetectOTRVersion("oot.o2r", false);
@@ -790,8 +789,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
 }
 
 void InitGfxDebugger() {
-    auto dbg =
-        std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow())->GetGfxDebugger();
+    auto dbg = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow())->GetGfxDebugger();
 
     if (dbg != nullptr) {
         return;
@@ -807,11 +805,11 @@ void InitGfxDebugger() {
 void OTRGlobals::Initialize() {
     std::string mqPath = Ship::Context::LocateFileAcrossAppDirs("oot-mq.o2r", appShortName);
     if (std::filesystem::exists(mqPath)) {
-        context->GetResourceManager()->GetArchiveManager()->AddArchive(mqPath);
+        SohResourceManager()->GetArchiveManager()->AddArchive(mqPath);
     }
     std::string ootPath = Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName);
     if (std::filesystem::exists(ootPath)) {
-        context->GetResourceManager()->GetArchiveManager()->AddArchive(ootPath);
+        SohResourceManager()->GetArchiveManager()->AddArchive(ootPath);
     }
 
     std::unordered_set<uint32_t> ValidHashes = {
@@ -830,20 +828,19 @@ void OTRGlobals::Initialize() {
     auto logLevel =
         static_cast<spdlog::level::level_enum>(CVarGetInteger(CVAR_DEVELOPER_TOOLS("LogLevel"), defaultLogLevel));
     context->InitLogging(logLevel, logLevel);
-    Ship::Context::GetRawInstance()->GetLogger()->set_pattern("[%H:%M:%S.%e] [%s:%#] [%^%l%$] %v");
+    spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%s:%#] [%^%l%$] %v");
 
     InitGfxDebugger();
-    context->InitFileDropMgr();
 
     // tell LUS to reserve 3 SoH specific threads (Game, Audio, Save)
     prevAltAssets = CVarGetInteger(CVAR_SETTING("AltAssets"), 1);
-    context->GetResourceManager()->SetAltAssetsEnabled(prevAltAssets);
+    SohResourceManager()->SetAltAssetsEnabled(prevAltAssets);
 
     context->InitCrashHandler();
 
-    context->GetWindow()->SetAutoCaptureMouse(CVarGetInteger(CVAR_SETTING("EnableMouse"), 0) &&
-                                              CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
-    context->GetWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
+    SohWindow()->SetAutoCaptureMouse(CVarGetInteger(CVAR_SETTING("EnableMouse"), 0) &&
+                                     CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
+    SohWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
 
     // Output rate is user-selectable (restart-applied); native synth is 32 kHz and
     // the audio thread resamples up to it. Default 32 kHz matches the console.
@@ -863,7 +860,7 @@ void OTRGlobals::Initialize() {
     SPDLOG_INFO("Starting Ship of Harkinian version {} (Branch: {} | Commit: {})", (char*)gBuildVersion,
                 (char*)gGitBranch, (char*)gGitCommitHash);
 
-    auto loader = context->GetResourceManager()->GetResourceLoader();
+    auto loader = SohResourceManager()->GetResourceLoader();
     loader->RegisterResourceFactory(std::make_shared<Fast::ResourceFactoryBinaryTextureV0>(), RESOURCE_FORMAT_BINARY,
                                     "Texture", static_cast<uint32_t>(Fast::ResourceType::Texture), 0);
     loader->RegisterResourceFactory(std::make_shared<Fast::ResourceFactoryBinaryTextureV1>(), RESOURCE_FORMAT_BINARY,
@@ -958,7 +955,7 @@ void OTRGlobals::Initialize() {
         cameraStrings[i] = strdup(constCameraStrings[i]);
     }
 
-    auto versions = context->GetResourceManager()->GetArchiveManager()->GetGameVersions();
+    auto versions = SohResourceManager()->GetArchiveManager()->GetGameVersions();
 
     for (uint32_t version : versions) {
         if (!ValidHashes.contains(version)) {
@@ -1026,10 +1023,9 @@ bool OTRGlobals::HasOriginal() {
 
 uint32_t OTRGlobals::GetInterpolationFPS() {
     if (CVarGetInteger(CVAR_SETTING("MatchRefreshRate"), 0)) {
-        return Ship::Context::GetRawInstance()->GetWindow()->GetCurrentRefreshRate();
-    } else if (CVarGetInteger(CVAR_VSYNC_ENABLED, 1) ||
-               !Ship::Context::GetRawInstance()->GetWindow()->CanDisableVerticalSync()) {
-        return std::min<uint32_t>(Ship::Context::GetRawInstance()->GetWindow()->GetCurrentRefreshRate(),
+        return SohWindow()->GetCurrentRefreshRate();
+    } else if (CVarGetInteger(CVAR_VSYNC_ENABLED, 1) || !SohWindow()->CanDisableVerticalSync()) {
+        return std::min<uint32_t>(SohWindow()->GetCurrentRefreshRate(),
                                   CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 20));
     }
     return CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 20);
@@ -1555,7 +1551,7 @@ extern "C" RandomizerGet RetrieveRandomizerGetFromItemID(ItemID itemID) {
 }
 
 extern "C" void OTRExtScanner() {
-    auto lst = *Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->ListFiles().get();
+    auto lst = *SohResourceManager()->GetArchiveManager()->ListFiles().get();
 
     for (auto& rPath : lst) {
         std::vector<std::string> raw = StringHelper::Split(rPath, ".");
@@ -1621,7 +1617,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     GameInteractor::Instance = new GameInteractor();
     SaveManager::Instance = new SaveManager();
 
-    std::shared_ptr<Ship::Config> conf = OTRGlobals::Instance->context->GetConfig();
+    std::shared_ptr<Ship::Config> conf = OTRGlobals::Instance->SohConfig();
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion1Updater>());
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion2Updater>());
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion3Updater>());
@@ -1662,7 +1658,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     CVarClear(CVAR_GENERAL("RandomizerDroppedFile"));
     // #endregion
 
-    Ship::Context::GetRawInstance()->GetFileDropMgr()->RegisterDropHandler(SoH_HandleConfigDrop);
+    SohContext()->GetFirstInChildren<Ship::FileDrop>()->RegisterDropHandler(SoH_HandleConfigDrop);
 
     RegisterImGuiItemIcons();
 
@@ -1675,7 +1671,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     }
 
     srand(static_cast<unsigned int>(now));
-    SDLNet_Init();
+    NET_Init();
     if (CVarGetInteger(CVAR_REMOTE_CROWD_CONTROL("Enabled"), 0)) {
         CrowdControl::Instance->Enable();
     }
@@ -1706,7 +1702,7 @@ extern "C" void DeinitOTR() {
     if (CVarGetInteger(CVAR_REMOTE_ANCHOR("Enabled"), 0)) {
         Anchor::Instance->Disable();
     }
-    SDLNet_Quit();
+    NET_Quit();
 
     // Destroying gui here because we have shared ptrs to LUS objects which output to SPDLOG which is destroyed before
     // these shared ptrs.
@@ -1755,11 +1751,11 @@ extern "C" uint64_t GetUnixTimestamp() {
 }
 
 extern "C" void Graph_StartFrame() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
 #ifndef __WIIU__
     using Ship::KbScancode;
-    int32_t dwScancode = OTRGlobals::Instance->context->GetWindow()->GetLastScancode();
-    OTRGlobals::Instance->context->GetWindow()->SetLastScancode(-1);
+    int32_t dwScancode = OTRGlobals::Instance->SohWindow()->GetLastScancode();
+    OTRGlobals::Instance->SohWindow()->SetLastScancode(-1);
 
     switch (dwScancode) {
         case KbScancode::LUS_KB_F1: {
@@ -1855,7 +1851,7 @@ extern "C" void Graph_StartFrame() {
 
 // Interpolated frames of a tick are evenly spaced numerators time+step, time+2*step, ... over denom.
 void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->context->GetWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->SohWindow());
 
     if (wnd == nullptr) {
         return;
@@ -1895,7 +1891,7 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
     static int time;
     int fps = target_fps;
     int original_fps = 60 / R_UPDATE_RATE;
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
 
     if (target_fps == 20 || original_fps > target_fps) {
         fps = original_fps;
@@ -1937,7 +1933,7 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
     bool curAltAssets = CVarGetInteger(CVAR_SETTING("AltAssets"), 1);
     if (prevAltAssets != curAltAssets) {
         prevAltAssets = curAltAssets;
-        Ship::Context::GetRawInstance()->GetResourceManager()->SetAltAssetsEnabled(curAltAssets);
+        SohResourceManager()->SetAltAssetsEnabled(curAltAssets);
         gfx_texture_cache_clear();
         SOH::SkeletonPatcher::UpdateSkeletons();
         GameInteractor::Instance->ExecuteHooks<GameInteractor::OnAssetAltChange>();
@@ -1949,7 +1945,7 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
 }
 
 extern "C" void OTRGetPixelDepthPrepare(float x, float y) {
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     if (wnd == nullptr) {
         return;
     }
@@ -1958,7 +1954,7 @@ extern "C" void OTRGetPixelDepthPrepare(float x, float y) {
 }
 
 extern "C" uint16_t OTRGetPixelDepth(float x, float y) {
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     if (wnd == nullptr) {
         return 0;
     }
@@ -1990,9 +1986,9 @@ ImFont* OTRGlobals::CreateFontWithSize(float size, std::string fontPath, bool is
         initData->Format = RESOURCE_FORMAT_BINARY;
         initData->Type = static_cast<uint32_t>(RESOURCE_TYPE_FONT);
         initData->ResourceVersion = 0;
-        initData->Path = fontPath;
-        std::shared_ptr<Ship::Font> fontData = std::static_pointer_cast<Ship::Font>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(fontPath, false, initData));
+        initData->Identifier.GetPath() = fontPath;
+        std::shared_ptr<Ship::Font> fontData =
+            std::static_pointer_cast<Ship::Font>(SohResourceManager()->LoadResource(fontPath, false, initData));
         ImFontConfig fontConf;
         fontConf.FontDataOwnedByAtlas = false;
         const ImWchar* glyph_ranges = isJapaneseFont ? mImGuiIo->Fonts->GetGlyphRangesJapanese() : nullptr;
@@ -2024,7 +2020,7 @@ std::filesystem::path GetSaveFile(std::shared_ptr<Ship::Config> Conf) {
 }
 
 std::filesystem::path GetSaveFile() {
-    const std::shared_ptr<Ship::Config> pConf = OTRGlobals::Instance->context->GetConfig();
+    const std::shared_ptr<Ship::Config> pConf = OTRGlobals::Instance->SohConfig();
 
     return GetSaveFile(pConf);
 }
@@ -2253,12 +2249,11 @@ Color_RGB8 GetColorForControllerLED() {
 extern "C" void OTRControllerCallback(uint8_t rumble) {
     // We call this every tick, SDL accounts for this use and prevents driver spam
     // https://github.com/libsdl-org/SDL/blob/f17058b562c8a1090c0c996b42982721ace90903/src/joystick/SDL_joystick.c#L1114-L1144
-    Ship::Context::GetRawInstance()->GetControlDeck()->GetControllerByPort(0)->GetLED()->SetLEDColor(
-        GetColorForControllerLED());
+    SohControlDeck()->GetControllerByPort(0)->GetLED()->SetLEDColor(GetColorForControllerLED());
 
     static std::shared_ptr<SohInputEditorWindow> controllerConfigWindow = nullptr;
     if (controllerConfigWindow == nullptr) {
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         controllerConfigWindow =
             std::dynamic_pointer_cast<SohInputEditorWindow>(gui->GetGuiWindow("Controller Configuration"));
     } else if (controllerConfigWindow->TestingRumble()) {
@@ -2266,14 +2261,14 @@ extern "C" void OTRControllerCallback(uint8_t rumble) {
     }
 
     if (rumble) {
-        Ship::Context::GetRawInstance()->GetControlDeck()->GetControllerByPort(0)->GetRumble()->StartRumble();
+        SohControlDeck()->GetControllerByPort(0)->GetRumble()->StartRumble();
     } else {
-        Ship::Context::GetRawInstance()->GetControlDeck()->GetControllerByPort(0)->GetRumble()->StopRumble();
+        SohControlDeck()->GetControllerByPort(0)->GetRumble()->StopRumble();
     }
 }
 
 extern "C" float OTRGetAspectRatio() {
-    return Ship::Context::GetRawInstance()->GetWindow()->GetAspectRatio();
+    return SohWindow()->GetAspectRatio();
 }
 
 extern "C" float OTRGetDimensionFromLeftEdge(float v) {
@@ -2286,7 +2281,7 @@ extern "C" float OTRGetDimensionFromRightEdge(float v) {
 
 // Gets the width of the current render target area
 extern "C" uint32_t OTRGetGameRenderWidth() {
-    auto fastWnd = dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+    auto fastWnd = dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     auto intP = fastWnd->GetInterpreterWeak().lock();
 
     if (!intP) {
@@ -2302,7 +2297,7 @@ extern "C" uint32_t OTRGetGameRenderWidth() {
 
 // Gets the height of the current render target area
 extern "C" uint32_t OTRGetGameRenderHeight() {
-    auto fastWnd = dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+    auto fastWnd = dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     auto intP = fastWnd->GetInterpreterWeak().lock();
 
     if (!intP) {
@@ -2341,8 +2336,7 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len) {
 
 extern "C" int Controller_ShouldRumble(size_t slot) {
     // don't rumble if we don't have rumble mappings
-    if (Ship::Context::GetRawInstance()
-            ->GetControlDeck()
+    if (SohControlDeck()
             ->GetControllerByPort(static_cast<uint8_t>(slot))
             ->GetRumble()
             ->GetAllRumbleMappings()
@@ -2351,8 +2345,7 @@ extern "C" int Controller_ShouldRumble(size_t slot) {
     }
 
     // don't rumble if we don't have connected gamepads
-    if (Ship::Context::GetRawInstance()
-            ->GetControlDeck()
+    if (SohControlDeck()
             ->GetConnectedPhysicalDeviceManager()
             ->GetConnectedSDLGamepadsForPort(static_cast<s32>(slot))
             .empty()) {
@@ -2506,9 +2499,7 @@ extern "C" void EntranceTracker_SetLastEntranceOverride(s16 entranceIndex) {
 }
 
 extern "C" void Gfx_RegisterBlendedTexture(const char* name, u8* mask, u8* replacement) {
-    if (auto intP = dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow())
-                        ->GetInterpreterWeak()
-                        .lock()) {
+    if (auto intP = dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow())->GetInterpreterWeak().lock()) {
         intP->RegisterBlendedTexture(name, mask, replacement);
     } else {
         assert(false && "Lost reference to Fast::Interpreter");
@@ -2516,9 +2507,7 @@ extern "C" void Gfx_RegisterBlendedTexture(const char* name, u8* mask, u8* repla
 }
 
 extern "C" void Gfx_UnregisterBlendedTexture(const char* name) {
-    if (auto intP = dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow())
-                        ->GetInterpreterWeak()
-                        .lock()) {
+    if (auto intP = dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow())->GetInterpreterWeak().lock()) {
         intP->UnregisterBlendedTexture(name);
     } else {
         assert(false && "Lost reference to Fast::Interpreter");
@@ -2536,9 +2525,7 @@ extern "C" void Gfx_TextureCacheDelete(const uint8_t* texAddr) {
         texAddr = (const uint8_t*)ResourceMgr_GetResourceDataByNameHandlingMQ(imgName);
     }
 
-    if (auto intP = dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow())
-                        ->GetInterpreterWeak()
-                        .lock()) {
+    if (auto intP = dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow())->GetInterpreterWeak().lock()) {
         intP->TextureCacheDelete(texAddr);
     } else {
         assert(false && "Lost reference to Fast::Interpreter");
@@ -2550,7 +2537,7 @@ bool SoH_HandleConfigDrop(char* filePath) {
         return false;
     }
     try {
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         std::ifstream configStream(filePath);
         if (!configStream) {
             return false;
@@ -2606,12 +2593,12 @@ bool SoH_HandleConfigDrop(char* filePath) {
         return true;
     } catch (std::exception& e) {
         SPDLOG_ERROR("Failed to load config file: {}", e.what());
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         gui->GetGameOverlay()->TextDrawNotification(30.0f, true, "Failed to load config file");
         return false;
     } catch (...) {
         SPDLOG_ERROR("Failed to load config file");
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         gui->GetGameOverlay()->TextDrawNotification(30.0f, true, "Failed to load config file");
         return false;
     }

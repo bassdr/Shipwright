@@ -294,6 +294,21 @@ endif()
 
 set(ROOT_NAMESPACE soh)
 
+# Optimised builds are linked with LTO on every platform, thin where the toolchain has it.
+# CMake's IPO flag is plain -flto; Clang's ThinLTO keeps the link parallel and incremental,
+# which matters because these are whole-game links.
+#
+# RelWithDebInfo gets it too, deliberately: an LTO-only miscompile that reproduces just in
+# Release would have no symbols to debug with.
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+    INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE
+)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_COMPILE_OPTIONS_IPO "-flto=thin")
+    set(CMAKE_C_COMPILE_OPTIONS_IPO "-flto=thin")
+endif()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set_target_properties(${PROJECT_NAME} PROPERTIES
         VS_GLOBAL_KEYWORD "Win32Proj"

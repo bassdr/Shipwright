@@ -1,9 +1,10 @@
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/SohContext.h"
 #include <fast/interpreter.h>
 #include <fast/resource/ResourceType.h>
 #include <fast/resource/type/DisplayList.h>
 #include <libultraship/bridge/resourcebridge.h>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <stb_image.h>
 
@@ -90,17 +91,15 @@ static const char* ResourceMgr_ResolveLinkTunicDListPath(const char* path) {
 }
 
 extern "C" uint32_t ResourceMgr_GetNumGameVersions() {
-    return static_cast<u32>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions().size());
+    return static_cast<u32>(SohResourceManager()->GetArchiveManager()->GetGameVersions().size());
 }
 
 extern "C" uint32_t ResourceMgr_GetGameVersion(int index) {
-    return Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[index];
+    return SohResourceManager()->GetArchiveManager()->GetGameVersions()[index];
 }
 
 extern "C" uint32_t ResourceMgr_GetGamePlatform(int index) {
-    uint32_t version =
-        Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[index];
+    uint32_t version = SohResourceManager()->GetArchiveManager()->GetGameVersions()[index];
 
     switch (version) {
         case OOT_NTSC_US_10:
@@ -127,8 +126,7 @@ extern "C" uint32_t ResourceMgr_GetGamePlatform(int index) {
 }
 
 extern "C" uint32_t ResourceMgr_GetGameRegion(int index) {
-    uint32_t version =
-        Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[index];
+    uint32_t version = SohResourceManager()->GetArchiveManager()->GetGameVersions()[index];
 
     switch (version) {
         case OOT_NTSC_US_10:
@@ -206,11 +204,11 @@ extern "C" uint32_t ResourceMgr_IsGameMasterQuest() {
 }
 
 extern "C" void ResourceMgr_LoadDirectory(const char* resName) {
-    Ship::Context::GetRawInstance()->GetResourceManager()->LoadResources(resName);
+    SohResourceManager()->LoadResources(resName);
 }
 
 extern "C" void ResourceMgr_DirtyDirectory(const char* resName) {
-    Ship::Context::GetRawInstance()->GetResourceManager()->DirtyResources(resName);
+    SohResourceManager()->DirtyResources(resName);
 }
 
 extern "C" void ResourceMgr_UnloadResource(const char* resName) {
@@ -218,13 +216,13 @@ extern "C" void ResourceMgr_UnloadResource(const char* resName) {
     if (path.substr(0, 7) == "__OTR__") {
         path = path.substr(7);
     }
-    auto res = Ship::Context::GetRawInstance()->GetResourceManager()->UnloadResource(path);
+    auto res = SohResourceManager()->UnloadResource(path);
 }
 
 // OTRTODO: There is probably a more elegant way to go about this...
 // Caller must free each string and the array itself when done.
 extern "C" char** ResourceMgr_ListFiles(const char* searchMask, int* resultSize) {
-    auto lst = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->ListFiles(searchMask);
+    auto lst = SohResourceManager()->GetArchiveManager()->ListFiles(searchMask);
     char** result = (char**)malloc(lst->size() * sizeof(char*));
 
     for (size_t i = 0; i < lst->size(); i++) {
@@ -261,7 +259,7 @@ extern "C" uint8_t ResourceMgr_FileAltExists(const char* filePath) {
 }
 
 extern "C" bool ResourceMgr_IsAltAssetsEnabled() {
-    return Ship::Context::GetRawInstance()->GetResourceManager()->IsAltAssetsEnabled();
+    return SohResourceManager()->IsAltAssetsEnabled();
 }
 
 // Unloads a resource if an alternate version exists when alt assets are enabled
@@ -280,7 +278,7 @@ std::shared_ptr<Ship::IResource> ResourceMgr_GetResourceByNameHandlingMQ(const c
             Path.replace(pos, 7, "/mq/");
         }
     }
-    return Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(Path.c_str());
+    return SohResourceManager()->LoadResource(Path.c_str());
 }
 
 extern "C" char* ResourceMgr_GetResourceDataByNameHandlingMQ(const char* path) {
@@ -406,8 +404,7 @@ std::unordered_map<std::string, std::unordered_map<std::string, GfxPatch>> origi
 // Attention! This is primarily for cosmetics & bug fixes. For things like mods and model replacement you should be
 // using OTRs instead (When that is available). Index can be found using the commented out section below.
 extern "C" void ResourceMgr_PatchGfxByName(const char* path, const char* patchName, int index, Gfx instruction) {
-    auto res = std::static_pointer_cast<Fast::DisplayList>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(path));
+    auto res = std::static_pointer_cast<Fast::DisplayList>(SohResourceManager()->LoadResource(path));
 
     if (res == nullptr || static_cast<size_t>(index) >= res->Instructions.size()) {
         return;
@@ -449,8 +446,7 @@ extern "C" void ResourceMgr_PatchGfxByName(const char* path, const char* patchNa
 
 extern "C" void ResourceMgr_PatchGfxCopyCommandByName(const char* path, const char* patchName, int destinationIndex,
                                                       int sourceIndex) {
-    auto res = std::static_pointer_cast<Fast::DisplayList>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(path));
+    auto res = std::static_pointer_cast<Fast::DisplayList>(SohResourceManager()->LoadResource(path));
 
     if (res == nullptr || static_cast<size_t>(destinationIndex) >= res->Instructions.size() ||
         static_cast<size_t>(sourceIndex) >= res->Instructions.size()) {
@@ -474,8 +470,7 @@ extern "C" void ResourceMgr_PatchGfxCopyCommandByName(const char* path, const ch
 }
 
 extern "C" void ResourceMgr_PatchCustomGfxByName(const char* path, const char* patchName, int index, Gfx instruction) {
-    auto res = std::static_pointer_cast<Fast::DisplayList>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(path));
+    auto res = std::static_pointer_cast<Fast::DisplayList>(SohResourceManager()->LoadResource(path));
 
     if (res == nullptr || static_cast<size_t>(index) >= res->Instructions.size()) {
         return;
@@ -493,8 +488,7 @@ extern "C" void ResourceMgr_PatchCustomGfxByName(const char* path, const char* p
 
 extern "C" void ResourceMgr_UnpatchGfxByName(const char* path, const char* patchName) {
     if (originalGfx.contains(path) && originalGfx[path].contains(patchName)) {
-        auto res = std::static_pointer_cast<Fast::DisplayList>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(path));
+        auto res = std::static_pointer_cast<Fast::DisplayList>(SohResourceManager()->LoadResource(path));
 
         // If the resource is unavailable (e.g. swapped out when toggling alt assets), clean up the record and bail.
         if (res == nullptr) {

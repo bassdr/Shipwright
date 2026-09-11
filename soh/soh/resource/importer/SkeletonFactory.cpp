@@ -1,6 +1,7 @@
 #include "soh/resource/importer/SkeletonFactory.h"
+#include "soh/SohContext.h"
 #include "soh/resource/type/Skeleton.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <spdlog/spdlog.h>
 #include <tinyxml2.h>
@@ -47,7 +48,7 @@ ResourceFactoryBinarySkeletonV0::ReadResource(std::shared_ptr<Ship::File> file,
 
     for (size_t i = 0; i < skeleton->limbTable.size(); i++) {
         std::string limbStr = skeleton->limbTable[i];
-        auto limb = Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(limbStr.c_str());
+        auto limb = SohResourceManager()->LoadResourceProcess(limbStr.c_str());
         skeleton->skeletonHeaderSegments.push_back(limb ? limb->GetRawPointer() : nullptr);
     }
 
@@ -117,7 +118,7 @@ ResourceFactoryXMLSkeletonV0::ReadResource(std::shared_ptr<Ship::File> file,
             std::string limbName = child->Attribute("Path");
             skel->limbTable.push_back(limbName);
 
-            auto limb = Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(limbName.c_str());
+            auto limb = SohResourceManager()->LoadResourceProcess(limbName.c_str());
             skel->skeletonHeaderSegments.push_back(limb ? limb->GetRawPointer() : nullptr);
         }
 

@@ -1,7 +1,8 @@
 #include <vector>
+#include "soh/SohContext.h"
 #include <fstream>
 
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <fast/Fast3dGui.h>
 
 #include "TimeSplits.h"
@@ -429,7 +430,7 @@ void TimeSplitsFileManagement(uint32_t action, const char* listEntry, std::vecto
 
 void TimeSplitsPopUpContext() {
     if ((popupID != -1) && ImGui::BeginPopup("TimeSplitsPopUp")) {
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         if (popupID == ITEM_SKULL_TOKEN) {
             ImGui::BeginTable("Token Table", 2);
             ImGui::TableNextColumn();
@@ -640,7 +641,7 @@ void TimeSplitsDrawSplitsList() {
     ImGui::BeginChild("SplitTable", ImVec2(0.0f, ImGui::GetWindowHeight() - 128.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4, 0));
     if (ImGui::BeginTable("Splits", 5, ImGuiTableFlags_Hideable | ImGuiTableFlags_Reorderable)) {
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         ImGui::TableSetupColumn("Item Image", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHeaderLabel,
                                 34.0f);
         ImGui::TableSetupColumn("Item Name");
@@ -737,8 +738,7 @@ void TimeSplitsDrawItemList(uint32_t type) {
 
     for (auto& split : splitObjectList) {
         if (split.splitType == type) {
-            auto gui =
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+            auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
             ImGui::TableNextColumn();
             ImGui::PushID(split.splitID);
             TimeSplitsGetImageSize(split.splitID);
@@ -874,8 +874,7 @@ void TimeSplitsDrawManageList() {
         ImGui::TableNextColumn();
         ImGui::BeginTabBar("List Preview");
         if (ImGui::BeginTabItem("Preview")) {
-            auto gui =
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+            auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
             ImGui::BeginChild("PreviewChild");
             for (auto& data : splitList) {
                 float availableWidth = ImGui::GetContentRegionAvail().x;
@@ -971,11 +970,11 @@ void TimeSplitWindow::DrawElement() {
 }
 
 void TimeSplitWindow::InitElement() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     TimeSplitsUpdateWindowSize();
 
-    gui->LoadGuiTexture("SPECIAL_TRIFORCE_PIECE_WHITE", gWTriforcePieceTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("SPECIAL_SPLIT_ENTRANCE", gSplitEntranceTex, "", ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("SPECIAL_TRIFORCE_PIECE_WHITE", gWTriforcePieceTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("SPECIAL_SPLIT_ENTRANCE", gSplitEntranceTex, ImVec4(1, 1, 1, 1));
     Color_RGBA8 defaultColour = { 0, 0, 0, 255 };
     windowColor = VecFromRGBA8(CVarGetColor(CVAR_ENHANCEMENT("TimeSplits.WindowColor.Value"), defaultColour));
 

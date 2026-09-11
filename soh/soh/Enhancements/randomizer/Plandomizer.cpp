@@ -1,4 +1,5 @@
 #include <vector>
+#include "soh/SohContext.h"
 #include <fstream>
 #include <filesystem>
 
@@ -306,7 +307,7 @@ ImVec4 plandomizerGetItemColor(Rando::Item randoItem) {
         return itemColor;
     }
     if (randoItem.GetItemType() == ITEMTYPE_SONG) {
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         uint32_t questID = Rando::Logic::RandoGetToQuestItem[randoItem.GetRandomizerGet()];
         textureID = gui->GetTextureByName(songMapping.at((QuestItem)questID).name);
         itemColor = songMapping.at((QuestItem)questID).color;
@@ -372,7 +373,7 @@ void PlandomizerPopulateSeedList() {
 }
 
 void PlandomizerItemImageCorrection(Rando::Item randoItem) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     textureID = 0;
     imageSize = ImVec2(32.0f, 32.0f);
     imagePadding = 2.0f;
@@ -966,8 +967,7 @@ void PlandomizerDrawOptions() {
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x * 0.5f) - (34.0f * 5.0f));
         if (spoilerLogData.size() > 0) {
             if (ImGui::BeginTable("HashIcons", 5)) {
-                auto gui =
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+                auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
                 for (int i = 0; i < 5; i++) {
                     ImGui::TableSetupColumn("Icon", ImGuiTableColumnFlags_WidthFixed, 34.0f);
                 }
@@ -1172,17 +1172,17 @@ void PlandomizerWindow::DrawElement() {
 }
 
 void PlandomizerWindow::InitElement() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
-    gui->LoadGuiTexture("ITEM_RUPEE_GRAYSCALE", gRupeeCounterIconTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("ITEM_HEART_GRAYSCALE", gHeartFullTex, "", ImVec4(0.87f, 0.10f, 0.10f, 1));
-    gui->LoadGuiTexture("ITEM_SEEDS", gItemIconDekuSeedsTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("ITEM_ARROWS_SMALL", gDropArrows1Tex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("ITEM_ARROWS_MEDIUM", gDropArrows2Tex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("ITEM_ARROWS_LARGE", gDropArrows3Tex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("ITEM_ICE_TRAP", gMagicArrowEquipEffectTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("HASH_ARROW_UP", gEmptyCDownArrowTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("HASH_ARROW_DWN", gEmptyCDownArrowTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("BOSS_SOUL", gBossSoulTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("TRIFORCE_PIECE", gTriforcePieceTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("TRIFORCE", gTriforcePieceTex, "", ImVec4(1, 1, 1, 1));
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
+    gui->LoadGuiTexture("ITEM_RUPEE_GRAYSCALE", gRupeeCounterIconTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("ITEM_HEART_GRAYSCALE", gHeartFullTex, ImVec4(0.87f, 0.10f, 0.10f, 1));
+    gui->LoadGuiTexture("ITEM_SEEDS", gItemIconDekuSeedsTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("ITEM_ARROWS_SMALL", gDropArrows1Tex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("ITEM_ARROWS_MEDIUM", gDropArrows2Tex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("ITEM_ARROWS_LARGE", gDropArrows3Tex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("ITEM_ICE_TRAP", gMagicArrowEquipEffectTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("HASH_ARROW_UP", gEmptyCDownArrowTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("HASH_ARROW_DWN", gEmptyCDownArrowTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("BOSS_SOUL", gBossSoulTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("TRIFORCE_PIECE", gTriforcePieceTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("TRIFORCE", gTriforcePieceTex, ImVec4(1, 1, 1, 1));
 }

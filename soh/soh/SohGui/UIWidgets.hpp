@@ -1,9 +1,10 @@
 #pragma once
 
 #include "UIWidgetOptions.hpp"
+#include "soh/SohContext.h"
 
 #include <libultraship/bridge/consolevariablebridge.h>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/window/gui/GuiWindow.h>
 #include <ship/window/Window.h>
 #include "soh/ShipInit.hpp"
@@ -461,7 +462,7 @@ bool CVarCombobox(const char* label, const char* cvarName, const std::map<T, con
     int32_t value = CVarGetInteger(cvarName, options.defaultIndex);
     if (Combobox<T>(label, &value, comboMap, options)) {
         CVarSetInteger(cvarName, value);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         ShipInit::Init(cvarName);
         dirty = true;
     }
@@ -475,7 +476,7 @@ bool CVarCombobox(const char* label, const char* cvarName, const std::vector<con
     int32_t value = CVarGetInteger(cvarName, options.defaultIndex);
     if (Combobox<T>(label, &value, comboVector, options)) {
         CVarSetInteger(cvarName, value);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         ShipInit::Init(cvarName);
         dirty = true;
     }
@@ -489,7 +490,7 @@ bool CVarCombobox(const char* label, const char* cvarName, const char* (&comboAr
     int32_t value = CVarGetInteger(cvarName, options.defaultIndex);
     if (Combobox<T>(label, &value, comboArray, options)) {
         CVarSetInteger(cvarName, value);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         ShipInit::Init(cvarName);
         dirty = true;
     }

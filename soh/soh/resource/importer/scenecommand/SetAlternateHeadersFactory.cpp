@@ -1,7 +1,8 @@
 #include "soh/resource/importer/scenecommand/SetAlternateHeadersFactory.h"
+#include "soh/SohContext.h"
 #include "soh/resource/type/scenecommand/SetAlternateHeaders.h"
 #include "soh/resource/logging/SceneCommandLoggers.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <tinyxml2.h>
 
@@ -18,8 +19,8 @@ SetAlternateHeadersFactory::ReadResource(std::shared_ptr<Ship::ResourceInitData>
     for (uint32_t i = 0; i < setAlternateHeaders->numHeaders; i++) {
         auto headerName = reader->ReadString();
         if (!headerName.empty()) {
-            setAlternateHeaders->headers.push_back(std::static_pointer_cast<Scene>(
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(headerName.c_str())));
+            setAlternateHeaders->headers.push_back(
+                std::static_pointer_cast<Scene>(SohResourceManager()->LoadResourceProcess(headerName.c_str())));
             setAlternateHeaders->headerFileNames.push_back(headerName);
         } else {
             setAlternateHeaders->headers.push_back(nullptr);
@@ -48,9 +49,8 @@ SetAlternateHeadersFactoryXML::ReadResource(std::shared_ptr<Ship::ResourceInitDa
             for (uint32_t i = 0; i < setAlternateHeaders->numHeaders; i++) {
                 auto headerName = std::string(child->Attribute("Path"));
                 if (!headerName.empty()) {
-                    setAlternateHeaders->headers.push_back(std::static_pointer_cast<Scene>(
-                        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(
-                            headerName.c_str())));
+                    setAlternateHeaders->headers.push_back(
+                        std::static_pointer_cast<Scene>(SohResourceManager()->LoadResourceProcess(headerName.c_str())));
                 } else {
                     setAlternateHeaders->headers.push_back(nullptr);
                 }

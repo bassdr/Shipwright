@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "soh/SohContext.h"
 #include <cctype>
 #include <map>
 #include <set>
@@ -77,7 +78,7 @@ void SetEnabledModsCVarValue() {
     }
 
     CVarSetString(CVAR_ENABLED_MODS_NAME, s.c_str());
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 void AfterModChange() {
@@ -186,7 +187,7 @@ std::vector<std::string>& GetModFiles(bool enabled) {
 }
 
 std::shared_ptr<Ship::ArchiveManager> GetArchiveManager() {
-    return Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+    return SohResourceManager()->GetArchiveManager();
 }
 
 bool IsValidExtension(std::string extension) {
@@ -523,8 +524,8 @@ void ModMenuWindow::DrawElement() {
                                       gfx_texture_cache_clear();
                                       SOH::SkeletonPatcher::ClearSkeletons();
                                       */
-                                      Ship::Context::GetRawInstance()->GetConsoleVariables()->Save();
-                                      Ship::Context::GetRawInstance()->GetWindow()->Close();
+                                      SohConsoleVariables()->Save();
+                                      SohWindow()->Close();
                                   });
         }
     }

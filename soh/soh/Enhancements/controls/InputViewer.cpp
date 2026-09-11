@@ -1,6 +1,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/SohContext.h"
 #include "libultraship/libultra/controller.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <libultraship/controller/controldeck/ControlDeck.h>
 #include <imgui.h>
 #include <spdlog/spdlog.h>
@@ -45,16 +46,15 @@ void InputViewer::RenderButton(std::string btnTexture, std::string btnOutlineTex
     // Render Outline based on settings
     if (outlineMode == BUTTON_OUTLINE_ALWAYS_SHOWN || (outlineMode == BUTTON_OUTLINE_NOT_PRESSED && !state) ||
         (outlineMode == BUTTON_OUTLINE_PRESSED && state)) {
-        ImGui::Image(std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                         ->GetTextureByName(btnOutlineTexture),
-                     size, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
+        ImGui::Image(
+            std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui())->GetTextureByName(btnOutlineTexture),
+            size, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
     }
     // Render button if pressed
     if (state) {
         ImGui::SetCursorPos(pos);
         ImGui::SetNextItemAllowOverlap();
-        ImGui::Image(std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui())
-                         ->GetTextureByName(btnTexture),
+        ImGui::Image(std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui())->GetTextureByName(btnTexture),
                      size, ImVec2(0, 0), ImVec2(1.0f, 1.0f));
     }
 }
@@ -70,7 +70,7 @@ void InputViewer::Draw() {
 
 void InputViewer::DrawElement() {
     if (CVarGetInteger(CVAR_WINDOW("InputViewer"), 0)) {
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
         static bool sButtonTexturesLoaded = false;
         if (!sButtonTexturesLoaded) {
             gui->LoadTextureFromRawImage("Input-Viewer-Background", "textures/buttons/InputViewerBackground.png");
@@ -144,8 +144,7 @@ void InputViewer::DrawElement() {
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
 
-        OSContPad* pads =
-            std::dynamic_pointer_cast<LUS::ControlDeck>(Ship::Context::GetRawInstance()->GetControlDeck())->GetPads();
+        OSContPad* pads = std::dynamic_pointer_cast<LUS::ControlDeck>(SohControlDeck())->GetPads();
 
         ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
                                        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground |

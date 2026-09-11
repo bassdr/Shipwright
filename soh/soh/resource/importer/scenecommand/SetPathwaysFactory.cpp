@@ -1,7 +1,8 @@
 #include "soh/resource/importer/scenecommand/SetPathwaysFactory.h"
+#include "soh/SohContext.h"
 #include "soh/resource/type/scenecommand/SetPathways.h"
 #include "soh/resource/logging/SceneCommandLoggers.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <tinyxml2.h>
 
@@ -16,8 +17,7 @@ std::shared_ptr<Ship::IResource> SetPathwaysFactory::ReadResource(std::shared_pt
     setPathways->paths.reserve(setPathways->numPaths);
     for (uint32_t i = 0; i < setPathways->numPaths; i++) {
         std::string pathFileName = reader->ReadString();
-        auto path = std::static_pointer_cast<Path>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(pathFileName.c_str()));
+        auto path = std::static_pointer_cast<Path>(SohResourceManager()->LoadResourceProcess(pathFileName.c_str()));
         setPathways->paths.push_back(path->GetPointer());
         setPathways->pathFileNames.push_back(pathFileName);
     }
@@ -41,8 +41,7 @@ std::shared_ptr<Ship::IResource> SetPathwaysFactoryXML::ReadResource(std::shared
         std::string childName = child->Name();
         if (childName == "Pathway") {
             std::string pathFileName = child->Attribute("FilePath");
-            auto path = std::static_pointer_cast<Path>(
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(pathFileName.c_str()));
+            auto path = std::static_pointer_cast<Path>(SohResourceManager()->LoadResourceProcess(pathFileName.c_str()));
             setPathways->paths.push_back(path->GetPointer());
             setPathways->pathFileNames.push_back(pathFileName);
         }

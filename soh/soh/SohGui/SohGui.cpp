@@ -6,6 +6,7 @@
 //
 
 #include <imgui.h>
+#include "soh/SohContext.h"
 
 #include "SohGui.hpp"
 
@@ -99,7 +100,7 @@ std::shared_ptr<SohMenu> GetSohMenu() {
 }
 
 void SetupMenu() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
     mSohMenu = std::make_shared<SohMenu>(CVAR_WINDOW("Menu"), "Port Menu");
     gui->SetMenu(mSohMenu);
 
@@ -113,7 +114,7 @@ void SetupMenuElements() {
 }
 
 void SetupGuiElements() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
 
     mConsoleWindow = std::make_shared<SohConsoleWindow>(CVAR_WINDOW("SohConsole"), "Console##SoH", ImVec2(820, 630));
     gui->AddGuiWindow(mConsoleWindow);
@@ -204,7 +205,7 @@ void SetupGuiElements() {
 }
 
 void Destroy() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
     gui->RemoveAllGuiWindows();
 
     mNotificationWindow = nullptr;

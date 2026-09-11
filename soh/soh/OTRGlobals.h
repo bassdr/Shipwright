@@ -48,6 +48,8 @@ class OTRGlobals {
   public:
     static OTRGlobals* Instance;
 
+    // CreateDefaultInstance hands back ownership; the raw pointer below points into it.
+    std::shared_ptr<Ship::Context> contextOwner;
     Ship::Context* context;
     std::shared_ptr<SaveStateMgr> gSaveStateMgr;
     std::shared_ptr<Randomizer> gRandomizer;

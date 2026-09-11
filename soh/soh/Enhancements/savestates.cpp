@@ -1,7 +1,8 @@
 #include <memory>
+#include "soh/SohContext.h"
 
 #include <spdlog/spdlog.h>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/window/Window.h>
 
 #include "savestates.h"
@@ -353,8 +354,7 @@ extern "C" void ProcessSaveStateRequests(void) {
 }
 
 void SaveStateMgr::SetCurrentSlot(unsigned int slot) {
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(1.0f, true,
-                                                                                                   "slot %u set", slot);
+    SohWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(1.0f, true, "slot %u set", slot);
     this->currentSlot = slot;
 }
 
@@ -373,14 +373,14 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
                         std::make_shared<SaveState>(OTRGlobals::Instance->gSaveStateMgr, request.slot);
                 }
                 this->states[request.slot]->Save();
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                    1.0f, true, "saved state %u", request.slot);
+                SohWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(1.0f, true, "saved state %u",
+                                                                              request.slot);
                 break;
             case RequestType::LOAD:
                 if (this->states.contains(request.slot)) {
                     this->states[request.slot]->Load();
-                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                        1.0f, true, "loaded state %u", request.slot);
+                    SohWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(1.0f, true, "loaded state %u",
+                                                                                  request.slot);
                 } else {
                     SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
                 }
@@ -396,8 +396,8 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
 SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
     if (gPlayState == nullptr) {
         SPDLOG_ERROR("[SOH] Can not save or load a state outside of \"GamePlay\"");
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-            1.0f, true, "states not available here", request.slot);
+        SohWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(1.0f, true, "states not available here",
+                                                                      request.slot);
         return SaveStateReturn::FAIL_WRONG_GAMESTATE;
     }
 
@@ -411,8 +411,8 @@ SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
                 return SaveStateReturn::SUCCESS;
             } else {
                 SPDLOG_ERROR("Invalid SaveState slot: {}", request.slot);
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(
-                    1.0f, true, "state slot %u empty", request.slot);
+                SohWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(1.0f, true, "state slot %u empty",
+                                                                              request.slot);
                 return SaveStateReturn::FAIL_INVALID_SLOT;
             }
             [[unlikely]] default

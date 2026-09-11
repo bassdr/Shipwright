@@ -1,4 +1,5 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <ship/window/Window.h>
 
 #include "Mouse.h"
@@ -21,7 +22,7 @@ static Ship::Coords mouseCoordRel = {};
 #define MOUSE_ENABLED (CVAR_ENABLE_MOUSE_VALUE && GetWindow()->IsMouseCaptured())
 
 std::shared_ptr<Ship::Window> GetWindow() {
-    return OTRGlobals::Instance->context->GetWindow();
+    return SohWindow();
 }
 
 extern "C" {

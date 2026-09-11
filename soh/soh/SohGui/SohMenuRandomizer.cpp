@@ -1,4 +1,5 @@
 #include <unordered_set>
+#include "soh/SohContext.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "SohMenu.h"
@@ -43,7 +44,7 @@ void SaveEnabledTricks() {
     } else {
         CVarSetString(CVAR_RANDOMIZER_SETTING("EnabledTricks"), enabledTrickString.c_str());
     }
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     tricksDirty = false;
     return;
 }
@@ -62,7 +63,7 @@ void SaveExcludedLocations() {
     } else {
         CVarSetString(CVAR_RANDOMIZER_SETTING("ExcludedLocations"), excludedLocationString.c_str());
     }
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     locationsDirty = true;
 }
 

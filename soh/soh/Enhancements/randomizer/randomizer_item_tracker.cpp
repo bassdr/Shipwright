@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "soh/SohContext.h"
 #include <map>
 #include <string>
 #include <vector>
@@ -855,7 +856,7 @@ void DrawItemCount(ItemTrackerItem item, bool hideMax) {
 }
 
 void DrawEquip(ItemTrackerItem item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     assert(item.kind == ITEM_KIND_ITEM);
     bool hasEquip = HasEquipment(item) && IsValidSaveFile();
     bool giantsKnife = item.id == ITEM_SWORD_BGS && hasEquip && !gSaveContext.bgsFlag;
@@ -867,7 +868,7 @@ void DrawEquip(ItemTrackerItem item) {
 }
 
 void DrawQuest(ItemTrackerItem item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     assert(item.kind == ITEM_KIND_QUEST);
     bool hasQuestItem = HasQuestItem(item);
     float iconSize = static_cast<float>(CVarGetInteger(CVAR_TRACKER_ITEM("IconSize"), 36));
@@ -897,7 +898,7 @@ bool HasBossSoul(RandomizerInf bossSoul) {
 }
 
 void DrawItem(ItemTrackerItem item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     uint32_t actualItemId =
         GameInteractor::IsSaveLoaded() && item.kind == ITEM_KIND_ITEM && item.id < ARRAY_COUNT(gItemSlots)
             ? INV_CONTENT(item.id)
@@ -1230,7 +1231,7 @@ void DrawItem(ItemTrackerItem item) {
 }
 
 void DrawBottle(ItemTrackerItem item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     assert(item.kind == ITEM_KIND_ITEM);
     uint32_t actualItemId =
         GameInteractor::IsSaveLoaded() ? (gSaveContext.inventory.items[SLOT(item.id) + item.data]) : false;
@@ -1250,7 +1251,7 @@ void DrawBottle(ItemTrackerItem item) {
 };
 
 void DrawDungeonItem(ItemTrackerItem item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     assert(item.kind == ITEM_KIND_ITEM);
     uint32_t itemId = item.id;
     ImU32 dungeonColor = IM_COL_WHITE;
@@ -1304,7 +1305,7 @@ void DrawDungeonItem(ItemTrackerItem item) {
 }
 
 void DrawSong(ItemTrackerItem item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     assert(item.kind == ITEM_KIND_QUEST);
     float iconSize = static_cast<float>(CVarGetInteger(CVAR_TRACKER_ITEM("IconSize"), 36));
     ImVec2 p = ImGui::GetCursorScreenPos();
@@ -1799,8 +1800,7 @@ void ItemTrackerWindow::DrawElement() {
     int iconSpacing = CVarGetInteger(CVAR_TRACKER_ITEM("IconSpacing"), 12);
     int comboButton1Mask = buttonMap[CVarGetInteger(CVAR_TRACKER_ITEM("ComboButton1"), TRACKER_COMBO_BUTTON_L)];
     int comboButton2Mask = buttonMap[CVarGetInteger(CVAR_TRACKER_ITEM("ComboButton2"), TRACKER_COMBO_BUTTON_R)];
-    OSContPad* buttonsPressed =
-        std::dynamic_pointer_cast<LUS::ControlDeck>(Ship::Context::GetRawInstance()->GetControlDeck())->GetPads();
+    OSContPad* buttonsPressed = std::dynamic_pointer_cast<LUS::ControlDeck>(SohControlDeck())->GetPads();
     bool comboButtonsHeld = buttonsPressed != nullptr && buttonsPressed[0].button & comboButton1Mask &&
                             buttonsPressed[0].button & comboButton2Mask;
     bool isPaused = CVarGetInteger(CVAR_TRACKER_ITEM("ShowOnlyPaused"), 0) == 0 ||

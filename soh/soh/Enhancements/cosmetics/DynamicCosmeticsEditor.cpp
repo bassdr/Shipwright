@@ -1,4 +1,5 @@
 #include "CosmeticsEditor.h"
+#include "soh/SohContext.h"
 
 #include <string>
 #include <functional>
@@ -119,7 +120,7 @@ static Color_RGBA8 GetCustomCosmeticColor(const CustomCosmeticEntry& entry) {
 }
 
 void ApplyCustomCosmetics() {
-    auto resourceManager = Ship::Context::GetRawInstance()->GetResourceManager();
+    auto resourceManager = SohResourceManager();
     auto archiveManager = resourceManager->GetArchiveManager();
 
     for (auto& entry : customCosmeticEntries) {
@@ -155,13 +156,13 @@ static void SetCustomCosmeticColor(const CustomCosmeticEntry& entry, Color_RGBA8
     ShipInit::Init(entry.option.rainbowCvar);
     ShipInit::Init(entry.option.changedCvar);
     ApplyCustomCosmetics();
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 static void ResetCustomCosmeticColor(const CustomCosmeticEntry& entry) {
     ResetColor(const_cast<CosmeticOption&>(entry.option));
     ApplyCustomCosmetics();
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 static void RandomizeCustomCosmeticColor(const CustomCosmeticEntry& entry) {
@@ -209,7 +210,7 @@ static void DrawCustomCosmeticColorRow(const char* label, const char* cvar, Colo
 void ScanCustomCosmetics() {
     customCosmeticEntries.clear();
 
-    auto resourceManager = Ship::Context::GetRawInstance()->GetResourceManager();
+    auto resourceManager = SohResourceManager();
     auto archiveManager = resourceManager->GetArchiveManager();
     auto archives = archiveManager->GetArchives();
     std::unordered_map<std::string, size_t> entryIndicesByKey;
@@ -389,14 +390,14 @@ static void DrawCustomCosmeticRow(const CustomCosmeticEntry& entry) {
             CVarSetInteger(entry.option.changedCvar, 1);
             ShipInit::Init(entry.option.changedCvar);
             ApplyCustomCosmetics();
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         },
         [&entry]() { RandomizeCustomCosmeticColor(entry); },
         [&entry]() {
             CVarSetInteger(entry.option.changedCvar, 1);
             ShipInit::Init(entry.option.changedCvar);
             ApplyCustomCosmetics();
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         },
         [&entry]() { ResetCustomCosmeticColor(entry); });
 }
@@ -410,7 +411,7 @@ static void DrawCustomCosmeticCategory(const char* label, const std::vector<cons
         for (const auto* entry : entries) {
             RandomizeCustomCosmeticColor(*entry);
         }
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         ApplyCustomCosmetics();
     }
     ImGui::SameLine();

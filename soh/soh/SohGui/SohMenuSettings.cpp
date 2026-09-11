@@ -1,4 +1,5 @@
 #include "SohMenu.h"
+#include "soh/SohContext.h"
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/enhancementTypes.h"
 #include "SohModals.h"
@@ -168,8 +169,7 @@ void SohMenu::AddMenuSettings() {
         .CVar(CVAR_SETTING("CursorVisibility"))
         .RaceDisable(false)
         .Callback([](WidgetInfo& info) {
-            Ship::Context::GetRawInstance()->GetWindow()->SetForceCursorVisibility(
-                CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
+            SohWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
         })
         .Options(CheckboxOptions().Tooltip("Makes the cursor always visible, even in full screen."));
 #endif
@@ -196,7 +196,7 @@ void SohMenu::AddMenuSettings() {
     AddWidget(path, "Open App Files Folder", WIDGET_BUTTON)
         .RaceDisable(false)
         .Callback([](WidgetInfo& info) {
-            std::string filesPath = Ship::Context::GetRawInstance()->GetAppDirectoryPath();
+            std::string filesPath = SohContext()->GetAppDirectoryPath();
             SDL_OpenURL(std::string("file:///" + std::filesystem::absolute(filesPath).string()).c_str());
         })
         .Options(ButtonOptions().Tooltip("Opens the folder that contains the save and mods folders, etc."));
@@ -356,15 +356,13 @@ void SohMenu::AddMenuSettings() {
     AddWidget(path, "Graphics Options", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Toggle Fullscreen", WIDGET_BUTTON)
         .RaceDisable(false)
-        .Callback([](WidgetInfo& info) { Ship::Context::GetRawInstance()->GetWindow()->ToggleFullscreen(); })
+        .Callback([](WidgetInfo& info) { SohWindow()->ToggleFullscreen(); })
         .Options(ButtonOptions().Tooltip("Toggles Fullscreen On/Off."));
     AddWidget(path, "Internal Resolution", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar(CVAR_INTERNAL_RESOLUTION)
         .RaceDisable(false)
-        .Callback([](WidgetInfo& info) {
-            Ship::Context::GetRawInstance()->GetWindow()->SetResolutionMultiplier(
-                CVarGetFloat(CVAR_INTERNAL_RESOLUTION, 1));
-        })
+        .Callback(
+            [](WidgetInfo& info) { SohWindow()->SetResolutionMultiplier(CVarGetFloat(CVAR_INTERNAL_RESOLUTION, 1)); })
         .PreFunc([](WidgetInfo& info) {
             if (mSohMenu->disabledMap.at(DISABLE_FOR_ADVANCED_RESOLUTION_ON).active &&
                 mSohMenu->disabledMap.at(DISABLE_FOR_VERTICAL_RES_TOGGLE_ON).active) {
@@ -386,9 +384,7 @@ void SohMenu::AddMenuSettings() {
     AddWidget(path, "Anti-aliasing (MSAA)", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_MSAA_VALUE)
         .RaceDisable(false)
-        .Callback([](WidgetInfo& info) {
-            Ship::Context::GetRawInstance()->GetWindow()->SetMsaaLevel(CVarGetInteger(CVAR_MSAA_VALUE, 1));
-        })
+        .Callback([](WidgetInfo& info) { SohWindow()->SetMsaaLevel(CVarGetInteger(CVAR_MSAA_VALUE, 1)); })
         .Options(
             IntSliderOptions()
                 .Tooltip("Activates MSAA (multi-sample anti-aliasing) from 2x up to 8x, to smooth the edges of "
@@ -463,10 +459,9 @@ void SohMenu::AddMenuSettings() {
                 "This will completely erase the controls config, including registered devices.\nContinue?", "Clear",
                 "Cancel",
                 []() {
-                    Ship::Context::GetRawInstance()->GetConsoleVariables()->ClearBlock(CVAR_PREFIX_SETTING
-                                                                                       ".Controllers");
+                    SohConsoleVariables()->ClearBlock(CVAR_PREFIX_SETTING ".Controllers");
                     uint8_t bits = 0;
-                    Ship::Context::GetRawInstance()->GetControlDeck()->Init(&bits);
+                    SohControlDeck()->Init(&bits);
                 },
                 nullptr);
         })

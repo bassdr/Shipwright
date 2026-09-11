@@ -1,4 +1,5 @@
 #include "Presets.h"
+#include "soh/SohContext.h"
 #include <string>
 #include <fstream>
 #include <spdlog/common.h>
@@ -134,7 +135,7 @@ void applyPreset(std::string presetName, std::vector<PresetSection> includeSecti
                 } else {
                     auto block = item.value();
                     if (sectionStrategy == "merge") {
-                        auto currentJson = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+                        auto currentJson = SohConfig()->GetNestedJson();
                         if (currentJson.contains("CVars") && currentJson["CVars"].contains(item.key())) {
                             block = currentJson["CVars"][item.key()];
                             // Recursively merge the two json objects
@@ -142,9 +143,8 @@ void applyPreset(std::string presetName, std::vector<PresetSection> includeSecti
                         }
                     }
 
-                    Ship::Context::GetRawInstance()->GetConfig()->SetBlock(
-                        spdlog::fmt_lib::format("{}.{}", "CVars", item.key()), block);
-                    Ship::Context::GetRawInstance()->GetConsoleVariables()->Load();
+                    SohConfig()->SetBlock(spdlog::fmt_lib::format("{}.{}", "CVars", item.key()), block);
+                    SohConsoleVariables()->Load();
                 }
             }
             if (i == PRESET_SECTION_RANDOMIZER) {
@@ -186,7 +186,7 @@ void DrawPresetSelector(std::vector<PresetSection> includeSections, std::string 
             if (ImGui::Selectable(iter->c_str(), *iter == currentIndex)) {
                 CVarSetString(selectorCvar.c_str(), iter->c_str());
                 currentIndex = *iter;
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             }
         }
 
@@ -290,12 +290,11 @@ void LoadPresets() {
     initData->Type = static_cast<uint32_t>(Ship::ResourceType::Json);
     initData->ResourceVersion = 0;
     std::string folder = "presets/*";
-    auto builtIns = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->ListFiles(folder);
+    auto builtIns = SohResourceManager()->GetArchiveManager()->ListFiles(folder);
     size_t start = std::string(folder).size() - 1;
     for (size_t i = 0; i < builtIns->size(); i++) {
         std::string filePath = builtIns->at(i);
-        auto json = std::static_pointer_cast<Ship::Json>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(filePath, true, initData));
+        auto json = std::static_pointer_cast<Ship::Json>(SohResourceManager()->LoadResource(filePath, true, initData));
 
         std::string fileName = filePath.substr(start, filePath.size() - start - 5); // 5 for length of ".json"
         ParsePreset(json->Data, fileName);
@@ -362,7 +361,7 @@ void DrawEditPresetPopup() {
                         .Padding({ 6.0f, 6.0f })
                         .Color(THEME_COLOR))) {
         presets[newPresetName] = {};
-        auto config = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+        auto config = SohConfig()->GetNestedJson();
         for (int i = PRESET_SECTION_SETTINGS; i < PRESET_SECTION_MAX; i++) {
             if (saveSection[i]) {
                 for (size_t j = 0; j < blockInfo[i].sections.size(); j++) {
@@ -544,7 +543,7 @@ void RegisterPresetsWidgets() {
     SohGui::mSohMenu->AddWidget(path, "PresetsWidget", WIDGET_CUSTOM)
         .CustomFunction(PresetsCustomWidget)
         .HideInSearch(true);
-    presetFolder = Ship::Context::GetRawInstance()->GetPathRelativeToAppDirectory("presets");
+    presetFolder = SohContext()->GetPathRelativeToAppDirectory("presets");
     std::fill_n(saveSection, PRESET_SECTION_MAX, true);
     LoadPresets();
 }

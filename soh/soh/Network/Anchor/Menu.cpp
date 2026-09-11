@@ -1,4 +1,5 @@
 #include "Anchor.h"
+#include "soh/SohContext.h"
 #include "soh/SohGui/SohGui.hpp"
 #include "soh/SohGui/SohMenu.h"
 #include "soh/util.h"
@@ -33,7 +34,7 @@ void AnchorMainMenu(WidgetInfo& info) {
                                          ImVec2((ImGui::GetFontSize() * 5 + ImGui::GetStyle().ItemSpacing.x), 0))
                                    .Color(THEME_COLOR))) {
         CVarSetString(CVAR_REMOTE_ANCHOR("Host"), host.c_str());
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
 
     ImGui::SameLine();
@@ -41,7 +42,7 @@ void AnchorMainMenu(WidgetInfo& info) {
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5);
     if (ImGui::InputScalar("##Port", ImGuiDataType_U16, &port)) {
         CVarSetInteger(CVAR_REMOTE_ANCHOR("Port"), port);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
     UIWidgets::PopStyleInput();
 
@@ -52,20 +53,20 @@ void AnchorMainMenu(WidgetInfo& info) {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
     if (UIWidgets::InputString("##Name", &anchorName, UIWidgets::InputOptions().Color(THEME_COLOR))) {
         CVarSetString(CVAR_REMOTE_ANCHOR("Name"), anchorName.c_str());
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
     ImGui::Text("Room ID");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
     if (UIWidgets::InputString("##RoomId", &anchorRoomId,
                                UIWidgets::InputOptions().IsSecret(anchor->isEnabled).Color(THEME_COLOR))) {
         CVarSetString(CVAR_REMOTE_ANCHOR("RoomId"), anchorRoomId.c_str());
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
     ImGui::Text("Team ID (Items & Flags Shared)");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
     if (UIWidgets::InputString("##TeamId", &anchorTeamId, UIWidgets::InputOptions().Color(THEME_COLOR))) {
         CVarSetString(CVAR_REMOTE_ANCHOR("TeamId"), anchorTeamId.c_str());
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
     ImGui::Spacing();
 
@@ -77,7 +78,7 @@ void AnchorMainMenu(WidgetInfo& info) {
         CVarSetString(CVAR_REMOTE_ANCHOR("TeamId"), "default");
         CVarSetString(CVAR_REMOTE_ANCHOR("RoomId"), "");
         CVarSetString(CVAR_REMOTE_ANCHOR("Name"), "");
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
 
     ImGui::SameLine();
@@ -90,7 +91,7 @@ void AnchorMainMenu(WidgetInfo& info) {
         CVarSetInteger(CVAR_REMOTE_ANCHOR("Port"), 43383);
         CVarSetString(CVAR_REMOTE_ANCHOR("TeamId"), "default");
         CVarSetString(CVAR_REMOTE_ANCHOR("RoomId"), "soh-global");
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
 
     ImGui::EndDisabled();
@@ -104,11 +105,11 @@ void AnchorMainMenu(WidgetInfo& info) {
     if (ImGui::Button(buttonLabel, ImVec2(-1.0f, 0.0f))) {
         if (anchor->isEnabled) {
             CVarClear(CVAR_REMOTE_ANCHOR("Enabled"));
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             anchor->Disable();
         } else {
             CVarSetInteger(CVAR_REMOTE_ANCHOR("Enabled"), 1);
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             anchor->Enable();
         }
     }

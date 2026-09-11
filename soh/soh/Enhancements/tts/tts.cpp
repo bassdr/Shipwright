@@ -1,8 +1,9 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/SohContext.h"
 #include "soh/Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 
 #include <cassert>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/File.h>
 #include <ship/resource/ResourceManager.h>
 #include <ship/resource/type/Json.h>
@@ -1125,22 +1126,22 @@ void InitTTSBank() {
     initData->Type = static_cast<uint32_t>(Ship::ResourceType::Json);
     initData->ResourceVersion = 0;
 
-    sceneMap = std::static_pointer_cast<Ship::Json>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
-                                                        "accessibility/texts/scenes" + languageSuffix, true, initData))
+    sceneMap = std::static_pointer_cast<Ship::Json>(
+                   SohResourceManager()->LoadResource("accessibility/texts/scenes" + languageSuffix, true, initData))
                    ->Data;
 
-    miscMap = std::static_pointer_cast<Ship::Json>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
-                                                       "accessibility/texts/misc" + languageSuffix, true, initData))
+    miscMap = std::static_pointer_cast<Ship::Json>(
+                  SohResourceManager()->LoadResource("accessibility/texts/misc" + languageSuffix, true, initData))
                   ->Data;
 
     kaleidoMap =
-        std::static_pointer_cast<Ship::Json>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
-                                                 "accessibility/texts/kaleidoscope" + languageSuffix, true, initData))
+        std::static_pointer_cast<Ship::Json>(
+            SohResourceManager()->LoadResource("accessibility/texts/kaleidoscope" + languageSuffix, true, initData))
             ->Data;
 
     fileChooseMap =
-        std::static_pointer_cast<Ship::Json>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
-                                                 "accessibility/texts/filechoose" + languageSuffix, true, initData))
+        std::static_pointer_cast<Ship::Json>(
+            SohResourceManager()->LoadResource("accessibility/texts/filechoose" + languageSuffix, true, initData))
             ->Data;
 }
 

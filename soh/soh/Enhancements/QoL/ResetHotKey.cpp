@@ -1,4 +1,5 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <ship/window/Window.h>
 #include <ship/window/gui/ConsoleWindow.h>
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -23,8 +24,8 @@ static void OnGameStateMainStartResetHotkey() {
     if (mask != 0 && CHECK_BTN_ANY(gGameState->input[0].press.button, mask) &&
         CHECK_BTN_ALL(gGameState->input[0].cur.button, mask)) {
 
-        auto consoleWin = std::reinterpret_pointer_cast<Ship::ConsoleWindow>(
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"));
+        auto consoleWin =
+            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"));
 
         if (consoleWin) {
             consoleWin->Dispatch("reset");

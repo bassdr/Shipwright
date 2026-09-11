@@ -1,4 +1,5 @@
 #include "Mapper.h"
+#include "soh/SohContext.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,7 +13,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/controller/controldeck/ControlDeck.h>
 #include <ship/resource/ResourceManager.h>
 #include <ship/resource/archive/ArchiveManager.h>
@@ -837,10 +838,7 @@ bool LoadUserMappings() {
     }
 
     SPDLOG_INFO("Added {} user gamepad mapping(s) from \"{}\"", added, path);
-    Ship::Context::GetRawInstance()
-        ->GetControlDeck()
-        ->GetConnectedPhysicalDeviceManager()
-        ->RefreshConnectedSDLGamepads();
+    SohControlDeck()->GetConnectedPhysicalDeviceManager()->RefreshConnectedSDLGamepads();
     return true;
 }
 
@@ -872,10 +870,7 @@ bool SaveUserMapping(const std::string& mapping) {
         return false;
     }
 
-    Ship::Context::GetRawInstance()
-        ->GetControlDeck()
-        ->GetConnectedPhysicalDeviceManager()
-        ->RefreshConnectedSDLGamepads();
+    SohControlDeck()->GetConnectedPhysicalDeviceManager()->RefreshConnectedSDLGamepads();
     return true;
 }
 
@@ -903,10 +898,7 @@ bool DeleteUserMapping(const std::string& guid) {
         return false;
     }
 
-    Ship::Context::GetRawInstance()
-        ->GetControlDeck()
-        ->GetConnectedPhysicalDeviceManager()
-        ->RefreshConnectedSDLGamepads();
+    SohControlDeck()->GetConnectedPhysicalDeviceManager()->RefreshConnectedSDLGamepads();
     return true;
 }
 
@@ -1146,8 +1138,8 @@ void MapperWindow::StartSession(const std::vector<int32_t>& order) {
     mSession.Start(mJoystick, order);
     SnapshotDeviceState();
 
-    Ship::Context::GetRawInstance()->GetControlDeck()->BlockGameInput(MAPPER_WINDOW_GAME_INPUT_BLOCK_ID);
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->BlockGamepadNavigation();
+    SohControlDeck()->BlockGameInput(MAPPER_WINDOW_GAME_INPUT_BLOCK_ID);
+    SohWindow()->GetGui()->BlockGamepadNavigation();
 }
 
 void MapperWindow::EndSession(bool applyResult) {
@@ -1160,7 +1152,7 @@ void MapperWindow::EndSession(bool applyResult) {
     mPreviousHats.clear();
 
     mGameInputBlockTimer = 20;
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->UnblockGamepadNavigation();
+    SohWindow()->GetGui()->UnblockGamepadNavigation();
 }
 
 void MapperWindow::UpdateElement() {
@@ -1190,7 +1182,7 @@ void MapperWindow::UpdateElement() {
     if (mGameInputBlockTimer != INT32_MAX && !mSession.IsActive()) {
         mGameInputBlockTimer--;
         if (mGameInputBlockTimer <= 0) {
-            Ship::Context::GetRawInstance()->GetControlDeck()->UnblockGameInput(MAPPER_WINDOW_GAME_INPUT_BLOCK_ID);
+            SohControlDeck()->UnblockGameInput(MAPPER_WINDOW_GAME_INPUT_BLOCK_ID);
             mGameInputBlockTimer = INT32_MAX;
         }
     }
@@ -1213,8 +1205,8 @@ void MapperWindow::UpdateElement() {
     }
 
     if (mSession.IsActive()) {
-        Ship::Context::GetRawInstance()->GetControlDeck()->BlockGameInput(MAPPER_WINDOW_GAME_INPUT_BLOCK_ID);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->BlockGamepadNavigation();
+        SohControlDeck()->BlockGameInput(MAPPER_WINDOW_GAME_INPUT_BLOCK_ID);
+        SohWindow()->GetGui()->BlockGamepadNavigation();
 
         PollDeviceForSession();
         mSession.CheckPendingAdvance();
@@ -1308,7 +1300,7 @@ void MapperWindow::DrawDeviceSelector() {
 }
 
 void MapperWindow::DrawDiagram() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     const bool haveArt = gui != nullptr && gui->HasTextureByName(kDiagramTextureName);
 
     float artAspect = FALLBACK_ART_ASPECT;
@@ -1673,8 +1665,8 @@ void MapperWindow::DrawElement() {
     static bool sDiagramTextureRequested = false;
     if (!sDiagramTextureRequested) {
         sDiagramTextureRequested = true;
-        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
-        auto archives = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+        auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
+        auto archives = SohResourceManager()->GetArchiveManager();
         if (gui != nullptr && archives != nullptr && archives->HasFile(kDiagramTexturePath)) {
             gui->LoadTextureFromRawImage(kDiagramTextureName, kDiagramTexturePath);
         }
@@ -1706,7 +1698,7 @@ void MapperWindow::DrawElement() {
 // ---------------------------------------------------------------------------------------------------
 
 static void RegisterMapperWidgets() {
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->AddGuiWindow(
+    SohWindow()->GetGui()->AddGuiWindow(
         std::make_shared<MapperWindow>(CVAR_WINDOW("GamepadMapper"), "Gamepad Mapper", ImVec2(1280, 820)));
     WidgetPath path = { "Settings", "Controls", SECTION_COLUMN_2 };
     SohGui::mSohMenu->AddWidget(path, "Gamepad Mapper", WIDGET_SEPARATOR_TEXT);

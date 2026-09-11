@@ -1,8 +1,9 @@
 #include <type_traits>
+#include "soh/SohContext.h"
 
 #include <ship/resource/ResourceManager.h>
 #include <tinyxml2.h>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/archive/Archive.h>
 #include <ship/utils/binarytools/BinaryWriter.h>
 
@@ -319,10 +320,10 @@ ResourceFactoryXMLAudioSequenceV0::ReadResource(std::shared_ptr<Ship::File> file
     auto child = std::get<std::shared_ptr<tinyxml2::XMLDocument>>(file->Reader)->FirstChildElement();
     unsigned int i = 0;
 
-    sequence->sequence.medium =
-        ResourceFactoryXMLSoundFontV0::MediumStrToInt(child->Attribute("Medium"), initData->Path.c_str());
-    sequence->sequence.cachePolicy =
-        ResourceFactoryXMLSoundFontV0::CachePolicyToInt(child->Attribute("CachePolicy"), initData->Path.c_str());
+    sequence->sequence.medium = ResourceFactoryXMLSoundFontV0::MediumStrToInt(child->Attribute("Medium"),
+                                                                              initData->Identifier.GetPath().c_str());
+    sequence->sequence.cachePolicy = ResourceFactoryXMLSoundFontV0::CachePolicyToInt(
+        child->Attribute("CachePolicy"), initData->Identifier.GetPath().c_str());
     sequence->sequence.seqDataSize = child->IntAttribute("Size");
     sequence->sequence.seqNumber = child->IntAttribute("Index");
     bool streamed = child->BoolAttribute("Streamed");
@@ -341,7 +342,7 @@ ResourceFactoryXMLAudioSequenceV0::ReadResource(std::shared_ptr<Ship::File> file
     const char* path = child->Attribute("Path");
     std::shared_ptr<Ship::File> seqFile;
     if (path != nullptr) {
-        seqFile = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->LoadFile(path);
+        seqFile = SohResourceManager()->GetArchiveManager()->LoadFile(path);
     }
 
     if (!streamed) {

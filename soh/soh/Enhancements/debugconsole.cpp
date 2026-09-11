@@ -1,4 +1,5 @@
 #include <vector>
+#include "soh/SohContext.h"
 #include <string>
 
 #include <ship/utils/Utils.h>
@@ -18,7 +19,7 @@
 #define Path _Path
 #define PATH_HACK
 
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #undef PATH_HACK
 #undef Path
 
@@ -30,16 +31,12 @@ extern "C" {
 extern PlayState* gPlayState;
 }
 
-#define CMD_REGISTER Ship::Context::GetRawInstance()->GetConsole()->AddCommand
+#define CMD_REGISTER SohConsole()->AddCommand
 // TODO: Commands should be using the output passed in.
-#define ERROR_MESSAGE                                                                    \
-    std::reinterpret_pointer_cast<Ship::ConsoleWindow>(                                  \
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console")) \
-        ->SendErrorMessage
-#define INFO_MESSAGE                                                                     \
-    std::reinterpret_pointer_cast<Ship::ConsoleWindow>(                                  \
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console")) \
-        ->SendInfoMessage
+#define ERROR_MESSAGE \
+    std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))->SendErrorMessage
+#define INFO_MESSAGE \
+    std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))->SendInfoMessage
 
 static bool ActorSpawnHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                               std::string* output) {
@@ -521,7 +518,7 @@ static bool FileSelectHandler(std::shared_ptr<Ship::Console> Console, const std:
 
 static bool QuitHandler(std::shared_ptr<Ship::Console> Console, const std::vector<std::string>& args,
                         std::string* output) {
-    Ship::Context::GetRawInstance()->GetWindow()->Close();
+    SohWindow()->Close();
     return 0;
 }
 
@@ -1766,13 +1763,12 @@ void DebugConsole_Init(void) {
                             "Available Checks - Process Undiscovered Exits",
                             { { "enable", Ship::ArgumentType::NUMBER, true } } });
 
-    Ship::Context::GetRawInstance()->GetConsole()->AddCommand(
-        "acr", { AvailableChecksRecalculateHandler,
-                 "Available Checks - Recalculate",
-                 {
-                     { "starting_region", Ship::ArgumentType::NUMBER, true },
-                     { "ChildDay|ChildNight|AdultDay|AdultNight", Ship::ArgumentType::TEXT, true },
-                 } });
+    SohConsole()->AddCommand("acr", { AvailableChecksRecalculateHandler,
+                                      "Available Checks - Recalculate",
+                                      {
+                                          { "starting_region", Ship::ArgumentType::NUMBER, true },
+                                          { "ChildDay|ChildNight|AdultDay|AdultNight", Ship::ArgumentType::TEXT, true },
+                                      } });
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }

@@ -83,7 +83,8 @@ ResourceFactoryBinarySceneV0::ParseSceneCommand(std::shared_ptr<Scene> scene,
         auto initData = std::make_shared<Ship::ResourceInitData>();
         initData->Id = scene->GetInitData()->Id;
         initData->Type = static_cast<uint32_t>(SOH::ResourceType::SOH_SceneCommand);
-        initData->Path = scene->GetInitData()->Path + "/SceneCommand" + std::to_string(index);
+        initData->Identifier.GetPath() =
+            scene->GetInitData()->Identifier.GetPath() + "/SceneCommand" + std::to_string(index);
         initData->ResourceVersion = scene->GetInitData()->ResourceVersion;
         result = std::static_pointer_cast<ISceneCommand>(commandFactory->ReadResource(initData, reader));
         // Cache the resource?
@@ -91,7 +92,7 @@ ResourceFactoryBinarySceneV0::ParseSceneCommand(std::shared_ptr<Scene> scene,
 
     if (result == nullptr) {
         SPDLOG_ERROR("Failed to load scene command of type {} in scene {}", (uint32_t)cmdID,
-                     scene->GetInitData()->Path);
+                     scene->GetInitData()->Identifier.GetPath());
     }
 
     return result;
@@ -201,7 +202,8 @@ std::shared_ptr<ISceneCommand> ResourceFactoryXMLSceneV0::ParseSceneCommand(std:
     SceneCommandID cmdID = GetCommandID(commandName);
 
     if (cmdID == SceneCommandID::Error) {
-        SPDLOG_ERROR("Failed to load scene command with name {} in scene {}", commandName, scene->GetInitData()->Path);
+        SPDLOG_ERROR("Failed to load scene command with name {} in scene {}", commandName,
+                     scene->GetInitData()->Identifier.GetPath());
         return nullptr;
     }
 
@@ -212,7 +214,8 @@ std::shared_ptr<ISceneCommand> ResourceFactoryXMLSceneV0::ParseSceneCommand(std:
         auto initData = std::make_shared<Ship::ResourceInitData>();
         initData->Id = scene->GetInitData()->Id;
         initData->Type = static_cast<uint32_t>(ResourceType::SOH_SceneCommand);
-        initData->Path = scene->GetInitData()->Path + "/SceneCommand" + std::to_string(index);
+        initData->Identifier.GetPath() =
+            scene->GetInitData()->Identifier.GetPath() + "/SceneCommand" + std::to_string(index);
         initData->ResourceVersion = scene->GetInitData()->ResourceVersion;
         result = std::static_pointer_cast<ISceneCommand>(commandFactory->ReadResource(initData, child));
         // Cache the resource?
@@ -220,7 +223,7 @@ std::shared_ptr<ISceneCommand> ResourceFactoryXMLSceneV0::ParseSceneCommand(std:
 
     if (result == nullptr) {
         SPDLOG_ERROR("Failed to load scene command of type {} in scene {}", (uint32_t)cmdID,
-                     scene->GetInitData()->Path);
+                     scene->GetInitData()->Identifier.GetPath());
     }
 
     return result;

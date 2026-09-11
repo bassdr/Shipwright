@@ -1,4 +1,7 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include <ship/window/gui/ConsoleWindow.h>
+#include <ship/window/gui/Gui.h>
+#include "soh/SohContext.h"
 #include <ship/window/Window.h>
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -65,8 +68,7 @@ static void DeleteFileOnDeath() {
     if (gPlayState->gameOverCtx.state == GAMEOVER_DEATH_MENU && gPlayState->pauseCtx.state == 9) {
         SaveManager::Instance->DeleteZeldaFile(gSaveContext.fileNum);
         hasAffectedHealth = false;
-        std::reinterpret_pointer_cast<Ship::ConsoleWindow>(
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+        std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))
             ->Dispatch("reset");
     }
 }

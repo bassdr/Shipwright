@@ -1,4 +1,5 @@
 #include "valueViewer.h"
+#include "soh/SohContext.h"
 #include <ship/config/Config.h>
 #include "soh/SohGui/UIWidgets.hpp"
 #include "soh/SohGui/SohGui.hpp"
@@ -69,7 +70,7 @@ std::array<ValueTableElement, VVE_MAX> valueTable = {{
 // clang-format on
 
 void LoadValueConfig() {
-    auto allConfig = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+    auto allConfig = SohConfig()->GetNestedJson();
     if (allConfig.find("ValueViewer") == allConfig.end() || !allConfig["ValueViewer"].is_array()) {
         allConfig["ValueViewer"] = nlohmann::json::array();
     }
@@ -77,10 +78,10 @@ void LoadValueConfig() {
 }
 
 void SaveValueConfig() {
-    auto allConfig = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+    auto allConfig = SohConfig()->GetNestedJson();
     allConfig["ValueViewer"] = valueViewerSettings;
-    Ship::Context::GetRawInstance()->GetConfig()->SetBlock("ValueViewer", valueViewerSettings);
-    Ship::Context::GetRawInstance()->GetConfig()->Save();
+    SohConfig()->SetBlock("ValueViewer", valueViewerSettings);
+    SohConfig()->Save();
 }
 
 extern "C" void ValueViewer_Draw(GfxPrint* printer) {

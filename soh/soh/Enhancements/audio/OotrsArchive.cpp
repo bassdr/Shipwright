@@ -1,10 +1,11 @@
 #include "OotrsArchive.h"
+#include "soh/SohContext.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 
-#include "ship/Context.h"
+#include "ship/core/Context.h"
 #include "ship/resource/ResourceManager.h"
 #include "ship/resource/archive/ArchiveManager.h"
 #include "ship/utils/binarytools/BinaryWriter.h"
@@ -228,8 +229,7 @@ bool OotrsArchive::WriteFile(const std::string& filename, const std::vector<uint
 }
 
 std::shared_ptr<Ship::File> OotrsArchive::LoadFile(uint64_t hash) {
-    const std::string* filePath =
-        Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->HashToString(hash);
+    const std::string* filePath = SohResourceManager()->GetArchiveManager()->HashToString(hash);
     if (filePath == nullptr) {
         return nullptr;
     }
@@ -294,13 +294,12 @@ size_t OotrsArchive::GetSongCount() const {
 }
 
 void MountOotrsArchives(const std::vector<std::filesystem::path>& paths) {
-    auto archiveManager = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+    auto archiveManager = SohResourceManager()->GetArchiveManager();
 
     for (const auto& path : paths) {
         auto archive = std::make_shared<OotrsArchive>(path.generic_string());
-        archive->Load();
-
-        if (!archive->IsLoaded()) {
+        // Archive::Load()/IsLoaded() are gone; Open() is the virtual and reports success.
+        if (!archive->Open()) {
             SPDLOG_ERROR("Failed to load custom music pack \"{}\"", path.generic_string());
             continue;
         }
