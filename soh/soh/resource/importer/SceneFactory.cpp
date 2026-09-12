@@ -83,8 +83,8 @@ ResourceFactoryBinarySceneV0::ParseSceneCommand(std::shared_ptr<Scene> scene,
         auto initData = std::make_shared<Ship::ResourceInitData>();
         initData->Id = scene->GetInitData()->Id;
         initData->Type = static_cast<uint32_t>(SOH::ResourceType::SOH_SceneCommand);
-        initData->Identifier.GetPath() =
-            scene->GetInitData()->Identifier.GetPath() + "/SceneCommand" + std::to_string(index);
+        initData->Identifier = Ship::ResourceIdentifier(scene->GetInitData()->Identifier.GetPath() + "/SceneCommand" +
+                                                        std::to_string(index));
         initData->ResourceVersion = scene->GetInitData()->ResourceVersion;
         result = std::static_pointer_cast<ISceneCommand>(commandFactory->ReadResource(initData, reader));
         // Cache the resource?
@@ -214,8 +214,8 @@ std::shared_ptr<ISceneCommand> ResourceFactoryXMLSceneV0::ParseSceneCommand(std:
         auto initData = std::make_shared<Ship::ResourceInitData>();
         initData->Id = scene->GetInitData()->Id;
         initData->Type = static_cast<uint32_t>(ResourceType::SOH_SceneCommand);
-        initData->Identifier.GetPath() =
-            scene->GetInitData()->Identifier.GetPath() + "/SceneCommand" + std::to_string(index);
+        initData->Identifier = Ship::ResourceIdentifier(scene->GetInitData()->Identifier.GetPath() + "/SceneCommand" +
+                                                        std::to_string(index));
         initData->ResourceVersion = scene->GetInitData()->ResourceVersion;
         result = std::static_pointer_cast<ISceneCommand>(commandFactory->ReadResource(initData, child));
         // Cache the resource?

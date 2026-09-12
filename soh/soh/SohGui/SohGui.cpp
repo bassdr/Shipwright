@@ -119,8 +119,10 @@ void SetupGuiElements() {
     mConsoleWindow = std::make_shared<SohConsoleWindow>(CVAR_WINDOW("SohConsole"), "Console##SoH", ImVec2(820, 630));
     gui->AddGuiWindow(mConsoleWindow);
 
+    auto fast3dWindow = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     mGfxDebuggerWindow =
-        std::make_shared<SohGfxDebuggerWindow>(CVAR_WINDOW("SohGfxDebugger"), "GfxDebugger##SoH", ImVec2(820, 630));
+        std::make_shared<SohGfxDebuggerWindow>(CVAR_WINDOW("SohGfxDebugger"), "GfxDebugger##SoH", ImVec2(820, 630),
+                                               fast3dWindow, fast3dWindow->GetGfxDebugger(), SohResourceManager());
     gui->AddGuiWindow(mGfxDebuggerWindow);
 
     mStatsWindow = std::make_shared<SohStatsWindow>(CVAR_WINDOW("SohStats"), "Stats##Soh", ImVec2(400, 100));

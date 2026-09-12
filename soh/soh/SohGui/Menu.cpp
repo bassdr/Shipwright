@@ -139,7 +139,7 @@ UIWidgets::Colors Menu::GetMenuThemeColor() {
 
 Menu::Menu(const std::string& cVar, const std::string& name, uint8_t searchSidebarIndex_,
            UIWidgets::Colors defaultThemeIndex_)
-    : GuiWindow(cVar, name), searchSidebarIndex(searchSidebarIndex_), defaultThemeIndex(defaultThemeIndex_) {
+    : SohGui::Window(cVar, name), searchSidebarIndex(searchSidebarIndex_), defaultThemeIndex(defaultThemeIndex_) {
 }
 
 void Menu::InitElement() {

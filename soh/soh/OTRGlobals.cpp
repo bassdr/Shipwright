@@ -273,6 +273,22 @@ static bool VerifyArchiveVersion(OTRVersion version);
 std::string portArchivePath = "";
 static bool sohArchiveVersionMatch = false;
 
+// CreateDefaultInstance builds Config and Audio in one call, but AudioSettings is
+// constructor-only and its sample rate is a CVar, which does not exist until that call has
+// already run. Read the one key straight off disk instead.
+static int ReadSavedAudioOutputRate(int fallback) {
+    try {
+        const std::string path = Ship::Context::LocateFileAcrossAppDirs("shipofharkinian.json");
+        std::ifstream file(path);
+        if (!file.is_open()) {
+            return fallback;
+        }
+        nlohmann::json config;
+        file >> config;
+        return config["CVars"][CVAR_PREFIX_AUDIO].value("OutputSampleRate", fallback);
+    } catch (...) { return fallback; }
+}
+
 OTRGlobals::OTRGlobals() {
     portArchivePath = Ship::Context::LocateFileAcrossAppDirs("soh.o2r");
     OTRVersion portArchiveVersion = DetectOTRVersion("soh.o2r", false);
@@ -298,9 +314,20 @@ OTRGlobals::OTRGlobals() {
     sohFast3dWindow =
         std::make_shared<Fast::Fast3dWindow>(std::vector<std::shared_ptr<Ship::GuiWindow>>({ sohInputEditorWindow }));
 
+    const int audioOutputRate = ReadSavedAudioOutputRate(32000);
+    // ~128 ms reservoir scaled to the rate, capped below the SDL backend's hard limit.
+    int desiredBuffered = 4096 * audioOutputRate / 32000;
+    if (desiredBuffered > 5500) {
+        desiredBuffered = 5500;
+    }
+    const Ship::AudioSettings audioSettings{ .SampleRate = audioOutputRate,
+                                             .SampleLength = 1024,
+                                             .DesiredBuffered = desiredBuffered };
+
     // Epoch 2 builds the whole component graph up front; the explicit Init* calls are gone.
-    contextOwner = Ship::Context::CreateDefaultInstance("Ship of Harkinian", appShortName, "shipofharkinian.json",
-                                                        { portArchivePath }, {}, 3, {}, sohFast3dWindow, controlDeck);
+    contextOwner =
+        Ship::Context::CreateDefaultInstance("Ship of Harkinian", appShortName, "shipofharkinian.json",
+                                             { portArchivePath }, {}, 3, audioSettings, sohFast3dWindow, controlDeck);
     context = contextOwner.get();
 
     SohGui::SetupMenu();
@@ -406,7 +433,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
     bool extractDone = false;
     ExtractSteps extractStep = ES_PORT_ARCHIVE;
     WindowsSteps windowsStep = WS_TEMP;
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->SohWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     auto gui = wnd->GetGui();
 
     OTRVersion vanillaVersion = DetectOTRVersion("oot.o2r", false);
@@ -823,11 +850,8 @@ void OTRGlobals::Initialize() {
 #else
     auto defaultLogLevel = spdlog::level::info;
 #endif
-    context->InitConfiguration();
-    context->InitConsoleVariables();
     auto logLevel =
         static_cast<spdlog::level::level_enum>(CVarGetInteger(CVAR_DEVELOPER_TOOLS("LogLevel"), defaultLogLevel));
-    context->InitLogging(logLevel, logLevel);
     spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%s:%#] [%^%l%$] %v");
 
     InitGfxDebugger();
@@ -836,22 +860,14 @@ void OTRGlobals::Initialize() {
     prevAltAssets = CVarGetInteger(CVAR_SETTING("AltAssets"), 1);
     SohResourceManager()->SetAltAssetsEnabled(prevAltAssets);
 
-    context->InitCrashHandler();
-
     SohWindow()->SetAutoCaptureMouse(CVarGetInteger(CVAR_SETTING("EnableMouse"), 0) &&
                                      CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
     SohWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
 
     // Output rate is user-selectable (restart-applied); native synth is 32 kHz and
     // the audio thread resamples up to it. Default 32 kHz matches the console.
-    const int audioOutputRate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000);
     // ~128 ms reservoir scaled to the rate, capped below the LUS SDL backend's hard
     // limit (DoPlay drops past ~6000 frames, which would spin the fill loop).
-    int desiredBuffered = 4096 * audioOutputRate / 32000;
-    if (desiredBuffered > 5500) {
-        desiredBuffered = 5500;
-    }
-    context->InitAudio({ .SampleRate = audioOutputRate, .SampleLength = 1024, .DesiredBuffered = desiredBuffered });
 
     // The menu is set up before audio is initialized, so its list of available audio backends has to be
     // populated here rather than in Menu::InitElement (where the window backends are handled).
@@ -1617,7 +1633,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     GameInteractor::Instance = new GameInteractor();
     SaveManager::Instance = new SaveManager();
 
-    std::shared_ptr<Ship::Config> conf = OTRGlobals::Instance->SohConfig();
+    std::shared_ptr<Ship::Config> conf = SohConfig();
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion1Updater>());
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion2Updater>());
     conf->RegisterVersionUpdater(std::make_shared<SOH::ConfigVersion3Updater>());
@@ -1754,8 +1770,8 @@ extern "C" void Graph_StartFrame() {
     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
 #ifndef __WIIU__
     using Ship::KbScancode;
-    int32_t dwScancode = OTRGlobals::Instance->SohWindow()->GetLastScancode();
-    OTRGlobals::Instance->SohWindow()->SetLastScancode(-1);
+    int32_t dwScancode = SohWindow()->GetLastScancode();
+    SohWindow()->SetLastScancode(-1);
 
     switch (dwScancode) {
         case KbScancode::LUS_KB_F1: {
@@ -1851,7 +1867,7 @@ extern "C" void Graph_StartFrame() {
 
 // Interpolated frames of a tick are evenly spaced numerators time+step, time+2*step, ... over denom.
 void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
-    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->SohWindow());
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
 
     if (wnd == nullptr) {
         return;
@@ -1986,7 +2002,7 @@ ImFont* OTRGlobals::CreateFontWithSize(float size, std::string fontPath, bool is
         initData->Format = RESOURCE_FORMAT_BINARY;
         initData->Type = static_cast<uint32_t>(RESOURCE_TYPE_FONT);
         initData->ResourceVersion = 0;
-        initData->Identifier.GetPath() = fontPath;
+        initData->Identifier = Ship::ResourceIdentifier(fontPath);
         std::shared_ptr<Ship::Font> fontData =
             std::static_pointer_cast<Ship::Font>(SohResourceManager()->LoadResource(fontPath, false, initData));
         ImFontConfig fontConf;
@@ -2020,7 +2036,7 @@ std::filesystem::path GetSaveFile(std::shared_ptr<Ship::Config> Conf) {
 }
 
 std::filesystem::path GetSaveFile() {
-    const std::shared_ptr<Ship::Config> pConf = OTRGlobals::Instance->SohConfig();
+    const std::shared_ptr<Ship::Config> pConf = SohConfig();
 
     return GetSaveFile(pConf);
 }

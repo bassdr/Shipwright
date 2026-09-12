@@ -1,3 +1,4 @@
+#include <ship/controller/controldevice/controller/mapping/keyboard/KeyboardScancodes.h>
 #include "ConfigUpdaters.h"
 
 #include <libultraship/bridge/consolevariablebridge.h>
