@@ -130,7 +130,6 @@ class FluidSynth final : public IMidiSynth {
 
     fluid_settings_t* mSettings = nullptr;
     fluid_synth_t* mSynth = nullptr;
-    double mSampleRate;
     bool mLinearVelocity = false;
 
     // One entry per loaded SF, in load order. FluidSynth itself walks

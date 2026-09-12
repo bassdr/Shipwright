@@ -106,8 +106,7 @@ fluid_log_function_t FluidLogToShip(int level) {
 }
 } // namespace
 
-FluidSynth::FluidSynth(const FluidSynthConfig& config)
-    : mSampleRate(config.sampleRate), mLinearVelocity(config.linearVelocity) {
+FluidSynth::FluidSynth(const FluidSynthConfig& config) : mLinearVelocity(config.linearVelocity) {
 
     static std::once_flag once;
     std::call_once(once, [] {
