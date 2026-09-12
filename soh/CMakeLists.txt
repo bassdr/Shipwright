@@ -294,34 +294,10 @@ endif()
 
 set(ROOT_NAMESPACE soh)
 
-# Optimised builds are linked with LTO on every platform, thin where the toolchain has it.
-# CMake's IPO flag is plain -flto; Clang's ThinLTO keeps the link parallel and incremental,
-# which matters because these are whole-game links.
-#
-# RelWithDebInfo gets it too, deliberately: an LTO-only miscompile that reproduces just in
-# Release would have no symbols to debug with.
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
-    INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE
-)
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CXX_COMPILE_OPTIONS_IPO "-flto=thin")
-    set(CMAKE_C_COMPILE_OPTIONS_IPO "-flto=thin")
-endif()
-
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set_target_properties(${PROJECT_NAME} PROPERTIES
         VS_GLOBAL_KEYWORD "Win32Proj"
     )
-    if(SOH_WINDOWS_64BIT)
-        set_target_properties(${PROJECT_NAME} PROPERTIES
-            INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
-        )
-    elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
-        set_target_properties(${PROJECT_NAME} PROPERTIES
-            INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
-        )
-    endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set_target_properties(${PROJECT_NAME} PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
@@ -778,14 +754,22 @@ find_package(libzip REQUIRED)
 list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES libzip::zip)
 
 if(USE_ASAN)
-    target_compile_options(libultraship PRIVATE -fsanitize=address)
-    target_link_options(libultraship PRIVATE -fsanitize=address)
-    target_compile_options(soh PRIVATE -fsanitize=address)
-    target_link_options(soh PRIVATE -fsanitize=address)
-    target_link_options(ZAPD PRIVATE -fsanitize=address)
-    target_link_options(OTRExporter PRIVATE -fsanitize=address)
-    target_compile_options(ZAPD PRIVATE -fsanitize=address)
-    target_compile_options(OTRExporter PRIVATE -fsanitize=address)
+    # ZAPD and OTRExporter are gone (torch replaced them); naming them here made -DUSE_ASAN=ON
+    # fail at configure time, so the option had been unusable.
+    foreach(_asan_target libultraship soh)
+        target_compile_options(${_asan_target} PRIVATE -fsanitize=address)
+        target_link_options(${_asan_target} PRIVATE -fsanitize=address)
+        # A report is only as good as its stack trace.
+        if(NOT MSVC)
+            target_compile_options(${_asan_target} PRIVATE -fno-omit-frame-pointer -g)
+        endif()
+        # LTO inlines away the frames ASan wants to name, and doubles the link it would
+        # otherwise take to get a build in front of a repro.
+        set_target_properties(${_asan_target} PROPERTIES
+            INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE
+            INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO FALSE
+        )
+    endforeach()
     if (MSVC)
         target_compile_definitions(ImGui PRIVATE _DISABLE_VECTOR_ANNOTATION)
         target_compile_definitions(ImGui PRIVATE _DISABLE_STRING_ANNOTATION)

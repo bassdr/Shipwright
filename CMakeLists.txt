@@ -195,6 +195,67 @@ set(INCLUDE_MPQ_SUPPORT ON)
 add_compile_definitions(CONTROLLERBUTTONS_T=uint32_t)
 
 ################################################################################
+# Link-time optimisation
+################################################################################
+# Set before anything is fetched or added, so every target in the build inherits it: the port,
+# libultraship, and the dependencies we build from source. Scoping it to the soh target alone
+# left everything else as ordinary objects, and LTO stopped at that boundary.
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+
+# A dependency whose cmake_minimum_required predates 3.9 gets CMP0069 OLD, under which the
+# property is ignored outside Intel compilers - prism builds that way and silently opted out.
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
+# CMake's IPO flag is plain -flto; Clang's ThinLTO keeps the link parallel and incremental,
+# which matters because these are whole-game links.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_COMPILE_OPTIONS_IPO "-flto=thin")
+    set(CMAKE_C_COMPILE_OPTIONS_IPO "-flto=thin")
+endif()
+
+# ThinLTO redoes backend codegen for every module on every link unless the linker is handed a
+# cache to reuse, and CMake has no property for one. Only ThinLTO has such a cache - GCC's LTO
+# has no equivalent - and which flag spells it depends on the linker rather than the compiler,
+# so probe candidates instead of guessing.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+set(SOH_LTO_CACHE_DIR "" CACHE PATH "ThinLTO link cache directory (empty picks a per-user default)")
+if(NOT SOH_LTO_CACHE_DIR)
+    if(DEFINED ENV{XDG_CACHE_HOME})
+        set(SOH_LTO_CACHE_DIR "$ENV{XDG_CACHE_HOME}/soh-lto")
+    elseif(WIN32 AND DEFINED ENV{LOCALAPPDATA})
+        set(SOH_LTO_CACHE_DIR "$ENV{LOCALAPPDATA}/soh-lto")
+    elseif(DEFINED ENV{HOME})
+        set(SOH_LTO_CACHE_DIR "$ENV{HOME}/.cache/soh-lto")
+    else()
+        # Last resort only: the point of the cache is surviving a clean of the build tree.
+        set(SOH_LTO_CACHE_DIR "${CMAKE_BINARY_DIR}/lto-cache")
+    endif()
+endif()
+
+include(CheckLinkerFlag)
+# An unbounded cache on a whole-game link grows fast, so every candidate carries its pruning
+# policy. Apple's ld64 prunes on its own defaults.
+set(_lto_cache_candidates
+    "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR};-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h"
+    "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}"
+    "/lldltocache:${SOH_LTO_CACHE_DIR};/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h"
+    "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}"
+)
+set(_lto_cache_index 0)
+foreach(_candidate IN LISTS _lto_cache_candidates)
+    math(EXPR _lto_cache_index "${_lto_cache_index}+1")
+    check_linker_flag(CXX "${_candidate}" SOH_LTO_CACHE_OK_${_lto_cache_index})
+    if(SOH_LTO_CACHE_OK_${_lto_cache_index})
+        file(MAKE_DIRECTORY "${SOH_LTO_CACHE_DIR}")
+        add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:${_candidate}>")
+        message(STATUS "ThinLTO link cache: ${SOH_LTO_CACHE_DIR}")
+        break()
+    endif()
+endforeach()
+endif()
+
+################################################################################
 # Torch (ROM asset extraction)
 ################################################################################
 find_package(ZLIB REQUIRED)
