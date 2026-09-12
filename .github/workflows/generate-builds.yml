@@ -160,17 +160,45 @@ jobs:
       with:
         name: soh.o2r
         path: build-cmake/soh
+    # Clang, not the distro gcc: ThinLTO is what makes a whole-game LTO link affordable, and
+    # only clang has it. lld comes along because the ThinLTO cache flag is a linker flag.
+    - name: Install clang and lld
+      run: |
+        V=$(cat linux-build-deps/minimum-clang-version.txt)
+        if ! command -v "clang-$V" >/dev/null; then
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$V"
+        fi
+        sudo apt-get install -y "lld-$V"
+        clang-$V --version | head -1
+    - name: Restore ThinLTO cache
+      id: restore-cache-thinlto
+      uses: actions/cache/restore@v5
+      with:
+        key: ${{ runner.os }}-thinlto-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-thinlto-${{ github.ref }}-
+          ${{ runner.os }}-thinlto-
+        path: ~/.cache/soh-lto
     - name: Build SoH
       run: |
-        cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_REMOTE_CONTROL=1
+        V=$(cat linux-build-deps/minimum-clang-version.txt)
+        export CC="clang-$V" CXX="clang++-$V"
+        LLD=$(command -v "ld.lld-$V" || command -v ld.lld)
+        cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_REMOTE_CONTROL=1 \
+          -DCMAKE_EXE_LINKER_FLAGS="--ld-path=$LLD" -DCMAKE_SHARED_LINKER_FLAGS="--ld-path=$LLD"
         cmake --build build-cmake --config Release -j4
         (cd build-cmake && cpack -G External)
 
         mv README.md readme.txt
         mv build-cmake/*.appimage soh.appimage
-      env:
-        CC: gcc-12
-        CXX: g++-12
+    - name: Save ThinLTO cache
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-cache-thinlto.outputs.cache-primary-key }}
+        path: ~/.cache/soh-lto
     - name: Upload build
       uses: actions/upload-artifact@v7
       with:
