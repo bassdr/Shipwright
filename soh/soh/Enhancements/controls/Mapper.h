@@ -101,7 +101,7 @@ class MappingSession {
     std::vector<int32_t> mOrder;
     std::vector<AxisState> mAxisState;
     int32_t mCurrentStep;
-    uint32_t mPendingAdvanceTime;
+    uint64_t mPendingAdvanceTime;
     bool mActive;
     bool mComplete;
 };
@@ -173,9 +173,9 @@ class MapperWindow final : public SohGui::Window {
     std::vector<uint8_t> mPreviousHats;
 
     int32_t mGameInputBlockTimer = INT32_MAX;
-    uint32_t mLastDeviceScanTicks = 0;
+    uint64_t mLastDeviceScanTicks = 0;
     uint64_t mLastUserFileWriteTime = 0;
-    uint32_t mLastUserFileCheckTicks = 0;
+    uint64_t mLastUserFileCheckTicks = 0;
 };
 
 } // namespace Mapper

@@ -1156,7 +1156,7 @@ void MapperWindow::EndSession(bool applyResult) {
 }
 
 void MapperWindow::UpdateElement() {
-    const uint32_t now = SDL_GetTicks();
+    const uint64_t now = SDL_GetTicks();
 
     if (now - mLastUserFileCheckTicks >= FILE_WATCH_INTERVAL_MS || mLastUserFileCheckTicks == 0) {
         mLastUserFileCheckTicks = now;
