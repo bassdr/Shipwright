@@ -9,6 +9,7 @@
 #include "soh/Enhancements/custom-message/CustomMessageInterfaceAddon.h"
 #include "soh/Enhancements/cosmetics/cosmeticsTypes.h"
 #include "soh/Enhancements/enhancementTypes.h"
+#include "soh/Enhancements/assignableSongs.h"
 #include "soh/ShipUtils.h"
 
 #include <string.h>
@@ -1197,8 +1198,10 @@ void func_80083108(PlayState* play) {
 
                 if (interfaceCtx->restrictions.ocarina != 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
+                        // SoH: an assigned song plays through the Ocarina, so it is barred wherever the Ocarina is
                         if ((gSaveContext.equips.buttonItems[i] == ITEM_OCARINA_FAIRY) ||
-                            (gSaveContext.equips.buttonItems[i] == ITEM_OCARINA_TIME)) {
+                            (gSaveContext.equips.buttonItems[i] == ITEM_OCARINA_TIME) ||
+                            IS_ASSIGNED_SONG(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_ENABLED) {
                                 sp28 = 1;
                             }
@@ -1209,7 +1212,8 @@ void func_80083108(PlayState* play) {
                 } else if (interfaceCtx->restrictions.ocarina == 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
                         if ((gSaveContext.equips.buttonItems[i] == ITEM_OCARINA_FAIRY) ||
-                            (gSaveContext.equips.buttonItems[i] == ITEM_OCARINA_TIME)) {
+                            (gSaveContext.equips.buttonItems[i] == ITEM_OCARINA_TIME) ||
+                            IS_ASSIGNED_SONG(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;
                             }
@@ -1270,6 +1274,7 @@ void func_80083108(PlayState* play) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
                         if ((gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_FAIRY) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_TIME) &&
+                            !IS_ASSIGNED_SONG(gSaveContext.equips.buttonItems[i]) && // Songs follow the Ocarina
                             !((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
                               (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) &&
                             !((gSaveContext.equips.buttonItems[i] >= ITEM_SHIELD_DEKU) && // Never disable equipment
@@ -1311,6 +1316,20 @@ void func_80083108(PlayState* play) {
                             }
 
                             gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                        }
+                    }
+                }
+
+                // SoH: songs can be assigned before an Ocarina is found (Randomizer); grey them out until then.
+                // Last, so the blanket rules above cannot hand the button back.
+                if (gSaveContext.inventory.items[SLOT_OCARINA] == ITEM_NONE) {
+                    for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
+                        if (IS_ASSIGNED_SONG(gSaveContext.equips.buttonItems[i])) {
+                            if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_ENABLED) {
+                                sp28 = 1;
+                            }
+
+                            gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_DISABLED;
                         }
                     }
                 }
@@ -4424,10 +4443,71 @@ void Interface_DrawItemButtons(PlayState* play) {
 int16_t gItemIconWidth[] = { 30, 24, 24, 24, 16, 16, 16, 16 };
 int16_t gItemIconDD[] = { 550, 680, 680, 680, 1024, 1024, 1024, 1024 };
 
-void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
-    OPEN_DISPS(play->state.gfxCtx);
-    GraphicsContext* gfxCtx = play->state.gfxCtx;
-    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+// SoH: Screen position of the D-pad item slots (Up, Down, Left, Right), with the HUD options applied.
+static void Interface_GetDpadItemIconPos(s16 pos[4][2]) {
+    s16 X_Margins_DPad_Items = 0;
+    s16 Y_Margins_DPad_Items = 0;
+    // (X,Y) Used with custom position to place it properly.
+    const s16 DPad_ItemsOffset[4][2] = {
+        { 7, -8 }, // Up
+        { 7, 24 }, // Down
+        { -9, 8 }, // Left
+        { 23, 8 }, // Right
+    };
+    s16 i;
+
+    if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.UseMargins"), 0) != 0) {
+        if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ORIGINAL_LOCATION) {
+            X_Margins_DPad_Items = Right_HUD_Margin;
+        };
+        Y_Margins_DPad_Items = (Top_HUD_Margin * -1);
+    }
+
+    const s16 DPadIconPos_ori[4][2] = { { DPAD_UP_X + X_Margins_DPad_Items, DPAD_UP_Y + Y_Margins_DPad_Items },
+                                        { DPAD_DOWN_X + X_Margins_DPad_Items, DPAD_DOWN_Y + Y_Margins_DPad_Items },
+                                        { DPAD_LEFT_X + X_Margins_DPad_Items, DPAD_LEFT_Y + Y_Margins_DPad_Items },
+                                        { DPAD_RIGHT_X + X_Margins_DPad_Items, DPAD_RIGHT_Y + Y_Margins_DPad_Items } };
+
+    if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) != ORIGINAL_LOCATION) {
+        for (i = 0; i < 4; i++) {
+            pos[i][1] =
+                CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosY"), 0) + Y_Margins_DPad_Items + DPad_ItemsOffset[i][1];
+        }
+        if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ANCHOR_LEFT) {
+            if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.UseMargins"), 0) != 0) {
+                X_Margins_DPad_Items = Left_HUD_Margin;
+            };
+            for (i = 0; i < 4; i++) {
+                pos[i][0] = OTRGetDimensionFromLeftEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
+                                                        X_Margins_DPad_Items + DPad_ItemsOffset[i][0]);
+            }
+        } else if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ANCHOR_RIGHT) {
+            if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.UseMargins"), 0) != 0) {
+                X_Margins_DPad_Items = Right_HUD_Margin;
+            };
+            for (i = 0; i < 4; i++) {
+                pos[i][0] = OTRGetDimensionFromRightEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
+                                                         X_Margins_DPad_Items + DPad_ItemsOffset[i][0]);
+            }
+        } else if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ANCHOR_NONE) {
+            for (i = 0; i < 4; i++) {
+                pos[i][0] = CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) + DPad_ItemsOffset[i][0];
+            }
+        } else if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == HIDDEN) {
+            for (i = 0; i < 4; i++) {
+                pos[i][0] = -9999;
+            }
+        }
+    } else {
+        for (i = 0; i < 4; i++) {
+            pos[i][0] = OTRGetDimensionFromRightEdge(DPadIconPos_ori[i][0]);
+            pos[i][1] = DPadIconPos_ori[i][1];
+        }
+    }
+}
+
+// SoH: Screen position of every item slot (B, the C buttons, then the D-pad), with the HUD options applied.
+static void Interface_GetItemIconPos(s16 ItemIconPos[8][2]) {
     s16 X_Margins_CL;
     s16 X_Margins_CR;
     s16 X_Margins_CD;
@@ -4491,70 +4571,12 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
                                         { DPAD_DOWN_X + X_Margins_DPad_Items, DPAD_DOWN_Y + Y_Margins_DPad_Items },
                                         { DPAD_LEFT_X + X_Margins_DPad_Items, DPAD_LEFT_Y + Y_Margins_DPad_Items },
                                         { DPAD_RIGHT_X + X_Margins_DPad_Items, DPAD_RIGHT_Y + Y_Margins_DPad_Items } };
-    u16 ItemsSlotsAlpha[8] = { interfaceCtx->bAlpha,        interfaceCtx->cLeftAlpha,    interfaceCtx->cRightAlpha,
-                               interfaceCtx->cDownAlpha,    interfaceCtx->dpadUpAlpha,   interfaceCtx->dpadDownAlpha,
-                               interfaceCtx->dpadLeftAlpha, interfaceCtx->dpadRightAlpha };
-    s16 DPad_ItemsOffset[4][2] = {
-        { 7, -8 },         // Up
-        { 7, 24 },         // Down
-        { -9, 8 },         // Left
-        { 23, 8 },         // Right
-    };                     //(X,Y) Used with custom position to place it properly.
-    s16 ItemIconPos[8][2]; //(X,Y)
     // DPadItems
-    if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) != ORIGINAL_LOCATION) {
-        ItemIconPos[4][1] =
-            CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosY"), 0) + Y_Margins_DPad_Items + DPad_ItemsOffset[0][1]; // Up
-        ItemIconPos[5][1] =
-            CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosY"), 0) + Y_Margins_DPad_Items + DPad_ItemsOffset[1][1]; // Down
-        ItemIconPos[6][1] =
-            CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosY"), 0) + Y_Margins_DPad_Items + DPad_ItemsOffset[2][1]; // Left
-        ItemIconPos[7][1] =
-            CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosY"), 0) + Y_Margins_DPad_Items + DPad_ItemsOffset[3][1]; // Right
-        if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ANCHOR_LEFT) {
-            if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.UseMargins"), 0) != 0) {
-                X_Margins_DPad_Items = Left_HUD_Margin;
-            };
-            ItemIconPos[4][0] = OTRGetDimensionFromLeftEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                            X_Margins_DPad_Items + DPad_ItemsOffset[0][0]);
-            ItemIconPos[5][0] = OTRGetDimensionFromLeftEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                            X_Margins_DPad_Items + DPad_ItemsOffset[1][0]);
-            ItemIconPos[6][0] = OTRGetDimensionFromLeftEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                            X_Margins_DPad_Items + DPad_ItemsOffset[2][0]);
-            ItemIconPos[7][0] = OTRGetDimensionFromLeftEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                            X_Margins_DPad_Items + DPad_ItemsOffset[3][0]);
-        } else if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ANCHOR_RIGHT) {
-            if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.UseMargins"), 0) != 0) {
-                X_Margins_DPad_Items = Right_HUD_Margin;
-            };
-            ItemIconPos[4][0] = OTRGetDimensionFromRightEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                             X_Margins_DPad_Items + DPad_ItemsOffset[0][0]);
-            ItemIconPos[5][0] = OTRGetDimensionFromRightEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                             X_Margins_DPad_Items + DPad_ItemsOffset[1][0]);
-            ItemIconPos[6][0] = OTRGetDimensionFromRightEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                             X_Margins_DPad_Items + DPad_ItemsOffset[2][0]);
-            ItemIconPos[7][0] = OTRGetDimensionFromRightEdge(CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) +
-                                                             X_Margins_DPad_Items + DPad_ItemsOffset[3][0]);
-        } else if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == ANCHOR_NONE) {
-            ItemIconPos[4][0] = CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) + DPad_ItemsOffset[0][0];
-            ItemIconPos[5][0] = CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) + DPad_ItemsOffset[1][0];
-            ItemIconPos[6][0] = CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) + DPad_ItemsOffset[2][0];
-            ItemIconPos[7][0] = CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosX"), 0) + DPad_ItemsOffset[3][0];
-        } else if (CVarGetInteger(CVAR_COSMETIC("HUD.Dpad.PosType"), 0) == HIDDEN) {
-            ItemIconPos[4][0] = -9999;
-            ItemIconPos[5][0] = -9999;
-            ItemIconPos[6][0] = -9999;
-            ItemIconPos[7][0] = -9999;
-        }
-    } else {
-        ItemIconPos[4][0] = OTRGetDimensionFromRightEdge(ItemIconPos_ori[4][0]);
-        ItemIconPos[5][0] = OTRGetDimensionFromRightEdge(ItemIconPos_ori[5][0]);
-        ItemIconPos[6][0] = OTRGetDimensionFromRightEdge(ItemIconPos_ori[6][0]);
-        ItemIconPos[7][0] = OTRGetDimensionFromRightEdge(ItemIconPos_ori[7][0]);
-        ItemIconPos[4][1] = ItemIconPos_ori[4][1];
-        ItemIconPos[5][1] = ItemIconPos_ori[5][1];
-        ItemIconPos[6][1] = ItemIconPos_ori[6][1];
-        ItemIconPos[7][1] = ItemIconPos_ori[7][1];
+    s16 DPadIconPos[4][2];
+    Interface_GetDpadItemIconPos(DPadIconPos);
+    for (s16 dpadSlot = 0; dpadSlot < 4; dpadSlot++) {
+        ItemIconPos[4 + dpadSlot][0] = DPadIconPos[dpadSlot][0];
+        ItemIconPos[4 + dpadSlot][1] = DPadIconPos[dpadSlot][1];
     }
     // B Button
     if (CVarGetInteger(CVAR_COSMETIC("HUD.BButton.PosType"), 0) != ORIGINAL_LOCATION) {
@@ -4652,6 +4674,14 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
         ItemIconPos[3][0] = OTRGetRectDimensionFromRightEdge(ItemIconPos_ori[3][0]);
         ItemIconPos[3][1] = ItemIconPos_ori[3][1];
     }
+}
+
+void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
+    s16 ItemIconPos[8][2];
+
+    OPEN_DISPS(play->state.gfxCtx);
+
+    Interface_GetItemIconPos(ItemIconPos);
 
     gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
@@ -4662,6 +4692,63 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
                             gItemIconDD[button] << 1, gItemIconDD[button] << 1);
 
     CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// SoH: Song note colours, matching the Quest screen (where the non-warp songs are drawn white).
+static const s16 sSongNoteColors[][3] = {
+    { 150, 255, 100 }, // Minuet
+    { 255, 80, 40 },   // Bolero
+    { 100, 150, 255 }, // Serenade
+    { 255, 160, 0 },   // Requiem
+    { 255, 100, 255 }, // Nocturne
+    { 255, 240, 100 }, // Prelude
+    { 255, 255, 255 }, // Lullaby
+    { 255, 255, 255 }, // Epona
+    { 255, 255, 255 }, // Saria
+    { 255, 255, 255 }, // Sun
+    { 255, 255, 255 }, // Time
+    { 255, 255, 255 }, // Storms
+};
+
+// SoH: A button's song draws as its coloured note, in a format and size the item icon path can't take.
+static void Interface_DrawSongNoteIcon(PlayState* play, s16 item, s16 button, u16 alpha) {
+    const s16* color = sSongNoteColors[item - ITEM_SONG_MINUET];
+    s16 ItemIconPos[8][2];
+    s16 x;
+    s16 y;
+
+    OPEN_DISPS(play->state.gfxCtx);
+
+    Interface_GetItemIconPos(ItemIconPos);
+    x = ItemIconPos[button][0];
+    y = ItemIconPos[button][1];
+
+    gDPPipeSync(OVERLAY_DISP++);
+    gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, color[0], color[1], color[2], alpha);
+    gDPLoadTextureBlock(OVERLAY_DISP++, gSongNoteTex, G_IM_FMT_IA, G_IM_SIZ_8b, 16, 24, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+
+    // The 16x24 note, scaled to three quarters of the slot and centred in it.
+    s16 width = gItemIconWidth[button] * 3 / 4;
+    s16 height = width * 3 / 2;
+    x += (gItemIconWidth[button] - width) / 2;
+    y += (gItemIconWidth[button] - height) / 2;
+    gSPWideTextureRectangle(OVERLAY_DISP++, x << 2, y << 2, (x + width) << 2, (y + height) << 2, G_TX_RENDERTILE, 0, 0,
+                            (16 << 10) / width, (24 << 10) / height);
+
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// SoH: Draw whatever a button holds: an assigned song's note, or the item icon.
+void Interface_DrawButtonItemIcon(PlayState* play, s16 button, u16 alpha) {
+    u8 item = gSaveContext.equips.buttonItems[button];
+
+    if (IS_ASSIGNED_SONG(item)) {
+        Interface_DrawSongNoteIcon(play, item, button, alpha);
+    } else {
+        Interface_DrawItemIconTexture(play, gItemIcons[item], button);
+    }
 }
 
 const char* _gAmmoDigit0Tex[] = { gAmmoDigit0Tex, gAmmoDigit1Tex, gAmmoDigit2Tex,         gAmmoDigit3Tex,
@@ -5457,14 +5544,14 @@ void Interface_Draw(PlayState* play) {
             // B Button Icon & Ammo Count
             if (gSaveContext.equips.buttonItems[0] != ITEM_NONE) {
                 if (fullUi) {
-                    Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[0]], 0);
+                    Interface_DrawButtonItemIcon(play, 0, interfaceCtx->bAlpha);
                 }
 
                 if ((player->stateFlags1 & PLAYER_STATE1_ON_HORSE) || (play->shootingGalleryStatus > 1) ||
                     ((play->sceneNum == SCENE_BOMBCHU_BOWLING_ALLEY) && Flags_GetSwitch(play, 0x38))) {
 
                     if (!fullUi) {
-                        Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[0]], 0);
+                        Interface_DrawButtonItemIcon(play, 0, interfaceCtx->bAlpha);
                     }
 
                     gDPPipeSync(OVERLAY_DISP++);
@@ -5545,7 +5632,7 @@ void Interface_Draw(PlayState* play) {
         if (gSaveContext.equips.buttonItems[1] < 0xF0) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cLeftAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[1]], 1);
+            Interface_DrawButtonItemIcon(play, 1, interfaceCtx->cLeftAlpha);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5558,7 +5645,7 @@ void Interface_Draw(PlayState* play) {
         if (gSaveContext.equips.buttonItems[2] < 0xF0) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cDownAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[2]], 2);
+            Interface_DrawButtonItemIcon(play, 2, interfaceCtx->cDownAlpha);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5571,7 +5658,7 @@ void Interface_Draw(PlayState* play) {
         if (gSaveContext.equips.buttonItems[3] < 0xF0) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cRightAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[3]], 3);
+            Interface_DrawButtonItemIcon(play, 3, interfaceCtx->cRightAlpha);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5637,7 +5724,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[4] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadUpAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[4]], 4);
+                Interface_DrawButtonItemIcon(play, 4, interfaceCtx->dpadUpAlpha);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5648,7 +5735,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[5] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadDownAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[5]], 5);
+                Interface_DrawButtonItemIcon(play, 5, interfaceCtx->dpadDownAlpha);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5659,7 +5746,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[6] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadLeftAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[6]], 6);
+                Interface_DrawButtonItemIcon(play, 6, interfaceCtx->dpadLeftAlpha);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5670,7 +5757,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[7] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadRightAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[7]], 7);
+                Interface_DrawButtonItemIcon(play, 7, interfaceCtx->dpadRightAlpha);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5772,7 +5859,18 @@ void Interface_Draw(PlayState* play) {
             pauseCtx->cursorVtx[18].v.ob[1] = pauseCtx->cursorVtx[19].v.ob[1] = svar2 =
                 pauseCtx->cursorVtx[svar3].v.ob[1] - WREG(90) / 10;
 
-            if (pauseCtx->equipTargetItem < 0xBF) {
+            if (IS_ASSIGNED_SONG(pauseCtx->equipTargetItem)) {
+                // SoH: a song flying from the Quest screen to its button, drawn as its coloured note
+                const s16* color = sSongNoteColors[pauseCtx->equipTargetItem - ITEM_SONG_MINUET];
+
+                gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+                gDPSetPrimColor(OVERLAY_DISP++, 0, 0, color[0], color[1], color[2], pauseCtx->equipAnimAlpha);
+                gSPVertex(OVERLAY_DISP++, &pauseCtx->cursorVtx[16], 4, 0);
+
+                gDPLoadTextureBlock(OVERLAY_DISP++, gSongNoteTex, G_IM_FMT_IA, G_IM_SIZ_8b, 16, 24, 0,
+                                    G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                                    G_TX_NOLOD, G_TX_NOLOD);
+            } else if (pauseCtx->equipTargetItem < 0xBF) {
                 // Normal Equip (icon goes from the inventory slot to the C button when equipping it)
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, pauseCtx->equipAnimAlpha);
                 gSPVertex(OVERLAY_DISP++, &pauseCtx->cursorVtx[16], 4, 0);
