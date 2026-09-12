@@ -329,6 +329,7 @@ OTRGlobals::OTRGlobals() {
         Ship::Context::CreateDefaultInstance("Ship of Harkinian", appShortName, "shipofharkinian.json",
                                              { portArchivePath }, {}, 3, audioSettings, sohFast3dWindow, controlDeck);
     context = contextOwner.get();
+    SohSetContext(context);
 
     SohGui::SetupMenu();
 
@@ -1725,6 +1726,7 @@ extern "C" void DeinitOTR() {
     SohGui::Destroy();
     sohFast3dWindow = nullptr;
 
+    SohSetContext(nullptr);
     OTRGlobals::Instance->context = nullptr;
 }
 

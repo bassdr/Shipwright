@@ -28,6 +28,9 @@
  */
 Ship::Context* SohContext();
 
+/** Publishes the context for the getters below. Called once, from startup. */
+void SohSetContext(Ship::Context* context);
+
 std::shared_ptr<Ship::Window> SohWindow();
 std::shared_ptr<Ship::ResourceManager> SohResourceManager();
 std::shared_ptr<Ship::ControlDeck> SohControlDeck();

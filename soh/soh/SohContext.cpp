@@ -1,5 +1,4 @@
 #include "soh/SohContext.h"
-#include "soh/OTRGlobals.h"
 
 #include <ship/audio/Audio.h>
 #include <ship/config/Config.h>
@@ -10,8 +9,18 @@
 #include <ship/resource/ResourceManager.h>
 #include <ship/window/Window.h>
 
+namespace {
+// Not OTRGlobals::Instance: that pointer is only assigned once the constructor
+// returns, and the constructor itself builds the menu, which calls these.
+Ship::Context* sContext = nullptr;
+} // namespace
+
+void SohSetContext(Ship::Context* context) {
+    sContext = context;
+}
+
 Ship::Context* SohContext() {
-    return OTRGlobals::Instance->context;
+    return sContext;
 }
 
 namespace {
