@@ -47,33 +47,23 @@ RUN rm -rf /tmp/tinyxml2-${TINYXML2_VERSION}
 
 # install apt dependencies
 RUN apt-get update && apt-get install -y \
-      libusb-dev libusb-1.0-0-dev libsdl2-dev libsdl2-net-dev libpng-dev \
+      libusb-dev libusb-1.0-0-dev libpng-dev \
+      libpipewire-0.3-dev libpulse-dev libasound2-dev \
+      libx11-dev libxext-dev libxcursor-dev libxrandr-dev libxi-dev \
+      libxfixes-dev libxkbcommon-dev \
       libglew-dev nlohmann-json3-dev libspdlog-dev ninja-build libogg-dev \
       libopus-dev opus-tools libopusfile-dev libvorbis-dev libespeak-ng-dev \
       lsb-release git clang clang-format-14 zipcmp zipmerge ziptool \
       libopengl-dev libbz2-dev libzip-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Install latest SDL2
-RUN wget https://www.libsdl.org/release/SDL2-2.26.1.tar.gz && \
-   tar -xzf SDL2-2.26.1.tar.gz && \
-    cd SDL2-2.26.1 && \
-    ./configure && \
-    make -j$(nproc) && \
-    make install && \
-    cd .. && \
-    rm -rf SDL2-2.26.1 && \
-    rm SDL2-2.26.1.tar.gz && \
-    cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
-
-# Install latest SDL2_net
-RUN wget https://www.libsdl.org/projects/SDL_net/release/SDL2_net-2.2.0.tar.gz && \
-   tar -xzf SDL2_net-2.2.0.tar.gz && \
-    cd SDL2_net-2.2.0 && \
-    ./configure && \
-    make -j$(nproc) && \
-    make install && \
-    cd .. && \
-    rm -rf SDL2_net-2.2.0 && \
-    rm SDL2_net-2.2.0.tar.gz && \
+# Install SDL3. It is CMake-only, and SDL3_net is fetched by the build when not installed.
+# The audio drivers are compiled in only if their dev headers are present right here.
+ENV SDL3VER=3.4.12
+RUN wget https://github.com/libsdl-org/SDL/releases/download/release-${SDL3VER}/SDL3-${SDL3VER}.tar.gz && \
+    tar -xzf SDL3-${SDL3VER}.tar.gz && \
+    cmake -S SDL3-${SDL3VER} -B SDL3-${SDL3VER}/build -GNinja -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build SDL3-${SDL3VER}/build --parallel $(nproc) && \
+    cmake --install SDL3-${SDL3VER}/build --prefix /usr/local && \
+    rm -rf SDL3-${SDL3VER} SDL3-${SDL3VER}.tar.gz && \
     cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/

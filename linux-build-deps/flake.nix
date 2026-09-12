@@ -23,10 +23,10 @@
             lsb-release
             pkg-config
 
-            # SDL2 libraries
-            SDL2
-            SDL2.dev
-            SDL2_net
+            # SDL3 libraries
+            SDL3
+            SDL3.dev
+            SDL3_net
 
             # Assets pipeline
             python3

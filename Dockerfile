@@ -18,7 +18,16 @@ RUN apt-get update && \
 		curl \
 		git \
 		lld \
-		libsdl2-dev \
+		libpipewire-0.3-dev \
+		libpulse-dev \
+		libasound2-dev \
+		libx11-dev \
+		libxext-dev \
+		libxcursor-dev \
+		libxrandr-dev \
+		libxi-dev \
+		libxfixes-dev \
+		libxkbcommon-dev \
 		zlib1g-dev \
 		libbz2-dev \
 		libpng-dev \
@@ -40,22 +49,15 @@ RUN git clone https://github.com/Perlmint/glew-cmake.git && \
 	make -j$(nproc) && \
 	make install
 
-ENV SDL2VER=2.0.22
-RUN curl -sLO https://libsdl.org/release/SDL2-${SDL2VER}.tar.gz && \
-	tar -xzf SDL2-${SDL2VER}.tar.gz && \
-	cd SDL2-${SDL2VER} && \
-	./configure --build=x86_64-linux-gnu && \
-	make -j$(nproc) && make install && \
-	rm ../SDL2-${SDL2VER}.tar.gz && \
-	cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
-
-ENV SDL2NETVER=2.2.0
-RUN curl -sLO https://www.libsdl.org/projects/SDL_net/release/SDL2_net-${SDL2NETVER}.tar.gz && \
-	tar -xzf SDL2_net-${SDL2NETVER}.tar.gz && \
-	cd SDL2_net-${SDL2NETVER} && \
-	./configure --build=x86_64-linux-gnu && \
-	make -j$(nproc) && make install && \
-	rm ../SDL2_net-${SDL2NETVER}.tar.gz && \
+# SDL3 is CMake-only and SDL3_net is fetched by the build when it is not installed.
+# The audio drivers are compiled in only if their dev headers are present right here.
+ENV SDL3VER=3.4.12
+RUN curl -sLO https://github.com/libsdl-org/SDL/releases/download/release-${SDL3VER}/SDL3-${SDL3VER}.tar.gz && \
+	tar -xzf SDL3-${SDL3VER}.tar.gz && \
+	cmake -S SDL3-${SDL3VER} -B SDL3-${SDL3VER}/build -GNinja -DCMAKE_BUILD_TYPE=Release && \
+	cmake --build SDL3-${SDL3VER}/build --parallel $(nproc) && \
+	cmake --install SDL3-${SDL3VER}/build --prefix /usr/local && \
+	rm -rf SDL3-${SDL3VER} SDL3-${SDL3VER}.tar.gz && \
 	cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
 
 RUN \

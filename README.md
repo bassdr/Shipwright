@@ -25,8 +25,8 @@ and rendering fixes that are open upstream: the WASAPI device-change deadlock, t
 buffer-size boot hang, the SDL pull-model audio path, CVar thread-safety, the stb download retry,
 and the GBI undefined-shift fixes.
 
-The libultraship fork is on `main`/SDL3; the game side is still pinned to an SDL2 build of it while
-that migration is in progress.
+Both sides are on SDL3: the fork pins libultraship `main`, and the game was ported to the epoch 2
+component API to match.
 
 ### Why a fork
 

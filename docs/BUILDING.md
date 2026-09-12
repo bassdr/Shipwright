@@ -187,7 +187,6 @@ cmake --build build-cmake
 > 
 > Known failing package versions:
 > - [tinyxml2](https://github.com/leethomason/tinyxml2) < 10.0.0
-> - [SDL2_net](https://github.com/libsdl-org/SDL_net) < 2.2.0
 >
 > You can install a newer version of that package either
 >
@@ -203,7 +202,6 @@ cmake --build build-cmake
 >
 > Reference examples:
 > - [`.github/actions/install-tinyxml2/action.yml`](../.github/actions/install-tinyxml2/action.yml)
-> - [`.github/actions/install-sdl2-net/action.yml`](../.github/actions/install-sdl2-net/action.yml)
 
 > [!TIP]
 > There are known incompatibilities between some newer versions of `clang` and older versions of [`{fmt}`](https://github.com/fmtlib/fmt) (see https://github.com/fmtlib/fmt/issues/4807). If you see a `call to consteval function 'fmt::basic_format_string<...>' is not a constant expression` error, you can work around it by passing `-DCMAKE_CXX_FLAGS=-DFMT_CONSTEVAL=constexpr` to `cmake`.
@@ -236,7 +234,7 @@ cmake --build build-cmake --target ExtractAssetHeaders
 ```
 
 ## macOS
-Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+Requires Xcode (or xcode-tools) && `sdl3, sdl3_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
@@ -251,7 +249,7 @@ cd ShipWright
 git submodule update --init
 
 # Install development dependencies (assuming homebrew)
-brew install sdl2 sdl2_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis libsndfile pkg-config
+brew install sdl3 sdl3_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis libsndfile pkg-config
 
 # Generate Ninja project
 # Add `-DCMAKE_BUILD_TYPE:STRING=Release` if you're packaging
