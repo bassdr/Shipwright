@@ -285,7 +285,19 @@ static int ReadSavedAudioOutputRate(int fallback) {
         }
         nlohmann::json config;
         file >> config;
-        return config["CVars"][CVAR_PREFIX_AUDIO].value("OutputSampleRate", fallback);
+        const int rate = config["CVars"][CVAR_PREFIX_AUDIO].value("OutputSampleRate", fallback);
+        // Only the rates the menu offers. A config naming anything else - hand-edited, or 96000
+        // from when that was still listed - would otherwise size the mixer for it unchecked.
+        switch (rate) {
+            case 32000:
+            case 44100:
+            case 48000: {
+                return rate;
+            }
+            default: {
+                return fallback;
+            }
+        }
     } catch (...) { return fallback; }
 }
 
