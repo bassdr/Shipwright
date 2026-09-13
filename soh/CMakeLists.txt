@@ -59,7 +59,9 @@ if(MSVC)
     set(CMAKE_C_FLAGS "")
     set(CMAKE_C_FLAGS_DEBUG "")
     set(CMAKE_C_FLAGS_RELEASE "")
-    set(CMAKE_CXX_FLAGS "")
+    # Keep exception handling: CMake's default /EHsc is cleared with the rest, and while cl only
+    # warns about try/catch without it (C4530), clang-cl rejects it outright - FluidSynth uses try.
+    set(CMAKE_CXX_FLAGS "/EHsc")
     set(CMAKE_CXX_FLAGS_DEBUG "")
     set(CMAKE_CXX_FLAGS_RELEASE "")
 endif()
