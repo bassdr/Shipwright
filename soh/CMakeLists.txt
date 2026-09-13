@@ -493,7 +493,6 @@ if(MSVC)
             /bigobj;
             /sdl-;
             /permissive-;
-            /MP;
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
             ${DEFAULT_CXX_EXCEPTION_HANDLING}
         )
@@ -509,7 +508,6 @@ if(MSVC)
                 /Gy
             >
             /permissive-;
-            /MP;
             /sdl-;
             ${SOH_MSVC_WARNING_LEVEL};
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
