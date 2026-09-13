@@ -371,6 +371,10 @@ static void PauseSong_Execute() {
         DREG(53) = 1;
     }
     Player* player = GET_PLAYER(gPlayState);
+    // Oceff_Spot reads this to decide whether to arm the Sun's Song, and vanilla only ever clears it on
+    // the way into Message_StartOcarina (func_8010BD58), which this path deliberately skips. Left alone
+    // it holds uninitialised memory and the song plays with no effect.
+    gPlayState->msgCtx.unk_E40E = 0;
     Actor_Spawn(&gPlayState->actorCtx, gPlayState, effectActorIds[idx], player->actor.world.pos.x,
                 player->actor.world.pos.y, player->actor.world.pos.z, 0, 0, 0, effectActorParams[idx]);
 
