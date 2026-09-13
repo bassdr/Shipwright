@@ -144,10 +144,16 @@ endif()
 # Enforce strict, deterministic IEEE-754 floating-point to match N64 (MIPS) semantics.
 # Never enable fast-math, and disable FMA contraction: the R4300 CPU and RSP have no
 # fused multiply-add, so contracting mul+add into an FMA produces extra precision.
-add_compile_options($<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-fno-fast-math>)
-add_compile_options($<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/fp:precise>)
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/fp:except->)
+if(MSVC)
+    add_compile_options(/fp:precise /fp:except-)
+    # clang-cl reports its id as Clang but drops GNU spellings, so it matched neither
+    # branch and was left contracting. /fp:precise does not stop that on its own.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        add_compile_options(/clang:-ffp-contract=off)
+    endif()
+else()
+    add_compile_options(-fno-fast-math -ffp-contract=off)
+endif()
 
 if(NOT CMAKE_BUILD_TYPE )
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)

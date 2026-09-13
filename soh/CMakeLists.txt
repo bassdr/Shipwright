@@ -472,6 +472,13 @@ endif()
 # Compile and link options
 ################################################################################
 if(MSVC)
+    # clang-cl's /W3 is clang's -Wall, a different and much larger set than cl's level 3,
+    # and this tree is not clean under it. The GNU path does not promote warnings either.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(SOH_WARNINGS_AS_ERRORS "")
+    else()
+        set(SOH_WARNINGS_AS_ERRORS /WX)
+    endif()
     if(SOH_WINDOWS_64BIT)
         target_compile_options(${PROJECT_NAME} PRIVATE
             $<$<CONFIG:Debug>:
@@ -482,7 +489,7 @@ if(MSVC)
                 /Gy;
             >
             /W3;
-            /WX;
+            ${SOH_WARNINGS_AS_ERRORS};
             /bigobj;
             /sdl-;
             /permissive-;
@@ -505,7 +512,7 @@ if(MSVC)
             /MP;
             /sdl-;
             /W3;
-            /WX;
+            ${SOH_WARNINGS_AS_ERRORS};
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
             ${DEFAULT_CXX_EXCEPTION_HANDLING}
         )
@@ -543,7 +550,10 @@ if(MSVC)
     endif()
 endif()
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+# clang-cl reports its id as Clang but takes MSVC-style flags, which the block above
+# already gave it. Letting it in here would also hand it GNU spellings that mean
+# something else entirely: -Wall is an alias for -Weverything in that driver.
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND NOT MSVC)
     if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         target_compile_options(${PROJECT_NAME} PRIVATE
             -Wall -Wextra -Wno-error

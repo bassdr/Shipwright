@@ -4,9 +4,7 @@
 // Force the compiler to assume we have support for the CRC32 intrinsic. We will check for our selves later.
 // Clang will define both __llvm__ and __GNUC__ but GCC will only define __GNUC__. So we need to check for __llvm__
 // first.
-#if ((defined(__llvm__) && (defined(__x86_64__) || defined(__i386__))))
-#pragma clang attribute push(__attribute__((target("crc32"))), apply_to = function)
-#elif ((defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))))
+#if (!defined(__llvm__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)))
 // GCC Only lets you enable all of sse4.2 so we will for just this file and reset it at the end.
 #pragma GCC push_options
 #pragma GCC target("sse4.2")
@@ -32,6 +30,13 @@
 // Nothing cause its a compiler builtin
 #else
 #define NO_CRC_INTRIN
+#endif
+
+// After the includes, not before: the attribute would otherwise land on every
+// declaration they make, and intrin.h declares always_inline functions that cannot
+// carry a target attribute.
+#if ((defined(__llvm__) && (defined(__x86_64__) || defined(__i386__))))
+#pragma clang attribute push(__attribute__((target("crc32"))), apply_to = function)
 #endif
 
 #if defined(_MSC_VER) && defined(_M_ARM64)
