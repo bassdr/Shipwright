@@ -107,7 +107,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # from source (static, glib-free osal=cpp11) in soh/CMakeLists.txt and links against it.
     vcpkg_install_packages(zlib bzip2 libzip libpng sdl3 sdl3-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile libsndfile)
     if (CMAKE_C_COMPILER_LAUNCHER MATCHES "ccache|sccache")
-        set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
+        # Release links without /DEBUG, so CodeView here rides in every object only to be
+        # discarded - and LLVM 20.1.8's ThinLTO backend segfaults emitting it.
+        set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<NOT:$<CONFIG:Release>>:Embedded>")
     endif()
 endif()
 
