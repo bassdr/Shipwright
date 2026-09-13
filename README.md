@@ -20,13 +20,28 @@
 | Song of Time plays out before the age shift | [#7058](https://github.com/HarbourMasters/Shipwright/pull/7058) | open |
 | Undefined left-shift fixes | [#6640](https://github.com/HarbourMasters/Shipwright/pull/6640) | approved, unmerged |
 
-It also pins [a libultraship fork](https://github.com/bassdr/libultraship/tree/main) carrying audio
-and rendering fixes that are open upstream: the WASAPI device-change deadlock, the WASAPI
-buffer-size boot hang, the SDL pull-model audio path, CVar thread-safety, the stb download retry,
-and the GBI undefined-shift fixes.
+## What this fork changes in libultraship
 
-Both sides are on SDL3: the fork pins libultraship `main`, and the game was ported to the epoch 2
-component API to match.
+Most of the change is not in this repository. It pins
+[a libultraship fork](https://github.com/bassdr/libultraship/tree/main) that is current with
+upstream `main` and adds ~100 commits on top of it, about +10,700/-1,900 lines across 78 files —
+mostly the renderer.
+
+| What the fork carries | Where it comes from |
+| --- | --- |
+| Vulkan rendering backend | [#1265](https://github.com/Kenix3/libultraship/pull/1265) (KiritoDv), open |
+| GPU vertex pipeline, mipmapping, two-tile LOD, postprocessing and custom shaders | [#1262](https://github.com/Kenix3/libultraship/pull/1262) (KiritoDv), open |
+| SDL3 pull-model audio | [#1250](https://github.com/Kenix3/libultraship/pull/1250), open |
+| CVar thread-safety, lock-free readers | [#1227](https://github.com/Kenix3/libultraship/pull/1227), backported from `port-maintenance` onto epoch 2 |
+| stb_image.h download verify and retry | [#1248](https://github.com/Kenix3/libultraship/pull/1248), open |
+| Unsigned GBI macros, two div-by-zero guards | [#1115](https://github.com/Kenix3/libultraship/pull/1115), open |
+| Epoch-2 bootstrap fixes, fast3d segment table bounds, and the Vulkan and vertex-pipeline fixes on top of the two stacks above | not upstreamed yet |
+
+**SDL3 is the only audio backend.** WASAPI and CoreAudio were deleted rather than maintained —
+the fork carried fixes for both first, then dropped them — so everything goes through one SDL3
+player.
+
+Both sides are on SDL3: the game was ported to the epoch 2 component API to match.
 
 ### Why a fork
 
@@ -117,7 +132,7 @@ In order for the game to function, you will require a **legally acquired** ROM f
 
 ### Graphics Backends
 
-Currently, there are four rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), Metal (MacOS), and Vulkan (all platforms, only tested on Linux). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
+Currently, there are four rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), Metal (MacOS), and Vulkan (Windows and Linux). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
 
 # Custom Assets
 

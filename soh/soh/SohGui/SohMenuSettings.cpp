@@ -384,7 +384,8 @@ void SohMenu::AddMenuSettings() {
         .Callback([](WidgetInfo& info) { SohApplyVertexTransformSetting(); })
         .Options(CheckboxOptions().Tooltip(
             "Moves the vertex transform from the CPU to the vertex shader, trading CPU time for GPU time.\n"
-            "Some scenery is missing on this path, so it is off by default."));
+            "Known issue: some walls and scenery do not draw at all, on every rendering backend.\n"
+            "This path is unfinished upstream, so it is off by default."));
 
     AddWidget(path, "Anti-aliasing (MSAA)", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_MSAA_VALUE)
