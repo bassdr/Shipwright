@@ -10,9 +10,10 @@ Requires:
   * Python 3 (can be installed manually or as part of Visual Studio)
   * Git (can be installed manually or as part of Visual Studio)
   * Cmake (can be installed via chocolatey or manually)
-  * Optional: the Vulkan SDK, for the Vulkan rendering backend. Without it CMake reports
-    `Vulkan rendering backend disabled` and the build offers DirectX 11 and OpenGL only.
-    The CI runners have no Vulkan SDK, so the Windows builds they publish are in that state.
+  * Optional: the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows), for the Vulkan
+    rendering backend. Without it CMake reports `Vulkan rendering backend disabled` and the
+    build offers DirectX 11 and OpenGL only. CMake picks up `VULKAN_SDK`, or the newest
+    install under `C:\VulkanSDK`. CI installs it, so the published Windows builds have it.
 
 During installation, check the "Desktop development with C++" feature set:
 
@@ -148,6 +149,24 @@ nix develop ./linux-build-deps
 
 from the repo root and you'll be dropped into a shell with all dependencies, ensuring that all build commands work.
 
+#### The Vulkan rendering backend (optional)
+
+The backend needs the Vulkan loader and shaderc, which compiles its shaders at runtime.
+Without both, CMake reports `Vulkan rendering backend disabled` and the build offers OpenGL
+only. Ubuntu 22.04 packages neither, so CI takes them from LunarG:
+
+```sh
+wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+  | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+  https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+sudo apt-get update && sudo apt-get install -y vulkan-headers libvulkan-dev shaderc
+```
+
+Newer releases and other distros package them directly: `libvulkan-dev libshaderc-dev` on
+Ubuntu 24.04 and later, `vulkan-icd-loader shaderc` on Arch, `vulkan-loader-devel
+libshaderc-devel` on Fedora.
+
 ### Verify cmake version
 Older distros may ship a cmake older than this project requires. Compare:
 ```sh
@@ -238,6 +257,11 @@ cmake --build build-cmake --target ExtractAssetHeaders
 
 ## macOS
 Requires Xcode (or xcode-tools) && `sdl3, sdl3_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+
+Apple builds do not use Vulkan. The renderer has a native Metal backend, and Vulkan on macOS
+runs through MoltenVK, which is itself a translation layer onto Metal. Installing the Vulkan
+SDK will enable the backend locally, but CI does not, and the published `.dmg` has no
+MoltenVK in it.
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 

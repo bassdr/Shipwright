@@ -785,6 +785,10 @@ endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 INSTALL(FILES $<TARGET_PDB_FILE:soh> DESTINATION debug COMPONENT ship OPTIONAL)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION . COMPONENT ship)
+# The only shared library the Vulkan backend pulls in; everything else here is static.
+if (TARGET Vulkan::shaderc_shared)
+INSTALL(FILES $<TARGET_FILE:Vulkan::shaderc_shared> DESTINATION . COMPONENT ship)
+endif()
 endif()
 
 find_program(CURL NAMES curl DOC "Path to the curl program.  Used to download files.")

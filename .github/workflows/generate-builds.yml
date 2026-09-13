@@ -148,6 +148,16 @@ jobs:
         sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
     - name: Copy SDL libs to multiarch dir
       run: sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
+    # The Vulkan backend compiles its shaders with shaderc, which jammy does not package at
+    # all, so both it and the loader come from LunarG's repository for this release.
+    - name: Install the Vulkan loader and shaderc
+      run: |
+        wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+          | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+          https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+        sudo apt-get update
+        sudo apt-get install -y vulkan-headers libvulkan-dev shaderc
     - name: Remove distro tinyxml2
       run: sudo apt-get remove libtinyxml2-dev
     - uses: ./.github/actions/install-tinyxml2
@@ -227,6 +237,8 @@ jobs:
   build-windows:
     needs: generate-soh-otr
     runs-on: windows-latest
+    env:
+      VULKAN_SDK_VERSION: 1.4.357.0
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
@@ -267,6 +279,37 @@ jobs:
       with:
         name: soh.o2r
         path: build-windows/soh
+    # find_package(Vulkan) wants a real SDK; there is no Windows package of the loader and
+    # shaderc on their own. Only the core component is installed - the debug libraries, the
+    # 32-bit build and the samples triple the size for nothing.
+    - name: Restore cached Vulkan SDK
+      id: restore-cache-vulkan
+      uses: actions/cache/restore@v5
+      with:
+        key: ${{ runner.os }}-vulkansdk-${{ env.VULKAN_SDK_VERSION }}
+        path: C:\VulkanSDK
+    - name: Install Vulkan SDK
+      run: |
+        $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+        if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) {
+          curl.exe -sSfL -o vulkan-sdk.exe `
+            "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkan_sdk.exe"
+          $common = @('--root', $sdk, '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          Start-Process -FilePath .\vulkan-sdk.exe -ArgumentList ($common + 'com.lunarg.vulkan.core') -Wait
+          if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) {
+            Start-Process -FilePath .\vulkan-sdk.exe -ArgumentList $common -Wait
+          }
+        }
+        if (-not (Test-Path "$sdk\Bin\shaderc_shared.dll")) {
+          throw "Vulkan SDK install left no shaderc_shared.dll under $sdk"
+        }
+        "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+    - name: Save cached Vulkan SDK
+      if: ${{ steps.restore-cache-vulkan.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-cache-vulkan.outputs.cache-primary-key }}
+        path: C:\VulkanSDK
     - name: Restore ThinLTO cache
       id: restore-cache-thinlto-win
       uses: actions/cache/restore@v5
