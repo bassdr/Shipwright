@@ -1,5 +1,5 @@
 name: clang-format
-on: [pull_request]
+on: [push, pull_request]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -7,6 +7,9 @@ concurrency:
 jobs:
   clang-format:
     runs-on: ubuntu-latest
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v7
         with:

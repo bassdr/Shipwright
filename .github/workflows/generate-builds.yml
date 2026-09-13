@@ -9,6 +9,9 @@ jobs:
 
   generate-soh-otr:
     runs-on: ubuntu-22.04
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -46,6 +49,9 @@ jobs:
   build-macos:
     needs: generate-soh-otr
     runs-on: macos-14
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -89,6 +95,9 @@ jobs:
   build-linux:
     needs: generate-soh-otr
     runs-on: ubuntu-22.04
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -216,6 +225,9 @@ jobs:
   build-windows:
     needs: generate-soh-otr
     runs-on: windows-latest
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Install dependencies
       run: |
