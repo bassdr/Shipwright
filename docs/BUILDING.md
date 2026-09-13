@@ -10,6 +10,9 @@ Requires:
   * Python 3 (can be installed manually or as part of Visual Studio)
   * Git (can be installed manually or as part of Visual Studio)
   * Cmake (can be installed via chocolatey or manually)
+  * Optional: the Vulkan SDK, for the Vulkan rendering backend. Without it CMake reports
+    `Vulkan rendering backend disabled` and the build offers DirectX 11 and OpenGL only.
+    The CI runners have no Vulkan SDK, so the Windows builds they publish are in that state.
 
 During installation, check the "Desktop development with C++" feature set:
 
