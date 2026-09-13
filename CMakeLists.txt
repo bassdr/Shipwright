@@ -261,27 +261,32 @@ endif()
 
 include(CheckLinkerFlag)
 # An unbounded cache on a whole-game link grows fast, so every candidate carries its pruning
-# policy. Apple's ld64 prunes on its own defaults.
-# lld-link only warns about a flag it does not know, so probing cannot tell the two
-# spellings apart there and would settle on the GNU one it silently drops.
+# policy. Apple's ld64 prunes on its own defaults. Each candidate is held in its own variable
+# and reached by name: a list cannot hold a multi-flag element, since foreach(IN LISTS) cannot
+# tell an embedded separator from a real one and would silently split the policy off.
+set(_lto_cache_lld
+    "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR}"
+    "-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h")
+set(_lto_cache_ld64 "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}")
+set(_lto_cache_gold "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}")
+set(_lto_cache_lld_link
+    "/lldltocache:${SOH_LTO_CACHE_DIR}"
+    "/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h")
+
+# lld-link only warns about a flag it does not know, so probing cannot tell the two spellings
+# apart there and would settle on the GNU one it silently drops.
 if(MSVC)
-    set(_lto_cache_candidates
-        "/lldltocache:${SOH_LTO_CACHE_DIR};/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h"
-    )
+    set(_lto_cache_candidates _lto_cache_lld_link)
 else()
-    set(_lto_cache_candidates
-        "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR};-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h"
-        "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}"
-        "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}"
-    )
+    set(_lto_cache_candidates _lto_cache_lld _lto_cache_ld64 _lto_cache_gold)
 endif()
-set(_lto_cache_index 0)
-foreach(_candidate IN LISTS _lto_cache_candidates)
-    math(EXPR _lto_cache_index "${_lto_cache_index}+1")
-    check_linker_flag(CXX "${_candidate}" SOH_LTO_CACHE_OK_${_lto_cache_index})
-    if(SOH_LTO_CACHE_OK_${_lto_cache_index})
+foreach(_name IN LISTS _lto_cache_candidates)
+    check_linker_flag(CXX "${${_name}}" SOH_LTO_CACHE_OK${_name})
+    if(SOH_LTO_CACHE_OK${_name})
         file(MAKE_DIRECTORY "${SOH_LTO_CACHE_DIR}")
-        add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:${_candidate}>")
+        foreach(_flag IN LISTS ${_name})
+            add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:${_flag}>")
+        endforeach()
         message(STATUS "ThinLTO link cache: ${SOH_LTO_CACHE_DIR}")
         break()
     endif()
