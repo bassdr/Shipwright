@@ -390,6 +390,7 @@ endfunction()
 
 add_subdirectory(torch SYSTEM)
 quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/torch)
+quiet_dependency_tree(${spdlog_SOURCE_DIR})
 
 target_compile_definitions(torch INTERFACE YAML_CPP_STATIC_DEFINE)
 
@@ -476,6 +477,10 @@ endif()
 option(ENABLE_FLUIDSYNTH "Enable the FluidSynth synth backend" ON)
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship SYSTEM)
 quiet_target(libultraship "${WARNING_OVERRIDE}")
+# libultraship fetches its own dependencies into its directory scope, so walking torch alone
+# left StormLib, FluidSynth, ImGui, spdlog, libgfxd, prism and monocypher reporting warnings
+# nobody here is going to fix.
+quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/libultraship)
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)
 add_subdirectory(soh)
 
