@@ -141,6 +141,17 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 set(CMAKE_OBJCXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 endif()
 
+# Which command line a compiler speaks is a different question from which compiler it is:
+# clang-cl reports its id as Clang and takes MSVC flags, so neither CMAKE_CXX_COMPILER_ID nor
+# MSVC answers it alone. CMAKE_<LANG>_COMPILER_FRONTEND_VARIANT is the one that does, and every
+# flag decision below keys on it. MSVC stays the test for link-command shape, which is what it
+# actually describes.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(SOH_CLANG_CL TRUE)
+else()
+    set(SOH_CLANG_CL FALSE)
+endif()
+
 # Enforce strict, deterministic IEEE-754 floating-point to match N64 (MIPS) semantics.
 # Never enable fast-math, and disable FMA contraction: the R4300 CPU and RSP have no
 # fused multiply-add, so contracting mul+add into an FMA produces extra precision.
@@ -148,10 +159,10 @@ endif()
 # /fp:precise still leaves contraction on, so hand them to the frontend with /clang: instead
 # of reaching for the MSVC switches that do not mean the same thing.
 set(SOH_FP_FLAGS -fno-fast-math -ffp-contract=off)
-if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if(SOH_CLANG_CL)
     list(TRANSFORM SOH_FP_FLAGS PREPEND "/clang:")
     add_compile_options(${SOH_FP_FLAGS})
-elseif(MSVC)
+elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     add_compile_options(/fp:precise /fp:except-)
 else()
     add_compile_options(${SOH_FP_FLAGS})
@@ -160,7 +171,7 @@ endif()
 # CMake drives the link with lld-link directly rather than through the clang-cl driver, so
 # nothing pulls in the builtins the compiler emits calls to. StormLib's bignum code divides
 # 128-bit integers, which cl never had and so never needed a runtime call for.
-if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if(SOH_CLANG_CL)
     execute_process(
         COMMAND "${CMAKE_CXX_COMPILER}" --rtlib=compiler-rt -print-libgcc-file-name
         OUTPUT_VARIABLE SOH_CLANG_RT_BUILTINS
@@ -233,12 +244,6 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
 # property is ignored outside Intel compilers - prism builds that way and silently opted out.
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
-# CMake's IPO flag is plain -flto; Clang's ThinLTO keeps the link parallel and incremental,
-# which matters because these are whole-game links.
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CXX_COMPILE_OPTIONS_IPO "-flto=thin")
-    set(CMAKE_C_COMPILE_OPTIONS_IPO "-flto=thin")
-endif()
 
 # ThinLTO redoes backend codegen for every module on every link unless the linker is handed a
 # cache to reuse, and CMake has no property for one. Only ThinLTO has such a cache - GCC's LTO

@@ -494,20 +494,19 @@ set(SOH_C_WARNINGS
     -Wno-incompatible-pointer-types
     -Wno-int-conversion
 )
-if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if(SOH_CLANG_CL)
     list(TRANSFORM SOH_WARNINGS PREPEND "/clang:")
     list(TRANSFORM SOH_C_WARNINGS PREPEND "/clang:")
 endif()
 
 if(MSVC)
-    # clang-cl takes its warnings from SOH_WARNINGS above, so it needs neither cl's level
-    # nor its /WX - the shared list already says -Wno-error, as the other platforms do.
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(SOH_MSVC_WARNING_LEVEL "")
-        set(SOH_WARNINGS_AS_ERRORS "")
-    else()
+    # cl's level, for cl only: clang-cl takes its warnings from SOH_WARNINGS above, where
+    # /W3 would mean clang's -Wall on top of the list rather than a level.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         set(SOH_MSVC_WARNING_LEVEL /W3)
-        set(SOH_WARNINGS_AS_ERRORS /WX)
+        set_property(TARGET ${PROJECT_NAME} PROPERTY COMPILE_WARNING_AS_ERROR ON)
+    else()
+        set(SOH_MSVC_WARNING_LEVEL "")
     endif()
     if(SOH_WINDOWS_64BIT)
         target_compile_options(${PROJECT_NAME} PRIVATE
@@ -519,7 +518,6 @@ if(MSVC)
                 /Gy;
             >
             ${SOH_MSVC_WARNING_LEVEL};
-            ${SOH_WARNINGS_AS_ERRORS};
             /bigobj;
             /sdl-;
             /permissive-;
@@ -542,7 +540,6 @@ if(MSVC)
             /MP;
             /sdl-;
             ${SOH_MSVC_WARNING_LEVEL};
-            ${SOH_WARNINGS_AS_ERRORS};
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
             ${DEFAULT_CXX_EXCEPTION_HANDLING}
         )
@@ -579,7 +576,7 @@ if(MSVC)
         )
     endif()
 
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    if(SOH_CLANG_CL)
         target_compile_options(${PROJECT_NAME} PRIVATE
             ${SOH_WARNINGS}
             $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
@@ -587,10 +584,7 @@ if(MSVC)
     endif()
 endif()
 
-# clang-cl reports its id as Clang but takes MSVC-style flags, which the block above
-# already gave it. Letting it in here would also hand it GNU spellings that mean
-# something else entirely: -Wall is an alias for -Weverything in that driver.
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND NOT MSVC)
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         target_compile_options(${PROJECT_NAME} PRIVATE
             ${SOH_WARNINGS}
