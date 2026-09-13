@@ -265,12 +265,26 @@ jobs:
       with:
         name: soh.o2r
         path: build-windows/soh
+    - name: Restore ThinLTO cache
+      id: restore-cache-thinlto-win
+      uses: actions/cache/restore@v5
+      with:
+        key: ${{ runner.os }}-thinlto-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-thinlto-${{ github.ref }}-
+          ${{ runner.os }}-thinlto-
+        path: ~/AppData/Local/soh-lto
+    # clang-cl, not cl: one frontend across all three platforms, so a diagnostic that fires
+    # anywhere fires everywhere instead of only in CI. It keeps the MSVC ABI, so the vcpkg
+    # x64-windows-static packages and the /MT runtime are unaffected. lld-link comes with it and
+    # is what carries the ThinLTO cache.
     - name: Build SoH
       env:
         VCPKG_ROOT: ${{github.workspace}}/vcpkg
       run: |
-        set $env:PATH="$env:USERPROFILE/.cargo/bin;$env:PATH"
-        cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1
+        $env:PATH = "C:\Program Files\LLVM\bin;$env:USERPROFILE/.cargo/bin;$env:PATH"
+        clang-cl --version
+        cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER_TYPE=LLD -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1
         cmake --build build-windows --config Release --parallel 10
 
         (cd build-windows && cpack)
@@ -283,6 +297,12 @@ jobs:
       with:
         name: soh-windows
         path: soh-windows
+    - name: Save ThinLTO cache
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-cache-thinlto-win.outputs.cache-primary-key }}
+        path: ~/AppData/Local/soh-lto
     - name: Save Cache VCPKG folder
       if: ${{ github.ref_name == github.event.repository.default_branch }}
       uses: actions/cache/save@v5

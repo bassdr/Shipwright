@@ -141,8 +141,9 @@ foreach(source IN LISTS soh__)
     source_group("${source_path_adjusted}" FILES "${source}")
 endforeach()
 
-# Fix UTF-8 issues for MSVC
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+# Fix UTF-8 issues for MSVC. Keyed on the MSVC variable, not the compiler id, so it also covers
+# clang-cl, which reports its id as Clang.
+if (MSVC)
     set_source_files_properties(soh/OTRGlobals.cpp PROPERTIES COMPILE_FLAGS "/utf-8")
     set_source_files_properties(soh/Enhancements/tts/tts.cpp PROPERTIES COMPILE_FLAGS "/utf-8")
     set_source_files_properties(soh/Enhancements/custom-message/CustomMessageManager.cpp PROPERTIES COMPILE_FLAGS "/utf-8")
