@@ -548,6 +548,18 @@ if(MSVC)
             /SUBSYSTEM:WINDOWS
         )
     endif()
+
+    # cl accepted these in decompiled C with a warning; clang's C frontend makes them
+    # errors in C23. Same relaxations the GNU branch applies.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            $<$<COMPILE_LANGUAGE:C>:
+                -Wno-implicit-int
+                -Wno-incompatible-pointer-types
+                -Wno-int-conversion
+            >
+        )
+    endif()
 endif()
 
 # clang-cl reports its id as Clang but takes MSVC-style flags, which the block above
