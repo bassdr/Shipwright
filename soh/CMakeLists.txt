@@ -51,9 +51,9 @@ set(CMAKE_CONFIGURATION_TYPES
     CACHE STRING "" FORCE
 )
 
-# CMake's per-platform compiler and linker defaults are kept. Clearing them, as the Visual
-# Studio generator's boilerplate did, took /O2 /Ob2 with them and left the 64-bit Release build
-# of this target with no optimisation level at all - /Oi and /Gy are not one.
+# CMake's per-platform compiler and linker defaults are kept. Clearing them, as the Visual Studio
+# generator's boilerplate did, dropped /O2 /Ob2 /DNDEBUG and the default linker flags, which then
+# had to be put back one at a time (#7185, #7188).
 
 ################################################################################
 # Common utils
@@ -489,6 +489,7 @@ if(MSVC)
                 /Od
             >
             $<$<CONFIG:Release>:
+                /O2;
                 /Oi;
                 /Gy;
             >
