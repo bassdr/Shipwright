@@ -471,12 +471,42 @@ endif()
 ################################################################################
 # Compile and link options
 ################################################################################
+# One warning vocabulary for every platform. clang-cl's driver reinterprets the GNU
+# spellings - -Wall there is an alias for -Weverything - so it gets them through /clang:,
+# which reaches the same frontend the other two platforms use.
+set(SOH_WARNINGS
+    -Wall -Wextra -Wno-error
+    -Wformat-security
+    -Wno-unused-parameter
+    -Wno-unused-function
+    -Wno-unused-variable
+    -Wno-missing-field-initializers
+    -Wno-parentheses
+    -Wno-narrowing
+    -Wno-missing-braces
+    -Wno-unknown-pragmas # #pragma region is an editor folding marker, GCC doesn't know it
+)
+# Decompiled C leans on conversions that clang makes hard errors in C23, which no warning
+# level and no -Wno-error will undo.
+set(SOH_C_WARNINGS
+    -Werror-implicit-function-declaration
+    -Wno-implicit-int
+    -Wno-incompatible-pointer-types
+    -Wno-int-conversion
+)
+if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    list(TRANSFORM SOH_WARNINGS PREPEND "/clang:")
+    list(TRANSFORM SOH_C_WARNINGS PREPEND "/clang:")
+endif()
+
 if(MSVC)
-    # clang-cl's /W3 is clang's -Wall, a different and much larger set than cl's level 3,
-    # and this tree is not clean under it. The GNU path does not promote warnings either.
+    # clang-cl takes its warnings from SOH_WARNINGS above, so it needs neither cl's level
+    # nor its /WX - the shared list already says -Wno-error, as the other platforms do.
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(SOH_MSVC_WARNING_LEVEL "")
         set(SOH_WARNINGS_AS_ERRORS "")
     else()
+        set(SOH_MSVC_WARNING_LEVEL /W3)
         set(SOH_WARNINGS_AS_ERRORS /WX)
     endif()
     if(SOH_WINDOWS_64BIT)
@@ -488,7 +518,7 @@ if(MSVC)
                 /Oi;
                 /Gy;
             >
-            /W3;
+            ${SOH_MSVC_WARNING_LEVEL};
             ${SOH_WARNINGS_AS_ERRORS};
             /bigobj;
             /sdl-;
@@ -511,7 +541,7 @@ if(MSVC)
             /permissive-;
             /MP;
             /sdl-;
-            /W3;
+            ${SOH_MSVC_WARNING_LEVEL};
             ${SOH_WARNINGS_AS_ERRORS};
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
             ${DEFAULT_CXX_EXCEPTION_HANDLING}
@@ -549,15 +579,10 @@ if(MSVC)
         )
     endif()
 
-    # cl accepted these in decompiled C with a warning; clang's C frontend makes them
-    # errors in C23. Same relaxations the GNU branch applies.
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         target_compile_options(${PROJECT_NAME} PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:
-                -Wno-implicit-int
-                -Wno-incompatible-pointer-types
-                -Wno-int-conversion
-            >
+            ${SOH_WARNINGS}
+            $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
         )
     endif()
 endif()
@@ -568,22 +593,9 @@ endif()
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND NOT MSVC)
     if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -Wall -Wextra -Wno-error
-            -Wformat-security
+            ${SOH_WARNINGS}
             -Wno-return-type
-            -Wno-unused-parameter
-            -Wno-unused-function
-            -Wno-unused-variable
-            -Wno-missing-field-initializers
-            -Wno-parentheses
-            -Wno-narrowing
-            -Wno-missing-braces
-            -Wno-unknown-pragmas # #pragma region is an editor folding marker, GCC doesn't know it
-            $<$<COMPILE_LANGUAGE:C>:
-                -Werror-implicit-function-declaration
-                -Wno-incompatible-pointer-types
-                -Wno-int-conversion
-            >
+            $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
             $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>
             $<$<COMPILE_LANGUAGE:CXX>:
                 -Wno-c++11-narrowing
@@ -650,22 +662,8 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND NOT MSVC)
         endif()
 
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -Wall -Wextra -Wno-error
-            -Wformat-security
-            -Wno-unused-parameter
-            -Wno-unused-function
-            -Wno-unused-variable
-            -Wno-missing-field-initializers
-            -Wno-parentheses
-            -Wno-narrowing
-            -Wno-missing-braces
-            -Wno-unknown-pragmas # #pragma region is an editor folding marker, GCC doesn't know it
-            $<$<COMPILE_LANGUAGE:C>:
-                -Werror-implicit-function-declaration
-                -Wno-implicit-int
-                -Wno-incompatible-pointer-types
-                -Wno-int-conversion
-            >
+            ${SOH_WARNINGS}
+            $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
             $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>
             $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>
             -pthread
