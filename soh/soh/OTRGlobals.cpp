@@ -268,6 +268,17 @@ typedef struct {
 } OTRVersion;
 
 std::shared_ptr<Fast::Fast3dWindow> sohFast3dWindow;
+
+// Applies the vertex transform setting to the renderer; called at startup and when the
+// setting is toggled. Unset means the CPU path, which is the one that draws every scene.
+void SohApplyVertexTransformSetting() {
+    if (sohFast3dWindow == nullptr) {
+        return;
+    }
+    if (auto interpreter = sohFast3dWindow->GetInterpreterWeak().lock()) {
+        interpreter->SetCpuVertexTransform(CVarGetInteger(CVAR_SETTING("Graphics.GpuVertexTransform"), 0) == 0);
+    }
+}
 static OTRVersion DetectOTRVersion(std::string path, bool isMq);
 static bool VerifyArchiveVersion(OTRVersion version);
 std::string portArchivePath = "";
@@ -870,6 +881,7 @@ void OTRGlobals::Initialize() {
     InitGfxDebugger();
 
     // tell LUS to reserve 3 SoH specific threads (Game, Audio, Save)
+    SohApplyVertexTransformSetting();
     prevAltAssets = CVarGetInteger(CVAR_SETTING("AltAssets"), 1);
     SohResourceManager()->SetAltAssetsEnabled(prevAltAssets);
 

@@ -79,6 +79,9 @@ class OTRGlobals {
     bool hasOriginal;
     ImFont* CreateFontWithSize(float size, std::string fontPath, bool isJapaneseFont = false);
 };
+
+// Applies the vertex transform graphics setting to the renderer.
+void SohApplyVertexTransformSetting();
 #endif
 
 #ifndef __cplusplus
