@@ -530,7 +530,7 @@ if(MSVC)
                 /FORCE:MULTIPLE
             >
             /MANIFEST:NO;
-            /DEBUG;
+            $<$<NOT:$<CONFIG:Release>>:/DEBUG>;
             /SUBSYSTEM:WINDOWS
         )
     elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
@@ -545,7 +545,7 @@ if(MSVC)
                 /FORCE:MULTIPLE
             >
             /MANIFEST:NO;
-            /DEBUG;
+            $<$<NOT:$<CONFIG:Release>>:/DEBUG>;
             /SUBSYSTEM:WINDOWS
         )
     endif()
@@ -784,7 +784,7 @@ INSTALL(TARGETS soh DESTINATION . COMPONENT ship)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-INSTALL(FILES $<TARGET_PDB_FILE:soh> DESTINATION debug COMPONENT ship)
+INSTALL(FILES $<TARGET_PDB_FILE:soh> DESTINATION debug COMPONENT ship OPTIONAL)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION . COMPONENT ship)
 endif()
 
