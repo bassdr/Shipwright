@@ -75,6 +75,7 @@ jobs:
         path: build-cmake/soh
     - name: Build SoH
       run: |
+        cmake --version
         cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DBUILD_REMOTE_CONTROL=1
         cmake --build build-cmake -j
         # Spotlight indexing the disk image CPack just made keeps hdiutil from
@@ -195,6 +196,7 @@ jobs:
         V=$(cat linux-build-deps/minimum-clang-version.txt)
         export CC="clang-$V" CXX="clang++-$V"
         LLD=$(command -v "ld.lld-$V" || command -v ld.lld)
+        cmake --version
         cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_REMOTE_CONTROL=1 \
           -DCMAKE_EXE_LINKER_FLAGS="--ld-path=$LLD" -DCMAKE_SHARED_LINKER_FLAGS="--ld-path=$LLD"
         cmake --build build-cmake --config Release -j4
@@ -284,6 +286,7 @@ jobs:
       run: |
         $env:PATH = "C:\Program Files\LLVM\bin;$env:USERPROFILE/.cargo/bin;$env:PATH"
         clang-cl --version
+        cmake --version
         cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER_TYPE=LLD -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1
         cmake --build build-windows --config Release --parallel 10
 
