@@ -374,6 +374,11 @@ function(quiet_target target override)
 endfunction()
 
 function(quiet_dependency_tree dir)
+    # A dependency satisfied by the system or by vcpkg was never fetched, so it has no source
+    # directory and nothing of ours to quiet.
+    if(NOT dir OR NOT IS_DIRECTORY "${dir}")
+        return()
+    endif()
     get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
     foreach(_target IN LISTS _targets)
         get_target_property(_type ${_target} TYPE)
@@ -389,8 +394,8 @@ function(quiet_dependency_tree dir)
 endfunction()
 
 add_subdirectory(torch SYSTEM)
-quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/torch)
-quiet_dependency_tree(${spdlog_SOURCE_DIR})
+quiet_dependency_tree("${CMAKE_CURRENT_SOURCE_DIR}/torch")
+quiet_dependency_tree("${spdlog_SOURCE_DIR}")
 
 target_compile_definitions(torch INTERFACE YAML_CPP_STATIC_DEFINE)
 
@@ -480,7 +485,7 @@ quiet_target(libultraship "${WARNING_OVERRIDE}")
 # libultraship fetches its own dependencies into its directory scope, so walking torch alone
 # left StormLib, FluidSynth, ImGui, spdlog, libgfxd, prism and monocypher reporting warnings
 # nobody here is going to fix.
-quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/libultraship)
+quiet_dependency_tree("${CMAKE_CURRENT_SOURCE_DIR}/libultraship")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)
 add_subdirectory(soh)
 
