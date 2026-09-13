@@ -254,16 +254,15 @@ if(ENABLE_FLUIDSYNTH)
     if(MSVC)
         set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
+    # EXCLUDE_FROM_ALL drops what we never use: FluidSynth's CLI player, which nothing links,
+    # and the install rules that would otherwise package a binary this build no longer produces.
     FetchContent_Declare(fluidsynth
         GIT_REPOSITORY https://github.com/FluidSynth/fluidsynth.git
         GIT_TAG v2.5.5
-        GIT_SHALLOW TRUE)
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL)
     FetchContent_MakeAvailable(fluidsynth)
     quiet_dependency_tree("${fluidsynth_SOURCE_DIR}")
-    # Nothing links FluidSynth's own CLI player and no component packages it.
-    if(TARGET fluidsynth)
-        set_target_properties(fluidsynth PROPERTIES EXCLUDE_FROM_ALL TRUE)
-    endif()
     target_link_libraries(${PROJECT_NAME} PRIVATE libfluidsynth)
     target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_FLUIDSYNTH=1)
 else()
