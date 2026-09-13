@@ -117,7 +117,7 @@ In order for the game to function, you will require a **legally acquired** ROM f
 
 ### Graphics Backends
 
-Currently, there are three rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), Metal (MacOS), and Vulkan (all platforms, only tested on Linux). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
+Currently, there are four rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), Metal (MacOS), and Vulkan (all platforms, only tested on Linux). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
 
 # Custom Assets
 
