@@ -155,6 +155,24 @@ else()
     add_compile_options(-fno-fast-math -ffp-contract=off)
 endif()
 
+# CMake drives the link with lld-link directly rather than through the clang-cl driver, so
+# nothing pulls in the builtins the compiler emits calls to. StormLib's bignum code divides
+# 128-bit integers, which cl never had and so never needed a runtime call for.
+if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" --rtlib=compiler-rt -print-libgcc-file-name
+        OUTPUT_VARIABLE SOH_CLANG_RT_BUILTINS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(EXISTS "${SOH_CLANG_RT_BUILTINS}")
+        message(STATUS "clang-cl builtins: ${SOH_CLANG_RT_BUILTINS}")
+        add_link_options("${SOH_CLANG_RT_BUILTINS}")
+    else()
+        message(WARNING "clang_rt.builtins not found; the link may fail on compiler builtins")
+    endif()
+endif()
+
 if(NOT CMAKE_BUILD_TYPE )
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)
 endif()
@@ -242,12 +260,19 @@ endif()
 include(CheckLinkerFlag)
 # An unbounded cache on a whole-game link grows fast, so every candidate carries its pruning
 # policy. Apple's ld64 prunes on its own defaults.
-set(_lto_cache_candidates
-    "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR};-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h"
-    "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}"
-    "/lldltocache:${SOH_LTO_CACHE_DIR};/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h"
-    "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}"
-)
+# lld-link only warns about a flag it does not know, so probing cannot tell the two
+# spellings apart there and would settle on the GNU one it silently drops.
+if(MSVC)
+    set(_lto_cache_candidates
+        "/lldltocache:${SOH_LTO_CACHE_DIR};/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h"
+    )
+else()
+    set(_lto_cache_candidates
+        "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR};-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h"
+        "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}"
+        "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}"
+    )
+endif()
 set(_lto_cache_index 0)
 foreach(_candidate IN LISTS _lto_cache_candidates)
     math(EXPR _lto_cache_index "${_lto_cache_index}+1")
