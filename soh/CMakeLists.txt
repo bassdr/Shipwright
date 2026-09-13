@@ -525,8 +525,7 @@ if(MSVC)
             $<$<CONFIG:Release>:
                 /OPT:REF;
                 /OPT:ICF;
-                /INCREMENTAL:NO;
-                /FORCE:MULTIPLE
+                /INCREMENTAL:NO
             >
             /MANIFEST:NO;
             $<$<NOT:$<CONFIG:Release>>:/DEBUG>;
@@ -540,8 +539,7 @@ if(MSVC)
             $<$<CONFIG:Release>:
                 /OPT:REF;
                 /OPT:ICF;
-                /INCREMENTAL:NO;
-                /FORCE:MULTIPLE
+                /INCREMENTAL:NO
             >
             /MANIFEST:NO;
             $<$<NOT:$<CONFIG:Release>>:/DEBUG>;
