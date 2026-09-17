@@ -353,6 +353,17 @@ void SohMenu::AddMenuSettings() {
         .Callback([](WidgetInfo& info) {
             Audio_SetGameVolume(SEQ_PLAYER_SFX, ((float)CVarGetInteger(CVAR_SETTING("Volume.SFX"), 100) / 100.0f));
         });
+    AddWidget(path, "Voice Acting", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_AUDIO("VoiceActing"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip(
+            "Plays pre-recorded voice clips for story dialogue, mixed with the game like any other sound. "
+            "Lines with no clip stay silent unless Text to Speech is also on, which reads them instead."));
+    AddWidget(path, "Voice Volume: %d %%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_AUDIO("VoiceActingVolume"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(0).Max(100).DefaultValue(100).ShowButtons(true).Format("").Tooltip(
+            "Volume of the spoken dialogue, applied when a line starts."));
     AddWidget(path, "Audio API (Needs reload)", WIDGET_AUDIO_BACKEND).RaceDisable(false);
     AddWidget(path, "Output Sample Rate (Restart required)", WIDGET_CVAR_COMBOBOX)
         .CVar(CVAR_AUDIO("OutputSampleRate"))

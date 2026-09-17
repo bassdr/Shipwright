@@ -1,8 +1,12 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/SohContext.h"
+#include "soh/OTRGlobals.h"
 #include "soh/Enhancements/speechsynthesizer/SpeechSynthesizer.h"
+#include "soh/Enhancements/audio/VoicePlayer.h"
 
 #include <cassert>
+#include <cinttypes>
+#include <filesystem>
 #include <ship/core/Context.h>
 #include <ship/resource/File.h>
 #include <ship/resource/ResourceManager.h>
@@ -1026,9 +1030,50 @@ std::string Message_TTS_Decode(uint8_t* sourceBuf, uint16_t startOfset, uint16_t
     return output;
 }
 
+// Baked voice clips are content-addressed on the same decoded string the speech
+// backend would otherwise have read, so a line that was never baked - or whose
+// text the player changed, by naming their file something other than Link -
+// simply misses and falls back to speech.
+static std::string VoiceClipPath(const std::string& text, const char* language) {
+    uint64_t hash = 0xcbf29ce484222325ULL;
+    for (const unsigned char c : text) {
+        hash = (hash ^ c) * 0x100000001b3ULL;
+    }
+
+    char hex[17];
+    snprintf(hex, sizeof(hex), "%016" PRIx64, hash);
+    return Ship::Context::GetPathRelativeToAppDirectory("voice/" + std::string(language) + "/" + hex + ".opus",
+                                                        appShortName);
+}
+
+static bool TryPlayVoiceClip(const std::string& text, const char* language) {
+    if (!CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
+        return false;
+    }
+
+    std::error_code ec;
+    const std::string path = VoiceClipPath(text, language);
+    if (!std::filesystem::exists(path, ec)) {
+        return false;
+    }
+
+    const std::shared_ptr<SOH::VoiceClip> clip = SOH::VoiceClip::FromOpusFile(path);
+    if (clip == nullptr) {
+        return false;
+    }
+
+    // Master is applied per native note in audio_playback.c and mirrored onto the synth gain;
+    // the voice mix sits downstream of both, so it has to fold Master in itself.
+    const float volume = (float)CVarGetInteger(CVAR_AUDIO("VoiceActingVolume"), 100) / 100.0f;
+    const float master = (float)CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
+    SOH::VoicePlayer::Instance().Play(clip, volume * master);
+    return true;
+}
+
 void RegisterOnDialogMessageHook() {
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnDialogMessage>([]() {
-        if (!CVarGetInteger(CVAR_SETTING("A11yTTS"), 0))
+        const bool readsEverything = CVarGetInteger(CVAR_SETTING("A11yTTS"), 0) != 0;
+        if (!readsEverything && !CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0))
             return;
 
         MessageContext* msgCtx = &gPlayState->msgCtx;
@@ -1053,8 +1098,10 @@ void RegisterOnDialogMessageHook() {
 
                 uint16_t size = msgCtx->decodedTextLen;
                 auto decodedMsg = Message_TTS_Decode(msgCtx->msgBufDecoded, 0, size);
-                SpeechSynthesizer::Instance->Speak(decodedMsg.c_str(), GetLanguageCode());
-            } else if (msgCtx->msgMode == MSGMODE_TEXT_DONE && msgCtx->choiceNum > 0 &&
+                if (!TryPlayVoiceClip(decodedMsg, GetLanguageCode()) && readsEverything) {
+                    SpeechSynthesizer::Instance->Speak(decodedMsg.c_str(), GetLanguageCode());
+                }
+            } else if (readsEverything && msgCtx->msgMode == MSGMODE_TEXT_DONE && msgCtx->choiceNum > 0 &&
                        msgCtx->choiceIndex != ttsCurrentHighlightedChoice) {
                 ttsCurrentHighlightedChoice = msgCtx->choiceIndex;
                 uint16_t startOffset = 0;
@@ -1101,8 +1148,11 @@ void RegisterOnDialogMessageHook() {
 
             if (msgCtx->decodedTextLen < 3 || (msgCtx->msgBufDecoded[msgCtx->decodedTextLen - 2] != MESSAGE_FADE &&
                                                msgCtx->msgBufDecoded[msgCtx->decodedTextLen - 3] != MESSAGE_FADE2)) {
-                SpeechSynthesizer::Instance->Speak(
-                    "", GetLanguageCode()); // cancel current speech (except for faded out messages)
+                SOH::VoicePlayer::Instance().Stop();
+                if (readsEverything) {
+                    SpeechSynthesizer::Instance->Speak(
+                        "", GetLanguageCode()); // cancel current speech (except for faded out messages)
+                }
             }
         }
     });
