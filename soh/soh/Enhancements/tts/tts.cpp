@@ -3,9 +3,9 @@
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 #include "soh/Enhancements/audio/VoicePlayer.h"
+#include "soh/Enhancements/tts/VoiceClips.h"
 
 #include <cassert>
-#include <cinttypes>
 #include <filesystem>
 #include <ship/core/Context.h>
 #include <ship/resource/File.h>
@@ -1034,25 +1034,13 @@ std::string Message_TTS_Decode(uint8_t* sourceBuf, uint16_t startOfset, uint16_t
 // backend would otherwise have read, so a line that was never baked - or whose
 // text the player changed, by naming their file something other than Link -
 // simply misses and falls back to speech.
-static std::string VoiceClipPath(const std::string& text, const char* language) {
-    uint64_t hash = 0xcbf29ce484222325ULL;
-    for (const unsigned char c : text) {
-        hash = (hash ^ c) * 0x100000001b3ULL;
-    }
-
-    char hex[17];
-    snprintf(hex, sizeof(hex), "%016" PRIx64, hash);
-    return Ship::Context::GetPathRelativeToAppDirectory("voice/" + std::string(language) + "/" + hex + ".opus",
-                                                        appShortName);
-}
-
 static bool TryPlayVoiceClip(const std::string& text, const char* language) {
     if (!CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
         return false;
     }
 
     std::error_code ec;
-    const std::string path = VoiceClipPath(text, language);
+    const std::string path = SOH::VoiceClipPath(text, language);
     if (!std::filesystem::exists(path, ec)) {
         return false;
     }

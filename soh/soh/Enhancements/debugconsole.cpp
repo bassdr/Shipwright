@@ -15,6 +15,7 @@
 #include "soh/Enhancements/randomizer/logic.h"
 #include "soh/Enhancements/randomizer/randomizer.h"
 #include "soh/Enhancements/randomizer/randomizer_check_tracker.h"
+#include "soh/Enhancements/tts/VoiceTextDump.h"
 
 #define Path _Path
 #define PATH_HACK
@@ -1529,6 +1530,9 @@ void DebugConsole_Init(void) {
                                {
                                    { "entrance", Ship::ArgumentType::NUMBER },
                                } });
+
+    CMD_REGISTER("tts_dump", { VoiceTextDumpHandler,
+                               "Writes every textbox to voice/<language>/manifest.tsv for the voice baker." });
 
     // Gameplay
     CMD_REGISTER("kill", { KillPlayerHandler, "Commit suicide." });

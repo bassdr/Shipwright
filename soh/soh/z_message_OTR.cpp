@@ -15,6 +15,12 @@ extern "C" MessageTableEntry* sJpnMessageEntryTablePtr;
 extern "C" MessageTableEntry* sStaffMessageEntryTablePtr;
 // extern "C" MessageTableEntry* _message_0xFFFC_nes;
 
+// The loaded tables carry no terminator entry, unlike the ones the original game
+// linked in, so walking one whole needs the count.
+extern "C" size_t sNesMessageEntryCount = 0;
+extern "C" size_t sGerMessageEntryCount = 0;
+extern "C" size_t sFraMessageEntryCount = 0;
+
 static void SetMessageEntry(MessageTableEntry& entry, const SOH::MessageEntry& msgEntry) {
     entry.textId = msgEntry.id;
     entry.typePos = (msgEntry.textboxType << 4) | msgEntry.textboxYPos;
@@ -42,11 +48,13 @@ static void OTRMessage_LoadCustom(const std::string& folderPath, MessageTableEnt
     }
 }
 
-MessageTableEntry* OTRMessage_LoadTable(const std::string& filePath, bool isNES) {
+MessageTableEntry* OTRMessage_LoadTable(const std::string& filePath, bool isNES, size_t& count) {
     auto file = std::static_pointer_cast<SOH::Text>(SohResourceManager()->LoadResource(filePath));
 
     if (file == nullptr)
         return nullptr;
+
+    count = file->messages.size();
 
     // Allocate room for an additional message
     // OTRTODO: Should not be malloc'ing here. It's fine for now since we check elsewhere that the message table is
@@ -73,22 +81,27 @@ extern "C" void OTRMessage_Init() {
     // We really ought to fix the implementation such that we aren't malloc'ing new tables.
     // Once we fix the implementation, remove these NULL checks.
     if (sNesMessageEntryTablePtr == NULL) {
-        sNesMessageEntryTablePtr = OTRMessage_LoadTable("text/nes_message_data_static/nes_message_data_static", true);
+        sNesMessageEntryTablePtr =
+            OTRMessage_LoadTable("text/nes_message_data_static/nes_message_data_static", true, sNesMessageEntryCount);
     }
     if (sGerMessageEntryTablePtr == NULL) {
-        sGerMessageEntryTablePtr = OTRMessage_LoadTable("text/ger_message_data_static/ger_message_data_static", false);
+        sGerMessageEntryTablePtr =
+            OTRMessage_LoadTable("text/ger_message_data_static/ger_message_data_static", false, sGerMessageEntryCount);
     }
     if (sFraMessageEntryTablePtr == NULL) {
-        sFraMessageEntryTablePtr = OTRMessage_LoadTable("text/fra_message_data_static/fra_message_data_static", false);
+        sFraMessageEntryTablePtr =
+            OTRMessage_LoadTable("text/fra_message_data_static/fra_message_data_static", false, sFraMessageEntryCount);
     }
     if (sJpnMessageEntryTablePtr == NULL) {
-        sJpnMessageEntryTablePtr = OTRMessage_LoadTable("text/jpn_message_data_static/jpn_message_data_static", false);
+        size_t jpnCount = 0;
+        sJpnMessageEntryTablePtr =
+            OTRMessage_LoadTable("text/jpn_message_data_static/jpn_message_data_static", false, jpnCount);
     }
     // Note: Make sure this loads after PAL nes_message_data_static, so that message 0xFFFC is definitely loaded if it
     // exists
     if (sNesMessageEntryTablePtr == NULL) {
-        sNesMessageEntryTablePtr =
-            OTRMessage_LoadTable("text/nes_message_data_static/ntsc_nes_message_data_static", false);
+        sNesMessageEntryTablePtr = OTRMessage_LoadTable("text/nes_message_data_static/ntsc_nes_message_data_static",
+                                                        false, sNesMessageEntryCount);
     }
 
     if (sStaffMessageEntryTablePtr == NULL) {
