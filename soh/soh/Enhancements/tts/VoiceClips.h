@@ -5,6 +5,10 @@
 
 namespace SOH {
 
+// The name control code has to bake to one fixed name: clips are shared between
+// players, and a player called anything else still hears this one.
+inline constexpr const char* kBakedPlayerName = "Link";
+
 // Voice clips are content-addressed on the decoded line, so the baker that writes
 // them and the lookup that plays them have to agree byte for byte. Both go
 // through here rather than each spelling the hash out.

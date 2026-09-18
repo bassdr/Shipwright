@@ -1030,22 +1030,113 @@ std::string Message_TTS_Decode(uint8_t* sourceBuf, uint16_t startOfset, uint16_t
     return output;
 }
 
-// Baked voice clips are content-addressed on the same decoded string the speech
-// backend would otherwise have read, so a line that was never baked - or whose
-// text the player changed, by naming their file something other than Link -
-// simply misses and falls back to speech.
+// Message_DecodeName splices the player's name into the decoded text using one of
+// two alphabets, chosen from the game region and the language the file was named
+// in. Trying both spellings costs a string search and saves repeating that branch.
+static char DecodePalNameChar(uint8_t c) {
+    if (c == 0x3E) {
+        return ' ';
+    }
+    if (c == 0x40) {
+        return '.';
+    }
+    if (c == 0x3F) {
+        return '-';
+    }
+    if (c < 0x0A) {
+        return static_cast<char>(c + '0');
+    }
+    if (c < 0x24) {
+        return static_cast<char>(c + '7');
+    }
+    if (c < 0x3E) {
+        return static_cast<char>(c + '=');
+    }
+    return ' ';
+}
+
+static char DecodeNtscNameChar(uint8_t c) {
+    if (c == 0xDF) {
+        return ' ';
+    }
+    if (c == 0xEA) {
+        return '.';
+    }
+    if (c == 0xE4) {
+        return '-';
+    }
+    if (c < 0x0A) {
+        return static_cast<char>(c + '0');
+    }
+    if (c < 0xC5) {
+        return static_cast<char>(c - 0x6A);
+    }
+    if (c < 0xDF) {
+        return static_cast<char>(c - 0x64);
+    }
+    return ' ';
+}
+
+static std::string PlayerNameAscii(uint8_t blank, char (*decode)(uint8_t)) {
+    size_t length = sizeof(gSaveContext.playerName);
+    while (length > 0 && gSaveContext.playerName[length - 1] == blank) {
+        length--;
+    }
+
+    std::string name;
+    name.reserve(length);
+    for (size_t i = 0; i < length; i++) {
+        name += decode(gSaveContext.playerName[i]);
+    }
+    return name;
+}
+
+// Every clip was baked with the name rendered as kBakedPlayerName, so a player
+// called anything else would miss every line that names them. They see their own
+// name on screen and hear the baked one, which beats hearing nothing.
+static std::string WithBakedPlayerName(const std::string& text) {
+    for (const std::string& name :
+         { PlayerNameAscii(0x3E, DecodePalNameChar), PlayerNameAscii(0xDF, DecodeNtscNameChar) }) {
+        if (name.empty() || name == SOH::kBakedPlayerName || text.find(name) == std::string::npos) {
+            continue;
+        }
+
+        std::string renamed;
+        size_t from = 0;
+        for (size_t at = text.find(name); at != std::string::npos; at = text.find(name, from)) {
+            renamed.append(text, from, at - from).append(SOH::kBakedPlayerName);
+            from = at + name.size();
+        }
+        renamed.append(text, from, std::string::npos);
+        return renamed;
+    }
+    return text;
+}
+
+static std::shared_ptr<SOH::VoiceClip> LoadVoiceClip(const std::string& text, const char* language) {
+    std::error_code ec;
+    const std::string path = SOH::VoiceClipPath(text, language);
+    if (!std::filesystem::exists(path, ec)) {
+        return nullptr;
+    }
+    return SOH::VoiceClip::FromOpusFile(path);
+}
+
+// Baked clips are content-addressed on the same decoded string the speech backend
+// would otherwise have read, so a line that was never baked simply misses and
+// falls back to speech.
 static bool TryPlayVoiceClip(const std::string& text, const char* language) {
     if (!CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
         return false;
     }
 
-    std::error_code ec;
-    const std::string path = SOH::VoiceClipPath(text, language);
-    if (!std::filesystem::exists(path, ec)) {
-        return false;
+    std::shared_ptr<SOH::VoiceClip> clip = LoadVoiceClip(text, language);
+    if (clip == nullptr) {
+        const std::string renamed = WithBakedPlayerName(text);
+        if (renamed != text) {
+            clip = LoadVoiceClip(renamed, language);
+        }
     }
-
-    const std::shared_ptr<SOH::VoiceClip> clip = SOH::VoiceClip::FromOpusFile(path);
     if (clip == nullptr) {
         return false;
     }

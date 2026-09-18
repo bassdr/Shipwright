@@ -96,10 +96,6 @@ TableForLanguage(uint8_t language) noexcept {
     return 0x3E;
 }
 
-// Clips are shared between players, so the name control code has to bake to one
-// fixed name rather than to whatever the file doing the dump is called.
-constexpr const char* kBakedPlayerName = "Link";
-
 [[nodiscard("returns the escaped copy; the argument is untouched")]] std::string
 EscapeForManifest(const std::string& text) {
     std::string escaped;
@@ -131,9 +127,9 @@ class BorrowedState {
         std::memcpy(mPlayerName.data(), gSaveContext.playerName, mPlayerName.size());
 
         gSaveContext.ship.filenameLanguage = NAME_LANGUAGE_PAL;
-        const size_t nameLength = std::strlen(kBakedPlayerName);
+        const size_t nameLength = std::strlen(SOH::kBakedPlayerName);
         for (size_t i = 0; i < mPlayerName.size(); i++) {
-            gSaveContext.playerName[i] = i < nameLength ? EncodeNameChar(kBakedPlayerName[i]) : 0x3E;
+            gSaveContext.playerName[i] = i < nameLength ? EncodeNameChar(SOH::kBakedPlayerName[i]) : 0x3E;
         }
     }
 
