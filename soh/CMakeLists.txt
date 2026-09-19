@@ -122,18 +122,14 @@ if (MSVC)
     set_source_files_properties(soh/Enhancements/custom-message/CustomMessageManager.h PROPERTIES COMPILE_FLAGS "/utf-8")
 endif()
 
-# handle speechsynthesizer removals
+# handle speechsynthesizer removals. espeak reads text only where the platform has no
+# reader of its own, so the other two win where they exist.
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/Darwin")
+    list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/(Darwin|ESpeak)")
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/SAPI")
+    list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/(SAPI|ESpeak)")
 else()
     list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/(Darwin|SAPI)")
-endif()
-
-find_library(ESPEAK espeak-ng)
-if (NOT ESPEAK)
-    list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/ESpeak")
 endif()
 
 # soh/Extractor {{{
@@ -269,6 +265,82 @@ else()
     target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_FLUIDSYNTH=0)
 endif()
 
+# Voice-acting synthesis.
+# The clips are generated on the player's machine from their own game text, so the
+# synthesiser has to be in-process rather than an offline script. espeak-ng (already
+# linked for the accessibility reader) supplies the phonemes and Opus (already linked
+# for streamed samples) writes the cache, which leaves the neural model as the only
+# new dependency.
+#
+# ONNX Runtime ships as prebuilt archives; building it from source is impractical.
+# That means a shared library the bundlers have to carry, unlike the static
+# FluidSynth above -- turn ENABLE_VOICE_SYNTH off for a build that must stay
+# self-contained.
+if(ENABLE_VOICE_SYNTH)
+    include(FetchContent)
+    set(ORT_VERSION 1.20.1)
+    set(ORT_BASE "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}")
+    if(WIN32)
+        set(ORT_ARCHIVE "onnxruntime-win-x64-${ORT_VERSION}.zip")
+        set(ORT_SHA256 78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581)
+    elseif(APPLE)
+        set(ORT_ARCHIVE "onnxruntime-osx-universal2-${ORT_VERSION}.tgz")
+        set(ORT_SHA256 da4349e01a7e997f5034563183c7183d069caadc1d95f499b560961787813efd)
+    else()
+        set(ORT_ARCHIVE "onnxruntime-linux-x64-${ORT_VERSION}.tgz")
+        set(ORT_SHA256 67db4dc1561f1e3fd42e619575c82c601ef89849afc7ea85a003abbac1a1a105)
+    endif()
+    # URL_HASH is what makes this safe: a truncated or 404'd download fails the
+    # configure instead of leaving a corrupt archive to fail mysteriously later.
+    FetchContent_Declare(onnxruntime
+        URL "${ORT_BASE}/${ORT_ARCHIVE}"
+        URL_HASH SHA256=${ORT_SHA256}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(onnxruntime)
+
+    # The unversioned library the archive ships is a symlink; what the loader asks for is
+    # the SONAME, so the copy beside the binary has to carry that name instead.
+    if(WIN32)
+        set(ORT_LIB "${onnxruntime_SOURCE_DIR}/lib/onnxruntime.lib")
+        set(ORT_RUNTIME "${onnxruntime_SOURCE_DIR}/lib/onnxruntime.dll")
+        set(ORT_RUNTIME_NAME "onnxruntime.dll")
+    elseif(APPLE)
+        set(ORT_LIB "${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.dylib")
+        set(ORT_RUNTIME "${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.${ORT_VERSION}.dylib")
+        set(ORT_RUNTIME_NAME "libonnxruntime.${ORT_VERSION}.dylib")
+    else()
+        set(ORT_LIB "${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so")
+        set(ORT_RUNTIME "${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so.${ORT_VERSION}")
+        set(ORT_RUNTIME_NAME "libonnxruntime.so.1")
+    endif()
+
+    add_library(onnxruntime_shared SHARED IMPORTED)
+    set_target_properties(onnxruntime_shared PROPERTIES
+        IMPORTED_LOCATION "${ORT_RUNTIME}"
+        IMPORTED_IMPLIB "${ORT_LIB}"
+        INTERFACE_INCLUDE_DIRECTORIES "${onnxruntime_SOURCE_DIR}/include")
+    target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_shared)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_VOICE_SYNTH=1)
+
+    # The runtime is shipped beside the binary, so the loader has to look there too rather
+    # than only in the build tree the linker recorded. Installing rewrites the rpath from
+    # scratch, which is why the installed copy needs its own rather than inheriting one.
+    if(APPLE)
+        set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY BUILD_RPATH "@loader_path")
+        set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY INSTALL_RPATH "@loader_path")
+    elseif(NOT WIN32)
+        set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY BUILD_RPATH "$ORIGIN")
+        set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY INSTALL_RPATH "$ORIGIN")
+    endif()
+
+    # The game loads it at runtime, so it has to sit beside the binary in both trees.
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ORT_RUNTIME}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${ORT_RUNTIME_NAME}")
+else()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_VOICE_SYNTH=0)
+endif()
+
 set(ROOT_NAMESPACE soh)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -346,9 +418,46 @@ else()
     set(SDL3-NET-INCLUDE ${SDL3_net_INCLUDE_DIRS})
 endif()
 
-if (ESPEAK)
-    add_compile_definitions(ESPEAK=1)
-endif()
+# espeak-ng from source rather than from the system: the voice pipeline needs its
+# phonemiser on every platform, not just the one distribution that packages it, and a
+# system copy alongside the one we link would be a second set of its globals.
+include(FetchContent)
+set(BUILD_SHARED_LIBS OFF)
+# Nothing here ever asks espeak for sound. It phonemises for the voice models and
+# hands the reader its samples, both of which the game mixes itself, so the audio
+# layer is dead weight and the worker thread is ours.
+set(USE_LIBPCAUDIO OFF CACHE BOOL "" FORCE)
+set(USE_ASYNC OFF CACHE BOOL "" FORCE)
+set(USE_MBROLA OFF CACHE BOOL "" FORCE)
+set(USE_LIBSONIC OFF CACHE BOOL "" FORCE)
+set(ESPEAK_COMPAT OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(espeak-ng
+    GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
+    GIT_TAG 1.52.0
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(espeak-ng)
+quiet_dependency_tree("${espeak-ng_SOURCE_DIR}")
+
+# espeak publishes its compiler compatibility shims on the same public include path as its
+# real headers, and a wchar.h of theirs then shadows the system one for every file the game
+# compiles. They belong to espeak's own sources.
+set_property(TARGET espeak-include PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+             "${espeak-ng_SOURCE_DIR}/src/include")
+foreach(espeak_target espeak-ng espeak-ng-bin)
+    target_include_directories(${espeak_target} BEFORE PRIVATE "${espeak-ng_SOURCE_DIR}/src/include/compat")
+endforeach()
+
+target_link_libraries(${PROJECT_NAME} PRIVATE espeak-ng)
+add_compile_definitions(ESPEAK=1)
+
+# espeak_Initialize is handed the directory holding espeak-ng-data, so the phoneme and
+# dictionary data the build compiles has to travel with the binary. `data` is espeak's
+# own target for it, and nothing orders it against ours without being told.
+add_dependencies(${PROJECT_NAME} data)
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${espeak-ng_BINARY_DIR}/espeak-ng-data" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/espeak-ng-data")
 
 ################################################################################
 # Compile definitions
@@ -781,6 +890,10 @@ endif()
 
 if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|NintendoSwitch|CafeOS")
 INSTALL(TARGETS soh DESTINATION . COMPONENT ship)
+if(ENABLE_VOICE_SYNTH)
+INSTALL(FILES "${ORT_RUNTIME}" DESTINATION . COMPONENT ship RENAME "${ORT_RUNTIME_NAME}")
+endif()
+INSTALL(DIRECTORY "${espeak-ng_BINARY_DIR}/espeak-ng-data" DESTINATION . COMPONENT ship)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")

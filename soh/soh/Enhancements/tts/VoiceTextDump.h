@@ -13,3 +13,7 @@ class Console;
 // into voice clips.
 bool VoiceTextDumpHandler(std::shared_ptr<Ship::Console> console, const std::vector<std::string>& args,
                           std::string* output);
+
+// Console command `tts_say`: speaks a line in one of the cast voices, so a voice
+// can be auditioned without walking to the character who uses it.
+bool VoiceSayHandler(std::shared_ptr<Ship::Console> console, const std::vector<std::string>& args, std::string* output);

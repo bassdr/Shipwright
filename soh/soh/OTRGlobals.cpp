@@ -877,6 +877,9 @@ void OTRGlobals::Initialize() {
 #endif
     auto logLevel =
         static_cast<spdlog::level::level_enum>(CVarGetInteger(CVAR_DEVELOPER_TOOLS("LogLevel"), defaultLogLevel));
+    // Without this the setting reads back correctly and changes nothing: a build
+    // that is not _DEBUG leaves the logger at warn, and every info line is dropped.
+    spdlog::default_logger()->set_level(logLevel);
     spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%s:%#] [%^%l%$] %v");
 
     InitGfxDebugger();

@@ -4,6 +4,8 @@
 #include "soh/Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 #include "soh/Enhancements/audio/VoicePlayer.h"
 #include "soh/Enhancements/tts/VoiceClips.h"
+#include "soh/Enhancements/tts/VoiceCast.h"
+#include "soh/Enhancements/tts/VoiceBaker.h"
 
 #include <cassert>
 #include <filesystem>
@@ -1113,10 +1115,11 @@ static std::string WithBakedPlayerName(const std::string& text) {
     return text;
 }
 
-static std::shared_ptr<SOH::VoiceClip> LoadVoiceClip(const std::string& text, const char* language) {
+static std::shared_ptr<SOH::VoiceClip> LoadVoiceClip(const std::string& text, const char* language,
+                                                     const char* profile) {
     std::error_code ec;
-    const std::string path = SOH::VoiceClipPath(text, language);
-    if (!std::filesystem::exists(path, ec)) {
+    const std::string path = SOH::VoiceClipPath(text, language, profile);
+    if (!std::filesystem::exists(path, ec) || !SOH::VoiceClipIsCurrent(path)) {
         return nullptr;
     }
     return SOH::VoiceClip::FromOpusFile(path);
@@ -1125,27 +1128,35 @@ static std::shared_ptr<SOH::VoiceClip> LoadVoiceClip(const std::string& text, co
 // Baked clips are content-addressed on the same decoded string the speech backend
 // would otherwise have read, so a line that was never baked simply misses and
 // falls back to speech.
-static bool TryPlayVoiceClip(const std::string& text, const char* language) {
-    if (!CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
+static bool TryPlayVoiceClip(const std::string& text, const char* language, const char* profile) {
+    if (profile == nullptr || !CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
         return false;
     }
 
-    std::shared_ptr<SOH::VoiceClip> clip = LoadVoiceClip(text, language);
-    if (clip == nullptr) {
-        const std::string renamed = WithBakedPlayerName(text);
-        if (renamed != text) {
-            clip = LoadVoiceClip(renamed, language);
-        }
+    std::shared_ptr<SOH::VoiceClip> clip = LoadVoiceClip(text, language, profile);
+    const std::string canonical = WithBakedPlayerName(text);
+    if (clip == nullptr && canonical != text) {
+        clip = LoadVoiceClip(canonical, language, profile);
     }
-    if (clip == nullptr) {
-        return false;
-    }
-
     // Master is applied per native note in audio_playback.c and mirrored onto the synth gain;
-    // the voice mix sits downstream of both, so it has to fold Master in itself.
+    // the voice mix sits downstream of both, so it has to fold Master in itself. On its own
+    // output it is out from under the game's volume, which is the point of putting it there.
     const float volume = (float)CVarGetInteger(CVAR_AUDIO("VoiceActingVolume"), 100) / 100.0f;
-    const float master = (float)CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
-    SOH::VoicePlayer::Instance().Play(clip, volume * master);
+    const float master = SOH::VoicePlayer::Instance().IsSeparate()
+                             ? 1.0f
+                             : (float)CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
+
+    if (clip == nullptr) {
+        // Nothing cached yet: render it now and let it play when it lands. The
+        // clip is written to the same path this lookup just missed, so every
+        // later reading of the line is a plain file read.
+        // Rendered under the baked name, not whatever this player called their
+        // file, so the cache stays the same for everyone.
+        SOH::VoiceBaker::Instance().Request(canonical, language, profile, volume * master);
+        return false;
+    }
+
+    SOH::VoicePlayer::Instance().Play(SOH::VoicePlayer::Channel::Acted, clip, volume * master);
     return true;
 }
 
@@ -1177,7 +1188,8 @@ void RegisterOnDialogMessageHook() {
 
                 uint16_t size = msgCtx->decodedTextLen;
                 auto decodedMsg = Message_TTS_Decode(msgCtx->msgBufDecoded, 0, size);
-                if (!TryPlayVoiceClip(decodedMsg, GetLanguageCode()) && readsEverything) {
+                const char* profile = SOH::VoiceProfileForText(msgCtx->textId);
+                if (!TryPlayVoiceClip(decodedMsg, GetLanguageCode(), profile) && readsEverything) {
                     SpeechSynthesizer::Instance->Speak(decodedMsg.c_str(), GetLanguageCode());
                 }
             } else if (readsEverything && msgCtx->msgMode == MSGMODE_TEXT_DONE && msgCtx->choiceNum > 0 &&
@@ -1227,7 +1239,7 @@ void RegisterOnDialogMessageHook() {
 
             if (msgCtx->decodedTextLen < 3 || (msgCtx->msgBufDecoded[msgCtx->decodedTextLen - 2] != MESSAGE_FADE &&
                                                msgCtx->msgBufDecoded[msgCtx->decodedTextLen - 3] != MESSAGE_FADE2)) {
-                SOH::VoicePlayer::Instance().Stop();
+                SOH::VoicePlayer::Instance().Stop(SOH::VoicePlayer::Channel::Acted);
                 if (readsEverything) {
                     SpeechSynthesizer::Instance->Speak(
                         "", GetLanguageCode()); // cancel current speech (except for faded out messages)
@@ -1330,6 +1342,11 @@ static void RegisterTTSModHooks() {
 static void RegisterTTS() {
     InitTTSBank();
     RegisterTTSModHooks();
+    SOH::VoicePlayer::Instance().SetSeparateOutput(CVarGetInteger(CVAR_AUDIO("SpeechSeparateStream"), 0) != 0,
+                                                   CVarGetString(CVAR_AUDIO("SpeechOutputDevice"), ""));
+    if (CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
+        SOH::VoiceBaker::Instance().Warm(GetLanguageCode());
+    }
 }
 
 static RegisterShipInitFunc initFunc(RegisterTTS);

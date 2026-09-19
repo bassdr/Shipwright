@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -15,6 +16,8 @@
 #include "soh/OTRGlobals.h"
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/tts/VoiceClips.h"
+#include "soh/Enhancements/tts/VoiceCast.h"
+#include "soh/Enhancements/tts/VoiceBaker.h"
 
 extern "C" {
 #include <z64.h>
@@ -43,16 +46,21 @@ std::string Message_TTS_Decode(uint8_t* sourceBuf, uint16_t startOfset, uint16_t
 // dump has to move both together or English lines come out with French buttons.
 void InitTTSBank();
 
+// Also tts.cpp.
+const char* GetLanguageCode();
+
 namespace {
 
 // A message that never terminates would otherwise spin forever; the longest
 // vanilla message is well under this.
 constexpr uint16_t kMaxBoxesPerMessage = 64;
 
-// Message_Decode emits one cache-invalidate per font glyph. The dump runs
-// thousands of decodes in a single frame, so they go to a scratch list that is
-// rewound each time instead of onto the frame's real display list.
-constexpr size_t kScratchGfxCount = 256;
+// Message_Decode emits one cache-invalidate per font glyph and the dump runs
+// thousands of decodes in a single frame, so the write head is rewound before
+// each one. It is rewound to where the frame already was rather than to a list
+// of our own: something downstream keeps the pointer, and pointing it at memory
+// outside the arena is what used to take the renderer down.
+constexpr ptrdiff_t kGfxPerDecode = 256;
 
 struct LanguageTarget {
     uint8_t id;
@@ -156,10 +164,10 @@ class BorrowedState {
     Gfx* mPolyOpa;
 };
 
-size_t DumpLanguage(PlayState* play, const LanguageTarget& language, std::array<Gfx, kScratchGfxCount>& scratch,
-                    std::ofstream& manifest) {
+size_t DumpLanguage(PlayState* play, const LanguageTarget& language, size_t limit, std::ofstream& manifest) {
     MessageContext* msgCtx = &play->msgCtx;
     Font* font = &msgCtx->font;
+    Gfx* const writeHead = play->state.gfxCtx->polyOpa.p;
     size_t written = 0;
 
     gSaveContext.language = language.id;
@@ -167,10 +175,17 @@ size_t DumpLanguage(PlayState* play, const LanguageTarget& language, std::array<
     InitTTSBank();
 
     const MessageTable table = TableForLanguage(language.id);
-    for (size_t index = 0; index < table.count; index++) {
+    for (size_t index = 0; index < std::min(table.count, limit); index++) {
         const MessageTableEntry* entry = &table.entries[index];
         const size_t length = std::min<size_t>(entry->msgSize, sizeof(font->msgBuf));
         std::memcpy(font->msgBuf, entry->segment, length);
+        // Message_Decode walks to a terminator and bounds nothing on the way, so
+        // a message that does not carry one - a truncated copy, or a table entry
+        // whose size is wrong - decodes until it finds a random matching byte and
+        // writes the result straight through msgBufDecoded into the rest of
+        // PlayState. One of those overwrote view.gfxCtx.
+        const size_t terminator = std::min(length, sizeof(font->msgBuf) - 1);
+        font->msgBuf[terminator] = MESSAGE_END;
 
         font->charTexBuf[0] = entry->typePos;
         font->msgLength = static_cast<uint32_t>(length);
@@ -186,23 +201,34 @@ size_t DumpLanguage(PlayState* play, const LanguageTarget& language, std::array<
         msgCtx->textDrawPos = 0;
 
         for (uint16_t box = 0; box < kMaxBoxesPerMessage; box++) {
-            play->state.gfxCtx->polyOpa.p = scratch.data();
+            play->state.gfxCtx->polyOpa.p = writeHead;
             Message_Decode(play);
+            // Leaves what the decode wrote as a well-formed list rather than as
+            // commands followed by whatever the arena held.
+            gSPEndDisplayList(play->state.gfxCtx->polyOpa.p);
 
-            const std::string text = Message_TTS_Decode(msgCtx->msgBufDecoded, 0, msgCtx->decodedTextLen);
-            if (!text.empty()) {
-                manifest << SOH::VoiceClipHashHex(text) << '\t' << std::hex << entry->textId << std::dec << '\t' << box
-                         << '\t' << EscapeForManifest(text) << '\n';
+            const uint16_t decoded = std::min<uint16_t>(msgCtx->decodedTextLen, sizeof(msgCtx->msgBufDecoded));
+            const std::string text = Message_TTS_Decode(msgCtx->msgBufDecoded, 0, decoded);
+            // An uncast line is left out entirely rather than baked in some
+            // stand-in voice, so the corpus only ever holds lines we are sure of.
+            const char* const profile = SOH::VoiceProfileForText(entry->textId);
+            if (!text.empty() && profile != nullptr) {
+                manifest << SOH::VoiceClipHashHex(text) << '\t' << profile << '\t' << std::hex << entry->textId
+                         << std::dec << '\t' << box << '\t' << EscapeForManifest(text) << '\n';
                 written++;
+            }
+
+            if (msgCtx->msgBufPos >= length) {
+                break;
             }
 
             // Message_Decode stops on the control code that ends the textbox and,
             // except for a delayed break, leaves the read position on it.
-            const uint8_t terminator = static_cast<uint8_t>(font->msgBuf[msgCtx->msgBufPos]);
-            if (terminator == MESSAGE_END || terminator == MESSAGE_TEXTID || terminator == MESSAGE_EVENT) {
+            const uint8_t boxEnd = static_cast<uint8_t>(font->msgBuf[msgCtx->msgBufPos]);
+            if (boxEnd == MESSAGE_END || boxEnd == MESSAGE_TEXTID || boxEnd == MESSAGE_EVENT) {
                 break;
             }
-            if (terminator == MESSAGE_BOX_BREAK) {
+            if (boxEnd == MESSAGE_BOX_BREAK) {
                 msgCtx->msgBufPos++;
             }
         }
@@ -213,8 +239,10 @@ size_t DumpLanguage(PlayState* play, const LanguageTarget& language, std::array<
 
 } // namespace
 
-bool VoiceTextDumpHandler([[maybe_unused]] std::shared_ptr<Ship::Console> console,
-                          [[maybe_unused]] const std::vector<std::string>& args, std::string* output) {
+bool VoiceTextDumpHandler([[maybe_unused]] std::shared_ptr<Ship::Console> console, const std::vector<std::string>& args,
+                          std::string* output) {
+    const size_t limit = args.size() > 1 ? std::stoul(args[1]) : std::numeric_limits<size_t>::max();
+
     PlayState* play = gPlayState;
     if (play == nullptr || play->state.gfxCtx == nullptr) {
         *output = "tts_dump needs to run in-game.";
@@ -224,12 +252,15 @@ bool VoiceTextDumpHandler([[maybe_unused]] std::shared_ptr<Ship::Console> consol
         *output = "tts_dump cannot run while a textbox is open.";
         return 1;
     }
+    if (play->state.gfxCtx->polyOpa.d - play->state.gfxCtx->polyOpa.p < kGfxPerDecode) {
+        *output = "tts_dump needs room left in the frame's display list; try again next frame.";
+        return 1;
+    }
 
-    auto scratch = std::make_unique<std::array<Gfx, kScratchGfxCount>>();
     const BorrowedState borrowed(play);
 
     for (const LanguageTarget& language : kLanguages) {
-        const std::string directory = SOH::VoiceClipDirectory(language.code);
+        const std::string directory = SOH::VoiceLanguageDirectory(language.code);
         std::error_code ec;
         std::filesystem::create_directories(directory, ec);
 
@@ -241,10 +272,30 @@ bool VoiceTextDumpHandler([[maybe_unused]] std::shared_ptr<Ship::Console> consol
             continue;
         }
 
-        const size_t written = DumpLanguage(play, language, *scratch, manifest);
+        const size_t written = DumpLanguage(play, language, limit, manifest);
         SPDLOG_INFO("Wrote {} lines to {}", written, path);
         *output += (output->empty() ? "" : "  ") + std::string(language.code) + ": " + std::to_string(written);
     }
 
+    return 0;
+}
+
+bool VoiceSayHandler([[maybe_unused]] std::shared_ptr<Ship::Console> console, const std::vector<std::string>& args,
+                     std::string* output) {
+    if (args.size() < 3) {
+        *output = "usage: tts_say <voice> <line to speak>";
+        return 1;
+    }
+
+    std::string text;
+    for (size_t i = 2; i < args.size(); i++) {
+        if (i > 2) {
+            text += ' ';
+        }
+        text += args[i];
+    }
+
+    SOH::VoiceBaker::Instance().Request(text, GetLanguageCode(), args[1], 1.0f);
+    *output = "queued for " + args[1];
     return 0;
 }

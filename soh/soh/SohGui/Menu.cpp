@@ -6,6 +6,8 @@
 #include <spdlog/common.h>
 
 #include "Menu.h"
+#include <SDL3/SDL_audio.h>
+#include "soh/Enhancements/audio/VoicePlayer.h"
 #include "BackendTypes.h"
 #include "UIWidgets.hpp"
 #include "soh/OTRGlobals.h"
@@ -361,6 +363,43 @@ void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors me
                 options.disabledTooltip = "Only one audio API is available on this platform.";
                 if (UIWidgets::Combobox("Audio API", &currentAudioBackend, availableAudioBackendsMap, options)) {
                     SohAudio()->SetCurrentAudioBackend(currentAudioBackend);
+                }
+            } break;
+            case WIDGET_SPEECH_DEVICE: {
+                // Named rather than numbered: the system's device ids are not the
+                // same from one run to the next, but what it calls them is.
+                static std::vector<std::string> devices;
+                devices.assign(1, "Default");
+                int count = 0;
+                SDL_AudioDeviceID* ids = SDL_GetAudioPlaybackDevices(&count);
+                for (int i = 0; ids != nullptr && i < count; i++) {
+                    const char* name = SDL_GetAudioDeviceName(ids[i]);
+                    if (name != nullptr) {
+                        devices.emplace_back(name);
+                    }
+                }
+                SDL_free(ids);
+
+                const std::string chosen = CVarGetString(CVAR_AUDIO("SpeechOutputDevice"), "");
+                int32_t index = 0;
+                for (size_t i = 1; i < devices.size(); i++) {
+                    if (devices.at(i) == chosen) {
+                        index = int32_t(i);
+                    }
+                }
+
+                UIWidgets::ComboboxOptions options = {};
+                options.color = menuThemeIndex;
+                options.tooltip = "Where speech goes when it is on an output of its own. Picking the device the "
+                                  "game already plays on leaves the two in one stream; pick another one to send "
+                                  "speech to a headset and leave the music where it is.";
+                options.disabled = !CVarGetInteger(CVAR_AUDIO("SpeechSeparateStream"), 0);
+                options.disabledTooltip = "Turn on Speech on a Separate Output first.";
+                if (UIWidgets::Combobox("Speech Output Device", &index, devices, options)) {
+                    const std::string& device = devices.at(size_t(index));
+                    CVarSetString(CVAR_AUDIO("SpeechOutputDevice"), index == 0 ? "" : device.c_str());
+                    CVarSave();
+                    SOH::VoicePlayer::Instance().SetSeparateOutput(true, index == 0 ? "" : device);
                 }
             } break;
             case WIDGET_VIDEO_BACKEND: {

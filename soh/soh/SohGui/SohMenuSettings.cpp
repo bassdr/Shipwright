@@ -1,4 +1,5 @@
 #include "SohMenu.h"
+#include "soh/Enhancements/audio/VoicePlayer.h"
 #include "soh/SohContext.h"
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/enhancementTypes.h"
@@ -255,8 +256,7 @@ void SohMenu::AddMenuSettings() {
         .CVar(CVAR_SETTING("A11yTTSVolume"))
         .RaceDisable(false)
         .Options(IntSliderOptions().Min(0).Max(100).DefaultValue(100).ShowButtons(true).Format("").Tooltip(
-            "Speech volume. The speech engine plays outside the game's mixer, so this is separate from the "
-            "volume sliders above."))
+            "Volume of the reading voice, set on the speech engine itself rather than in the mixer."))
         .Callback([](WidgetInfo& info) { SpeechSynthesizer::Instance->ApplySettings(); });
     AddWidget(path, "Speech Pitch: %d", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_SETTING("A11yTTSPitch"))
@@ -364,6 +364,18 @@ void SohMenu::AddMenuSettings() {
         .RaceDisable(false)
         .Options(IntSliderOptions().Min(0).Max(100).DefaultValue(100).ShowButtons(true).Format("").Tooltip(
             "Volume of the spoken dialogue, applied when a line starts."));
+    AddWidget(path, "Speech on a Separate Output", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_AUDIO("SpeechSeparateStream"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip(
+            "Sends every spoken sound - acted dialogue and the screen reader alike - to an output stream of "
+            "its own instead of mixing it with the game. Use it to put speech on a headset and leave the "
+            "music where it is, or to set its level apart from the game in your system mixer."))
+        .Callback([](WidgetInfo& info) {
+            SOH::VoicePlayer::Instance().SetSeparateOutput(CVarGetInteger(CVAR_AUDIO("SpeechSeparateStream"), 0) != 0,
+                                                           CVarGetString(CVAR_AUDIO("SpeechOutputDevice"), ""));
+        });
+    AddWidget(path, "Speech Output Device", WIDGET_SPEECH_DEVICE).RaceDisable(false);
     AddWidget(path, "Audio API (Needs reload)", WIDGET_AUDIO_BACKEND).RaceDisable(false);
     AddWidget(path, "Output Sample Rate (Restart required)", WIDGET_CVAR_COMBOBOX)
         .CVar(CVAR_AUDIO("OutputSampleRate"))

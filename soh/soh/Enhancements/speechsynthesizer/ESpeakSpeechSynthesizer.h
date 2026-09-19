@@ -1,19 +1,16 @@
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include "SpeechSynthesizer.h"
 
 extern "C" {
 #include <espeak-ng/speak_lib.h>
-
-// C23 typeof could help here
-typedef ESPEAK_API int (*speak_Initialize)(espeak_AUDIO_OUTPUT output, int buflength, const char* path, int options);
-typedef ESPEAK_API espeak_ERROR (*speak_Terminate)(void);
-typedef ESPEAK_API espeak_ERROR (*speak_SetVoiceByProperties)(espeak_VOICE* voice_spec);
-typedef ESPEAK_API espeak_ERROR (*speak_Synth)(const void* text, size_t size, unsigned int position,
-                                               espeak_POSITION_TYPE position_type, unsigned int end_position,
-                                               unsigned int flags, unsigned int* unique_identifier, void* user_data);
-typedef ESPEAK_API espeak_ERROR (*speak_Cancel)(void);
-typedef ESPEAK_API espeak_ERROR (*speak_SetParameter)(espeak_PARAMETER parameter, int value, int relative);
 }
 
 class ESpeakSpeechSynthesizer : public SpeechSynthesizer {
@@ -28,12 +25,22 @@ class ESpeakSpeechSynthesizer : public SpeechSynthesizer {
     void DoApplySettings(int32_t rate, int32_t volume, int32_t pitch);
 
   private:
-    const char* mLanguage = NULL;
-    void* espeak = NULL;
-    speak_Initialize Initialize = NULL;
-    speak_SetVoiceByProperties SetVoiceByProperties = NULL;
-    speak_Synth Synth = NULL;
-    speak_Cancel Cancel = NULL;
-    speak_SetParameter SetParameter = NULL;
-    speak_Terminate Terminate = NULL;
+    // espeak synthesises on the thread that asks and blocks until the whole
+    // utterance is done, which is far too long to hold the game thread.
+    void Work();
+    // The callback espeak hands samples to, on the worker thread.
+    static int Collect(short* wav, int samples, espeak_EVENT* events);
+
+    bool mReady = false;
+
+    std::thread mWorker;
+    std::mutex mQueue;
+    std::condition_variable mWake;
+    std::string mText;
+    std::string mLanguage;
+    bool mHasJob = false;
+    bool mQuit = false;
+    // Bumped by every new utterance, so one already being synthesised can see
+    // that nobody is waiting for it any more and stop.
+    std::atomic<uint32_t> mGeneration{ 0 };
 };

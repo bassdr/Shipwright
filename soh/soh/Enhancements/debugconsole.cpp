@@ -1533,6 +1533,7 @@ void DebugConsole_Init(void) {
 
     CMD_REGISTER("tts_dump", { VoiceTextDumpHandler,
                                "Writes every textbox to voice/<language>/manifest.tsv for the voice baker." });
+    CMD_REGISTER("tts_say", { VoiceSayHandler, "Speaks a line in one of the cast voices." });
 
     // Gameplay
     CMD_REGISTER("kill", { KillPlayerHandler, "Commit suicide." });
