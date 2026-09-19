@@ -1,8 +1,14 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/SohContext.h"
+#include "soh/OTRGlobals.h"
 #include "soh/Enhancements/speechsynthesizer/SpeechSynthesizer.h"
+#include "soh/Enhancements/audio/VoicePlayer.h"
+#include "soh/Enhancements/tts/VoiceClips.h"
+#include "soh/Enhancements/tts/VoiceCast.h"
+#include "soh/Enhancements/tts/VoiceBaker.h"
 
 #include <cassert>
+#include <filesystem>
 #include <ship/core/Context.h>
 #include <ship/resource/File.h>
 #include <ship/resource/ResourceManager.h>
@@ -1026,9 +1032,138 @@ std::string Message_TTS_Decode(uint8_t* sourceBuf, uint16_t startOfset, uint16_t
     return output;
 }
 
+// Message_DecodeName splices the player's name into the decoded text using one of
+// two alphabets, chosen from the game region and the language the file was named
+// in. Trying both spellings costs a string search and saves repeating that branch.
+static char DecodePalNameChar(uint8_t c) {
+    if (c == 0x3E) {
+        return ' ';
+    }
+    if (c == 0x40) {
+        return '.';
+    }
+    if (c == 0x3F) {
+        return '-';
+    }
+    if (c < 0x0A) {
+        return static_cast<char>(c + '0');
+    }
+    if (c < 0x24) {
+        return static_cast<char>(c + '7');
+    }
+    if (c < 0x3E) {
+        return static_cast<char>(c + '=');
+    }
+    return ' ';
+}
+
+static char DecodeNtscNameChar(uint8_t c) {
+    if (c == 0xDF) {
+        return ' ';
+    }
+    if (c == 0xEA) {
+        return '.';
+    }
+    if (c == 0xE4) {
+        return '-';
+    }
+    if (c < 0x0A) {
+        return static_cast<char>(c + '0');
+    }
+    if (c < 0xC5) {
+        return static_cast<char>(c - 0x6A);
+    }
+    if (c < 0xDF) {
+        return static_cast<char>(c - 0x64);
+    }
+    return ' ';
+}
+
+static std::string PlayerNameAscii(uint8_t blank, char (*decode)(uint8_t)) {
+    size_t length = sizeof(gSaveContext.playerName);
+    while (length > 0 && gSaveContext.playerName[length - 1] == blank) {
+        length--;
+    }
+
+    std::string name;
+    name.reserve(length);
+    for (size_t i = 0; i < length; i++) {
+        name += decode(gSaveContext.playerName[i]);
+    }
+    return name;
+}
+
+// Every clip was baked with the name rendered as kBakedPlayerName, so a player
+// called anything else would miss every line that names them. They see their own
+// name on screen and hear the baked one, which beats hearing nothing.
+static std::string WithBakedPlayerName(const std::string& text) {
+    for (const std::string& name :
+         { PlayerNameAscii(0x3E, DecodePalNameChar), PlayerNameAscii(0xDF, DecodeNtscNameChar) }) {
+        if (name.empty() || name == SOH::kBakedPlayerName || text.find(name) == std::string::npos) {
+            continue;
+        }
+
+        std::string renamed;
+        size_t from = 0;
+        for (size_t at = text.find(name); at != std::string::npos; at = text.find(name, from)) {
+            renamed.append(text, from, at - from).append(SOH::kBakedPlayerName);
+            from = at + name.size();
+        }
+        renamed.append(text, from, std::string::npos);
+        return renamed;
+    }
+    return text;
+}
+
+static std::shared_ptr<SOH::VoiceClip> LoadVoiceClip(const std::string& text, const char* language,
+                                                     const char* profile) {
+    std::error_code ec;
+    const std::string path = SOH::VoiceClipPath(text, language, profile);
+    if (!std::filesystem::exists(path, ec) || !SOH::VoiceClipIsCurrent(path)) {
+        return nullptr;
+    }
+    return SOH::VoiceClip::FromOpusFile(path);
+}
+
+// Baked clips are content-addressed on the same decoded string the speech backend
+// would otherwise have read, so a line that was never baked simply misses and
+// falls back to speech.
+static bool TryPlayVoiceClip(const std::string& text, const char* language, const char* profile) {
+    if (profile == nullptr || !CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
+        return false;
+    }
+
+    std::shared_ptr<SOH::VoiceClip> clip = LoadVoiceClip(text, language, profile);
+    const std::string canonical = WithBakedPlayerName(text);
+    if (clip == nullptr && canonical != text) {
+        clip = LoadVoiceClip(canonical, language, profile);
+    }
+    // Master is applied per native note in audio_playback.c and mirrored onto the synth gain;
+    // the voice mix sits downstream of both, so it has to fold Master in itself. On its own
+    // output it is out from under the game's volume, which is the point of putting it there.
+    const float volume = (float)CVarGetInteger(CVAR_AUDIO("VoiceActingVolume"), 100) / 100.0f;
+    const float master = SOH::VoicePlayer::Instance().IsSeparate()
+                             ? 1.0f
+                             : (float)CVarGetInteger(CVAR_SETTING("Volume.Master"), 40) / 100.0f;
+
+    if (clip == nullptr) {
+        // Nothing cached yet: render it now and let it play when it lands. The
+        // clip is written to the same path this lookup just missed, so every
+        // later reading of the line is a plain file read.
+        // Rendered under the baked name, not whatever this player called their
+        // file, so the cache stays the same for everyone.
+        SOH::VoiceBaker::Instance().Request(canonical, language, profile, volume * master);
+        return false;
+    }
+
+    SOH::VoicePlayer::Instance().Play(SOH::VoicePlayer::Channel::Acted, clip, volume * master);
+    return true;
+}
+
 void RegisterOnDialogMessageHook() {
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnDialogMessage>([]() {
-        if (!CVarGetInteger(CVAR_SETTING("A11yTTS"), 0))
+        const bool readsEverything = CVarGetInteger(CVAR_SETTING("A11yTTS"), 0) != 0;
+        if (!readsEverything && !CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0))
             return;
 
         MessageContext* msgCtx = &gPlayState->msgCtx;
@@ -1053,8 +1188,11 @@ void RegisterOnDialogMessageHook() {
 
                 uint16_t size = msgCtx->decodedTextLen;
                 auto decodedMsg = Message_TTS_Decode(msgCtx->msgBufDecoded, 0, size);
-                SpeechSynthesizer::Instance->Speak(decodedMsg.c_str(), GetLanguageCode());
-            } else if (msgCtx->msgMode == MSGMODE_TEXT_DONE && msgCtx->choiceNum > 0 &&
+                const char* profile = SOH::VoiceProfileForText(msgCtx->textId);
+                if (!TryPlayVoiceClip(decodedMsg, GetLanguageCode(), profile) && readsEverything) {
+                    SpeechSynthesizer::Instance->Speak(decodedMsg.c_str(), GetLanguageCode());
+                }
+            } else if (readsEverything && msgCtx->msgMode == MSGMODE_TEXT_DONE && msgCtx->choiceNum > 0 &&
                        msgCtx->choiceIndex != ttsCurrentHighlightedChoice) {
                 ttsCurrentHighlightedChoice = msgCtx->choiceIndex;
                 uint16_t startOffset = 0;
@@ -1101,8 +1239,11 @@ void RegisterOnDialogMessageHook() {
 
             if (msgCtx->decodedTextLen < 3 || (msgCtx->msgBufDecoded[msgCtx->decodedTextLen - 2] != MESSAGE_FADE &&
                                                msgCtx->msgBufDecoded[msgCtx->decodedTextLen - 3] != MESSAGE_FADE2)) {
-                SpeechSynthesizer::Instance->Speak(
-                    "", GetLanguageCode()); // cancel current speech (except for faded out messages)
+                SOH::VoicePlayer::Instance().Stop(SOH::VoicePlayer::Channel::Acted);
+                if (readsEverything) {
+                    SpeechSynthesizer::Instance->Speak(
+                        "", GetLanguageCode()); // cancel current speech (except for faded out messages)
+                }
             }
         }
     });
@@ -1201,6 +1342,11 @@ static void RegisterTTSModHooks() {
 static void RegisterTTS() {
     InitTTSBank();
     RegisterTTSModHooks();
+    SOH::VoicePlayer::Instance().SetSeparateOutput(CVarGetInteger(CVAR_AUDIO("SpeechSeparateStream"), 0) != 0,
+                                                   CVarGetString(CVAR_AUDIO("SpeechOutputDevice"), ""));
+    if (CVarGetInteger(CVAR_AUDIO("VoiceActing"), 0)) {
+        SOH::VoiceBaker::Instance().Warm(GetLanguageCode());
+    }
 }
 
 static RegisterShipInitFunc initFunc(RegisterTTS);

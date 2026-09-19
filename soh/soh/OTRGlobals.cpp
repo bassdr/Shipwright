@@ -33,6 +33,7 @@
 #include <ship/utils/binarytools/MemoryStream.h>
 #include "soh/Enhancements/audio/MidiSynthManager.h"
 #include "soh/Enhancements/audio/AudioResampler.h"
+#include "soh/Enhancements/audio/VoicePlayer.h"
 #include "Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 #include "Enhancements/controls/SohInputEditorWindow.h"
 #include "Enhancements/audio/AudioCollection.h"
@@ -876,6 +877,9 @@ void OTRGlobals::Initialize() {
 #endif
     auto logLevel =
         static_cast<spdlog::level::level_enum>(CVarGetInteger(CVAR_DEVELOPER_TOOLS("LogLevel"), defaultLogLevel));
+    // Without this the setting reads back correctly and changes nothing: a build
+    // that is not _DEBUG leaves the logger at warn, and every info line is dropped.
+    spdlog::default_logger()->set_level(logLevel);
     spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%s:%#] [%^%l%$] %v");
 
     InitGfxDebugger();
@@ -1124,8 +1128,10 @@ void OTRAudio_Thread() {
         const bool haveSynth = false;
 #endif
 
-        // Stock path: at the native rate with no synth, hand s16 straight through.
-        if (!resampler && !haveSynth) {
+        const bool haveVoice = SOH::VoicePlayer::Instance().IsPlaying();
+
+        // Stock path: at the native rate with nothing extra to mix, hand s16 straight through.
+        if (!resampler && !haveSynth && !haveVoice) {
             AudioPlayer_Play(reinterpret_cast<u8*>(native_s16), total_samples * sizeof(int16_t));
             return;
         }
@@ -1166,6 +1172,16 @@ void OTRAudio_Thread() {
             stereo = mix_f32;
         }
 #endif
+
+        if (haveVoice) {
+            // The voice mix is additive, so it needs a buffer it may write to;
+            // at the native rate with no synth, `stereo` is still the read-only input.
+            if (stereo != mix_f32) {
+                std::copy(stereo, stereo + outFrames * NUM_AUDIO_CHANNELS, mix_f32);
+                stereo = mix_f32;
+            }
+            SOH::VoicePlayer::Instance().Mix(mix_f32, (uint32_t)outFrames, outRate);
+        }
 
         // Stereo s16 out; libultraship still does channel layout / 5.1 downstream.
         const int n = outFrames * NUM_AUDIO_CHANNELS;

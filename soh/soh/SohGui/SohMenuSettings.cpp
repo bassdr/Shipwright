@@ -1,4 +1,5 @@
 #include "SohMenu.h"
+#include "soh/Enhancements/audio/VoicePlayer.h"
 #include "soh/SohContext.h"
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/enhancementTypes.h"
@@ -7,6 +8,7 @@
 #include <soh/GameVersions.h>
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/audio/AudioEditor.h"
+#include "soh/Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 #include "UIWidgets.hpp"
 #include <ship/controller/controldeck/ControlDeck.h>
 
@@ -239,6 +241,29 @@ void SohMenu::AddMenuSettings() {
         .CVar(CVAR_SETTING("A11yTTS"))
         .RaceDisable(false)
         .Options(CheckboxOptions().Tooltip("Enables text to speech for in-game dialogue"));
+    AddWidget(path, "Speech Rate: %d %%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("A11yTTSRate"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions()
+                     .Min(SPEECH_RATE_MIN)
+                     .Max(SPEECH_RATE_MAX)
+                     .DefaultValue(100)
+                     .ShowButtons(true)
+                     .Format("")
+                     .Tooltip("Speaking speed, as a percentage of the speech engine's normal rate."))
+        .Callback([](WidgetInfo& info) { SpeechSynthesizer::Instance->ApplySettings(); });
+    AddWidget(path, "Speech Volume: %d %%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("A11yTTSVolume"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(0).Max(100).DefaultValue(100).ShowButtons(true).Format("").Tooltip(
+            "Volume of the reading voice, set on the speech engine itself rather than in the mixer."))
+        .Callback([](WidgetInfo& info) { SpeechSynthesizer::Instance->ApplySettings(); });
+    AddWidget(path, "Speech Pitch: %d", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("A11yTTSPitch"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(0).Max(100).DefaultValue(50).ShowButtons(true).Format("").Tooltip(
+            "Base pitch of the speaking voice. 50 is the engine's normal pitch."))
+        .Callback([](WidgetInfo& info) { SpeechSynthesizer::Instance->ApplySettings(); });
 #endif
     AddWidget(path, "Disable Idle Camera Re-Centering", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("A11yDisableIdleCam"))
@@ -328,6 +353,29 @@ void SohMenu::AddMenuSettings() {
         .Callback([](WidgetInfo& info) {
             Audio_SetGameVolume(SEQ_PLAYER_SFX, ((float)CVarGetInteger(CVAR_SETTING("Volume.SFX"), 100) / 100.0f));
         });
+    AddWidget(path, "Voice Acting", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_AUDIO("VoiceActing"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip(
+            "Plays pre-recorded voice clips for story dialogue, mixed with the game like any other sound. "
+            "Lines with no clip stay silent unless Text to Speech is also on, which reads them instead."));
+    AddWidget(path, "Voice Volume: %d %%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_AUDIO("VoiceActingVolume"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(0).Max(100).DefaultValue(100).ShowButtons(true).Format("").Tooltip(
+            "Volume of the spoken dialogue, applied when a line starts."));
+    AddWidget(path, "Speech on a Separate Output", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_AUDIO("SpeechSeparateStream"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip(
+            "Sends every spoken sound - acted dialogue and the screen reader alike - to an output stream of "
+            "its own instead of mixing it with the game. Use it to put speech on a headset and leave the "
+            "music where it is, or to set its level apart from the game in your system mixer."))
+        .Callback([](WidgetInfo& info) {
+            SOH::VoicePlayer::Instance().SetSeparateOutput(CVarGetInteger(CVAR_AUDIO("SpeechSeparateStream"), 0) != 0,
+                                                           CVarGetString(CVAR_AUDIO("SpeechOutputDevice"), ""));
+        });
+    AddWidget(path, "Speech Output Device", WIDGET_SPEECH_DEVICE).RaceDisable(false);
     AddWidget(path, "Audio API (Needs reload)", WIDGET_AUDIO_BACKEND).RaceDisable(false);
     AddWidget(path, "Output Sample Rate (Restart required)", WIDGET_CVAR_COMBOBOX)
         .CVar(CVAR_AUDIO("OutputSampleRate"))

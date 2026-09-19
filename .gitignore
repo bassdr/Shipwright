@@ -461,3 +461,7 @@ soh/properties.h
 /clang-format
 /clang-format.exe
 *.o2r
+
+# Voice clips and their manifest are synthesised from the ROM's dialogue, so they
+# are player-local derived data and never belong in the tree.
+voice/

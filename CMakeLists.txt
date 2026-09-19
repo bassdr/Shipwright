@@ -482,6 +482,7 @@ endif()
 # Sub-projects
 ################################################################################
 option(ENABLE_FLUIDSYNTH "Enable the FluidSynth synth backend" ON)
+option(ENABLE_VOICE_SYNTH "Synthesise voice-acting clips in-game (adds ONNX Runtime)" ON)
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship SYSTEM)
 quiet_target(libultraship "${WARNING_OVERRIDE}")
 # libultraship fetches its own dependencies into its directory scope, so walking torch alone

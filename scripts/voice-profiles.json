@@ -1,0 +1,302 @@
+{
+  "_comment": [
+    "One entry per voice named in soh/soh/Enhancements/tts/VoiceCast.cpp, then per language.",
+    "model/speaker pick the voice; pitch and formant are semitones. asetrate moves both",
+    "together (a physically larger speaker) and a pitch-only shift moves the fundamental",
+    "alone, so the pair reaches any body size and any register.",
+    "There is no default voice on purpose: a character with no entry here stays silent",
+    "rather than borrowing someone else's. Navi and Malon are measured from the game's own",
+    "samples (495 Hz and 297 Hz sung); the rest are picked from a pitch scan of the first",
+    "300 libritts_r speakers. French has only two usable voices, so its characters are",
+    "separated by pitch and formant rather than by speaker."
+  ],
+  "navi": {
+    "_measured": "495 Hz from 5 Navi samples; +11.8 st from libritts_r 315 at 251 Hz",
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 315,
+      "pitch": 11.8,
+      "formant": 6.0,
+      "length_scale": 0.95
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 0,
+      "pitch": 11.8,
+      "formant": 6.0,
+      "length_scale": 0.95
+    }
+  },
+  "saria": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 315,
+      "pitch": 2.0
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 0,
+      "pitch": 2.0
+    }
+  },
+  "zelda": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 294
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 0
+    }
+  },
+  "zelda_child": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 166,
+      "pitch": 1.0
+    },
+    "fr-FR": {
+      "model": "fr_FR-siwis-medium",
+      "speaker": 0,
+      "pitch": 3.0
+    }
+  },
+  "sheik": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 294,
+      "pitch": -3,
+      "formant": -1,
+      "length_scale": 1.2,
+      "noise_scale": 0.5
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 0,
+      "pitch": -3,
+      "formant": -1,
+      "length_scale": 1.2,
+      "noise_scale": 0.5
+    }
+  },
+  "impa": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 294,
+      "pitch": -2,
+      "formant": -1
+    },
+    "fr-FR": {
+      "model": "fr_FR-siwis-medium",
+      "speaker": 0,
+      "pitch": -2,
+      "formant": -1
+    }
+  },
+  "malon": {
+    "_measured": "297 Hz sung -> ~210 Hz speaking; libritts_r 455 needs no shift",
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 455
+    },
+    "fr-FR": {
+      "model": "fr_FR-siwis-medium",
+      "speaker": 0
+    }
+  },
+  "malon_child": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 455,
+      "pitch": 2.0
+    },
+    "fr-FR": {
+      "model": "fr_FR-siwis-medium",
+      "speaker": 0,
+      "pitch": 3.0
+    }
+  },
+  "nabooru": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 1
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 0,
+      "pitch": -2.0
+    }
+  },
+  "ruto": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 13
+    },
+    "fr-FR": {
+      "model": "fr_FR-siwis-medium",
+      "speaker": 0,
+      "pitch": 1.0
+    }
+  },
+  "ruto_child": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 54,
+      "pitch": 1.0
+    },
+    "fr-FR": {
+      "model": "fr_FR-siwis-medium",
+      "speaker": 0,
+      "pitch": 5.0
+    }
+  },
+  "cucco_lady": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 148
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 0,
+      "pitch": 3.0
+    }
+  },
+  "talon": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 36
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": -1.0
+    }
+  },
+  "ingo": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 113
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": 1.0
+    }
+  },
+  "carpenter": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 22
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1
+    }
+  },
+  "guard": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 43
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": -0.5
+    }
+  },
+  "shopkeeper": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 135
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": 2.0
+    }
+  },
+  "fishing": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 159
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": 1.5
+    }
+  },
+  "owl": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 137,
+      "length_scale": 1.15
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": -3.0,
+      "length_scale": 1.15
+    }
+  },
+  "goron": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 50,
+      "pitch": -3,
+      "formant": -4
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": -4.0,
+      "formant": -4
+    }
+  },
+  "darunia": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 31,
+      "pitch": -4,
+      "formant": -5,
+      "length_scale": 1.05
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": -4,
+      "formant": -5,
+      "length_scale": 1.05
+    }
+  },
+  "boss_ganon": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 182,
+      "pitch": -5,
+      "formant": -5,
+      "length_scale": 1.1
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": -6.0,
+      "formant": -5,
+      "length_scale": 1.1
+    }
+  },
+  "en_dns": {
+    "en-US": {
+      "model": "en_US-libritts_r-medium",
+      "speaker": 60,
+      "pitch": 4,
+      "formant": 5
+    },
+    "fr-FR": {
+      "model": "fr_FR-upmc-medium",
+      "speaker": 1,
+      "pitch": 9.0,
+      "formant": 6.0
+    }
+  }
+}

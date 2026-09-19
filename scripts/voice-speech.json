@@ -1,0 +1,99 @@
+{
+  "_comment": "Copy beside the game binary, next to voice-profiles.json. 'unspoken' drops a spelling from the line entirely - laughs are not voiced, because read as words they are 'ah ah ah' and built from bursts they are an electronic fake. 'say' respells text before phonemising, 'phonemes' rewrites the IPA espeak produced. A mark key is the run as written, so '!' '!!' '!!!' are tuned apart. Clips older than this file are re-synthesised automatically.",
+  "en-US": {
+    "say": {},
+    "marks": {
+      ".": {
+        "pause": 0.3
+      },
+      "?": {
+        "pause": 0.3
+      },
+      "!": {
+        "pause": 0.2,
+        "emphasis": 1.15,
+        "length_scale": 0.95
+      },
+      ",": {
+        "pause": 0.2
+      },
+      ";": {
+        "pause": 0.2
+      },
+      ":": {
+        "emit": ",",
+        "pause": 0.2
+      },
+      "...": {
+        "pause": 0.6
+      },
+      "!!": {
+        "pause": 0.2,
+        "emphasis": 1.5,
+        "length_scale": 0.92
+      },
+      "!!!": {
+        "pause": 0.2,
+        "emphasis": 2.0,
+        "length_scale": 0.9
+      }
+    },
+    "phonemes": {},
+    "unspoken": [
+      "Wha ha ha ha",
+      "Wha ha ha",
+      "Ha ha ha",
+      "Heh heh heh",
+      "Ho ho ho"
+    ]
+  },
+  "fr-FR": {
+    "say": {
+      "Ding Dong": "digne dogne"
+    },
+    "marks": {
+      ".": {
+        "pause": 0.3
+      },
+      "?": {
+        "pause": 0.3
+      },
+      "!": {
+        "pause": 0.3,
+        "emphasis": 1.15,
+        "length_scale": 0.95
+      },
+      ",": {
+        "pause": 0.2
+      },
+      ";": {
+        "pause": 0.2
+      },
+      ":": {
+        "emit": ",",
+        "pause": 0.2
+      },
+      "...": {
+        "pause": 0.6
+      },
+      "!!": {
+        "pause": 0.3,
+        "emphasis": 1.25,
+        "length_scale": 0.92
+      },
+      "!!!": {
+        "pause": 0.35,
+        "emphasis": 1.35,
+        "length_scale": 0.9
+      }
+    },
+    "phonemes": {},
+    "unspoken": [
+      "Wha ha ha ha",
+      "Wha ha ha",
+      "Ha ha ha",
+      "Heh heh heh",
+      "Ho ho ho"
+    ]
+  }
+}
