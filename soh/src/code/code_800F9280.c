@@ -38,6 +38,60 @@ u8 D_80133418 = 0;
 #define Audio_SetVolScaleNow(playerIdx, volFadeTimer, volScale) \
     Audio_ProcessSeqCmd(0x40000000 | ((u8)playerIdx << 24) | ((u8)volFadeTimer << 16) | ((u8)(volScale * 127.0f)));
 
+// A streamed song is a single full-volume note held for the whole track, so a swap or stop with
+// no fade cuts it mid-sample instead of ending on an instrument's release the way a sequence does.
+// Ramp the outgoing track down first and hold any follow-up sequence until it is quiet, since
+// starting one resets the player and would discard the ramp. Only custom streamed music reaches
+// these paths; gSeqPlayerIsStreamed is never set for a vanilla sequence.
+#define STREAMED_FADE_OUT_FRAMES 10
+#define STREAMED_FADE_OUT_TIMER (STREAMED_FADE_OUT_FRAMES * 4)
+// The audio thread picks the fade command up a frame or two behind the game thread, so hold the
+// swap back a little longer than the ramp or it lands on the tail of it instead of on silence.
+#define STREAMED_FADE_OUT_HOLD_FRAMES (STREAMED_FADE_OUT_FRAMES + 2)
+
+static u8 sStreamedFadeOutTimer[4];
+static u8 sStreamedHasPending[4];
+static u8 sStreamedPendingSeqId[4];
+static u8 sStreamedPendingSeqArgs[4];
+
+static void Audio_HoldForStreamedFadeOut(u8 playerIdx) {
+    sStreamedFadeOutTimer[playerIdx] = STREAMED_FADE_OUT_HOLD_FRAMES;
+    sStreamedHasPending[playerIdx] = false;
+}
+
+static u8 Audio_FadeOutStreamedSequence(u8 playerIdx, u8 seqId, u8 seqArgs) {
+    if (sStreamedFadeOutTimer[playerIdx] == 0) {
+        if (!gSeqPlayerIsStreamed[playerIdx] || (gActiveSeqs[playerIdx].seqId & 0xFF) == seqId) {
+            return false;
+        }
+
+        Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
+                          (STREAMED_FADE_OUT_TIMER * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
+        Audio_HoldForStreamedFadeOut(playerIdx);
+    }
+
+    sStreamedHasPending[playerIdx] = true;
+    sStreamedPendingSeqId[playerIdx] = seqId;
+    sStreamedPendingSeqArgs[playerIdx] = seqArgs;
+    // Report the new sequence straight away, or callers that poll func_800FA0B4() re-request it
+    // every frame and the swap never comes due.
+    gActiveSeqs[playerIdx].seqId = seqId | (seqArgs << 8);
+    return true;
+}
+
+static void Audio_UpdateStreamedFadeOut(u8 playerIdx) {
+    if (sStreamedFadeOutTimer[playerIdx] == 0 || --sStreamedFadeOutTimer[playerIdx] != 0) {
+        return;
+    }
+
+    if (sStreamedHasPending[playerIdx]) {
+        sStreamedHasPending[playerIdx] = false;
+        // The outgoing track is silent by now; Audio_StartSequence() re-arms the flag for what follows.
+        gSeqPlayerIsStreamed[playerIdx] = false;
+        Audio_StartSequence(playerIdx, sStreamedPendingSeqId[playerIdx], sStreamedPendingSeqArgs[playerIdx], 0);
+    }
+}
+
 void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
     u8 i;
     u16 dur;
@@ -45,6 +99,10 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
     s32 pad;
 
     if (D_80133408 == 0 || playerIdx == SEQ_PLAYER_SFX) {
+        if (fadeTimer == 0 && Audio_FadeOutStreamedSequence(playerIdx, seqId, arg2 & 0x7F)) {
+            return;
+        }
+
         // Resolve here so the full 16-bit id rides in the command (bits 0-15) rather than the shared
         // seqToPlay slot. seqReplaced is set out-of-band by preview/slow load.
         // See AudioEditor_GetReplacementSeq().
@@ -90,6 +148,11 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
 }
 
 void func_800F9474(u8 playerIdx, u16 arg1) {
+    if (arg1 == 0 && gSeqPlayerIsStreamed[playerIdx]) {
+        arg1 = STREAMED_FADE_OUT_TIMER;
+        Audio_HoldForStreamedFadeOut(playerIdx);
+    }
+
     Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
                       (arg1 * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
     gActiveSeqs[playerIdx].seqId = NA_BGM_DISABLED;
@@ -474,6 +537,8 @@ void func_800FA3DC(void) {
     u8 k;
 
     for (playerIdx = 0; playerIdx < 4; playerIdx++) {
+        Audio_UpdateStreamedFadeOut(playerIdx);
+
         if (gActiveSeqs[playerIdx].isWaitingForFonts != 0) {
             switch (func_800E5E20(&dummy)) {
                 case 1:
@@ -710,6 +775,8 @@ void Audio_ResetActiveSequences(void) {
 
     for (seqPlayerIndex = 0; seqPlayerIndex < 4; seqPlayerIndex++) {
         sNumSeqRequests[seqPlayerIndex] = 0;
+        sStreamedFadeOutTimer[seqPlayerIndex] = 0;
+        sStreamedHasPending[seqPlayerIndex] = false;
 
         gActiveSeqs[seqPlayerIndex].seqId = NA_BGM_DISABLED;
         gActiveSeqs[seqPlayerIndex].prevSeqId = NA_BGM_DISABLED;
