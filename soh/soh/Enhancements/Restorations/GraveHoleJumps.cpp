@@ -1,6 +1,7 @@
 #include <ship/core/Context.h>
 #include "soh/SohContext.h"
 #include <ship/resource/ResourceManager.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"

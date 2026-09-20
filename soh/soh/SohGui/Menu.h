@@ -27,7 +27,7 @@ class Menu : public SohGui::Window {
     bool IsMenuPopped();
     UIWidgets::Colors GetMenuThemeColor();
 
-    void MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors menuThemeIndex);
+    void MenuDrawItem(WidgetInfo& widget, UIWidgets::Colors menuThemeIndex);
     void AddMenuEntry(std::string entryName, const char* entryCvar);
     void AddSearchWidget(SearchWidget widget);
     std::unordered_map<uint32_t, disabledInfo>& GetDisabledMap();

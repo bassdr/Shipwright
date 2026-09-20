@@ -114,6 +114,9 @@
 
 #include "soh/config/ConfigUpdaters.h"
 #include "soh/ShipInit.hpp"
+#if defined(_WIN32) || defined(__APPLE__) || defined(ESPEAK)
+#include "soh/SohGui/SohModals.h"
+#endif
 
 #ifdef _MSC_VER
 #define strdup _strdup

@@ -1,5 +1,4 @@
 #include <vector>
-#include "soh/SohContext.h"
 #include <string>
 
 #include <ship/utils/Utils.h>
@@ -19,7 +18,11 @@
 #define Path _Path
 #define PATH_HACK
 
+// Merge conflict: probably only one of those
+#include "soh/SohContext.h"
 #include <ship/core/Context.h>
+#include <ship/window/Window.h>
+
 #undef PATH_HACK
 #undef Path
 

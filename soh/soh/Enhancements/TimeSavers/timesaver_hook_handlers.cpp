@@ -1,9 +1,11 @@
 #include <spdlog/spdlog.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/enhancementTypes.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
 #include "soh/Enhancements/randomizer/randomizer_entrance.h"
+#include "soh/ShipInit.hpp"
 
 extern "C" {
 #include "src/overlays/actors/ovl_En_Wonder_Talk2/z_en_wonder_talk2.h"
@@ -32,9 +34,7 @@ extern "C" {
 #include "src/overlays/actors/ovl_En_Po_Sisters/z_en_po_sisters.h"
 #include "src/overlays/actors/ovl_Obj_Lightswitch/z_obj_lightswitch.h"
 #include "src/overlays/actors/ovl_Bg_Jya_Bombchuiwa/z_bg_jya_bombchuiwa.h"
-#include <overlays/actors/ovl_Boss_Ganondrof/z_boss_ganondrof.h>
 #include <overlays/actors/ovl_En_Ik/z_en_ik.h>
-#include <objects/object_gnd/object_gnd.h>
 extern SaveContext gSaveContext;
 extern PlayState* gPlayState;
 extern int32_t D_8011D3AC;
@@ -529,24 +529,6 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
                 *should = false;
             }
             break;
-        case VB_PLAY_PULL_MASTER_SWORD_CS:
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Story"), IS_RANDO)) {
-                if (!Flags_GetEventChkInf(EVENTCHKINF_PULLED_MASTER_SWORD_FROM_PEDESTAL)) {
-                    // Normally, these would be done in the cutscene, but we're skipping it
-                    Flags_SetEventChkInf(EVENTCHKINF_PULLED_MASTER_SWORD_FROM_PEDESTAL);
-                    Flags_SetEventChkInf(EVENTCHKINF_ENTERED_MASTER_SWORD_CHAMBER);
-                    Flags_SetEventChkInf(EVENTCHKINF_SHEIK_SPAWNED_AT_MASTER_SWORD_PEDESTAL);
-                    Flags_SetEventChkInf(EVENTCHKINF_TIME_TRAVELED_TO_ADULT);
-                    if (!IS_RANDO) {
-                        gSaveContext.dayTime = gSaveContext.skyboxTime = 0x8000;
-                    }
-                    if (GameInteractor_Should(VB_GIVE_ITEM_LIGHT_MEDALLION, true)) {
-                        Item_Give(gPlayState, ITEM_MEDALLION_LIGHT);
-                    }
-                }
-                *should = false;
-            }
-            break;
         case VB_PLAY_DISPEL_BARRIER_CS: {
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Story"), IS_RANDO)) {
                 static s16 trialEntrances[] = {
@@ -589,14 +571,6 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
                     *textId = 0x3036;
                     *should = true;
                 }
-            }
-            break;
-        }
-        case VB_PLAY_MWEEP_CS: {
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Story"), 0)) {
-                *should = false;
-                Inventory_ReplaceItem(gPlayState, ITEM_LETTER_RUTO, ITEM_BOTTLE);
-                Flags_SetEventChkInf(EVENTCHKINF_KING_ZORA_MOVED);
             }
             break;
         }
@@ -883,31 +857,6 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             }
             break;
         }
-        case VB_PHANTOM_GANON_DEATH_SCENE: {
-            if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.QuickBossDeaths"), IS_RANDO || IS_BOSS_RUSH)) {
-                *should = false;
-                BossGanondrof* pg = va_arg(args, BossGanondrof*);
-                Player* player = GET_PLAYER(gPlayState);
-                if (pg->work[GND_ACTION_STATE] == DEATH_SPASM) {
-                    // Skip to death scream animation and move ganondrof to middle
-                    pg->deathState = DEATH_SCREAM;
-                    pg->timers[0] = 50;
-                    AnimationHeader* screamAnim = (AnimationHeader*)gPhantomGanonScreamAnim;
-                    Animation_MorphToLoop(&pg->skelAnime, screamAnim, -10.0f);
-                    pg->actor.world.pos.x = GND_BOSSROOM_CENTER_X;
-                    pg->actor.world.pos.y = GND_BOSSROOM_CENTER_Y + 83.0f;
-                    pg->actor.world.pos.z = GND_BOSSROOM_CENTER_Z;
-                    pg->actor.shape.rot.y = 0;
-                    pg->work[GND_BODY_DECAY_INDEX] = 0;
-                    Audio_PlayActorSound2(&pg->actor, NA_SE_EN_FANTOM_LAST);
-
-                    // Move Player out of the center of the room
-                    player->actor.world.pos.x = GND_BOSSROOM_CENTER_X - 200.0f;
-                    player->actor.world.pos.z = GND_BOSSROOM_CENTER_Z;
-                }
-            }
-            break;
-        }
         case VB_NABOORU_KNUCKLE_DEATH_SCENE: {
             EnIk* ik = va_arg(args, EnIk*);
             if (CVarGetInteger(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.QuickBossDeaths"), IS_RANDO)) {
@@ -947,6 +896,9 @@ void TimeSaverOnVanillaBehaviorHandler(GIVanillaBehavior id, bool* should, va_li
             break;
         }
         case VB_SKIP_SCARECROWS_SONG: {
+            if (IS_RANDO && RAND_GET_OPTION(RSK_SHUFFLE_SCARECROWS_SONG)) {
+                break;
+            }
             if (gPlayState->msgCtx.msgMode == MSGMODE_OCARINA_PLAYING &&
                 CVarGetInteger(CVAR_ENHANCEMENT("InstantScarecrow"), 0) && gSaveContext.scarecrowSpawnSongSet) {
                 *should = true;

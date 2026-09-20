@@ -1,10 +1,12 @@
 #include <functional>
-#include "soh/SohContext.h"
 #include <map>
 #include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
+
+#include "soh/SohContext.h"
+#include "soh/SohGui/UIWidgets.hpp"
 
 #include "AudioEditor.h"
 #include "sequence.h"
@@ -1354,42 +1356,31 @@ void AudioEditor::DrawElement() {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             if (ImGui::BeginChild("SfxOptions", ImVec2(0, -8))) {
-                SohGui::mSohMenu->MenuDrawItem(lowHpAlarm, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
-                SohGui::mSohMenu->MenuDrawItem(naviCall, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
-                SohGui::mSohMenu->MenuDrawItem(enemyProx, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(lowHpAlarm, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(naviCall, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(enemyProx, THEME_COLOR);
                 if (!CVarGetInteger(CVAR_AUDIO("EnemyBGMDisable"), 0)) {
-                    SohGui::mSohMenu->MenuDrawItem(leeverProx, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                                   THEME_COLOR);
+                    SohGui::mSohMenu->MenuDrawItem(leeverProx, THEME_COLOR);
                 }
-                SohGui::mSohMenu->MenuDrawItem(leadingMusic, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
-                SohGui::mSohMenu->MenuDrawItem(displaySeqName, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
-                SohGui::mSohMenu->MenuDrawItem(ovlDuration, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
-                SohGui::mSohMenu->MenuDrawItem(voicePitch, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(leadingMusic, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(displaySeqName, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(ovlDuration, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(voicePitch, THEME_COLOR);
                 ImGui::SameLine();
                 ImGui::SetCursorPosY(ImGui::GetCursorPos().y + 40.f);
                 if (UIWidgets::Button("Reset##linkVoiceFreqMultiplier",
                                       UIWidgets::ButtonOptions().Size(ImVec2(80, 36)).Padding(ImVec2(5.0f, 0.0f)))) {
                     CVarSetFloat(CVAR_AUDIO("LinkVoiceFreqMultiplier"), 1.0f);
                 }
-                SohGui::mSohMenu->MenuDrawItem(randomAudioGenModes,
-                                               static_cast<uint32_t>(ImGui::GetContentRegionAvail().x), THEME_COLOR);
-                SohGui::mSohMenu->MenuDrawItem(lowerOctaves, static_cast<uint32_t>(ImGui::GetContentRegionAvail().x),
-                                               THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(randomAudioGenModes, THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(lowerOctaves, THEME_COLOR);
 
                 // Master switch for the float audio pipeline. Always compiled; the
                 // float pipeline works without FluidSynth. When ENABLE_FLUIDSYNTH is
                 // on, a dedicated FluidSynth tab exposes pack selection and overrides.
                 // CVar transitions are picked up by ReconcileModernAudioPipelineIfChanged
                 // at the top of DrawElement, so a toggle here takes effect on any tab.
-                SohGui::mSohMenu->MenuDrawItem(fluidSynthEnabled,
-                                               static_cast<uint32_t>(ImGui::GetContentRegionAvail().x), THEME_COLOR);
+                SohGui::mSohMenu->MenuDrawItem(fluidSynthEnabled, THEME_COLOR);
 
                 // (FluidSynth pack selection, mode/volume, and the
                 // per-instrument override table live in the dedicated
@@ -1545,8 +1536,7 @@ void AudioEditor::DrawElement() {
                         {
                             int gmode = CVarGetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
                             SohGui::mSohMenu->MenuDrawItem(
-                                gmode == 1 ? fluidSynthGainEnhanced : fluidSynthGainAuthentic,
-                                static_cast<uint32_t>(ImGui::GetContentRegionAvail().x), THEME_COLOR);
+                                gmode == 1 ? fluidSynthGainEnhanced : fluidSynthGainAuthentic, THEME_COLOR);
                             // Push live so dragging the slider updates loudness immediately
                             // (the translator no longer reads the CVar on the audio path).
                             SOH::MidiTranslator::Instance().SetGlobalGain(

@@ -9,6 +9,7 @@
 #include "soh/Enhancements/randomizer/settings.h"
 #include "soh/ShipUtils.h"
 #include "soh/SohGui/SohGui.hpp"
+#include "soh/SohGui/UIWidgets.hpp"
 
 extern "C" {
 #include "variables.h"
@@ -457,7 +458,7 @@ void DrawTricksMenu(WidgetInfo& info) {
     UIWidgets::PushStyleInput(THEME_COLOR);
     trickSearch.Draw("Filter (inc,-exc)", 490.0f);
     UIWidgets::PopStyleInput();
-    if (CVarGetInteger(CVAR_RANDOMIZER_SETTING("LogicRules"), RO_LOGIC_GLITCHLESS) != RO_LOGIC_NO_LOGIC) {
+    if (CVarGetInteger(CVAR_RANDOMIZER_SETTING("NoLogic"), RO_GENERIC_OFF) == RO_GENERIC_OFF) {
         ImGui::SameLine();
         if (UIWidgets::Button("Disable All", UIWidgets::ButtonOptions().Color(THEME_COLOR).Size(ImVec2(250.f, 0.f)))) {
             for (int i = 0; i < RT_MAX; i++) {
@@ -502,7 +503,7 @@ void DrawTricksMenu(WidgetInfo& info) {
         ImGui::PopItemFlag();
         ImGui::TableNextRow();
 
-        if (CVarGetInteger(CVAR_RANDOMIZER_SETTING("LogicRules"), RO_LOGIC_GLITCHLESS) != RO_LOGIC_NO_LOGIC) {
+        if (CVarGetInteger(CVAR_RANDOMIZER_SETTING("NoLogic"), RO_GENERIC_OFF) == RO_GENERIC_OFF) {
             // COLUMN 1 - DISABLED TRICKS
             ImGui::TableNextColumn();
             // window->DC.CurrLineTextBaseOffset = 0.0f;
@@ -654,11 +655,11 @@ void DrawTricksMenu(WidgetInfo& info) {
         } else {
             ImGui::TableNextColumn();
             ImGui::BeginChild("ChildTricksDisabled", ImVec2(0, -8));
-            ImGui::Text("Requires Logic Turned On.");
+            ImGui::Text("Disabled for No Logic.");
             ImGui::EndChild();
             ImGui::TableNextColumn();
             ImGui::BeginChild("ChildTricksEnabled", ImVec2(0, -8));
-            ImGui::Text("Requires Logic Turned On.");
+            ImGui::Text("Disabled for No Logic.");
             ImGui::EndChild();
         }
         ImGui::EndTable();
@@ -816,7 +817,7 @@ void SohMenu::AddMenuRandomizer() {
     path.sidebarName = "Starting Items";
     AddSidebarEntry("Randomizer", path.sidebarName, 1);
     AddWidget(path, "Starting Items", WIDGET_CUSTOM).CustomFunction(DrawStartingItemsMenu);
-    path.sidebarName = "Locations";
+    path.sidebarName = "Check Locations";
     AddSidebarEntry("Randomizer", path.sidebarName, 1);
     AddWidget(path, "Excluded Locations", WIDGET_CUSTOM).CustomFunction(DrawLocationsMenu);
     path.sidebarName = "Tricks/Glitches";

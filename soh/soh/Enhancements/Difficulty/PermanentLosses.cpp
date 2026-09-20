@@ -3,6 +3,7 @@
 #include <ship/window/gui/Gui.h>
 #include "soh/SohContext.h"
 #include <ship/window/Window.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/randomizer/randomizer.h"

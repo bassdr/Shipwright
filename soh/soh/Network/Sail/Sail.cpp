@@ -5,6 +5,7 @@
 #include <ship/window/Window.h>
 #include <ship/window/gui/ConsoleWindow.h>
 #include <spdlog/spdlog.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 #include "soh/ShipInit.hpp"
 #include "soh/ShipUtils.h"
 #include "soh/cvar_prefixes.h"

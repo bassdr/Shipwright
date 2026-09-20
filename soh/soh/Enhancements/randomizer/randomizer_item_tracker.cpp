@@ -25,6 +25,8 @@
 #include "soh/util.h"
 #include "soh/Enhancements/randomizer/randomizer.h"
 #include "soh/Enhancements/randomizer/dungeon.h"
+#include "soh/Enhancements/randomizer/randomizer_entrance_tracker.h"
+#include "soh/ShipInit.hpp"
 
 #include <fast/Fast3dGui.h>
 
@@ -172,6 +174,10 @@ std::vector<ItemTrackerItem> grabItems = {
 
 std::vector<ItemTrackerItem> openChestItems = {
     ITEM_TRACKER_RG(RG_OPEN_CHEST, "", 0, DrawItem),
+};
+
+std::vector<ItemTrackerItem> scarecrowsSongItems = {
+    ITEM_TRACKER_RG(RG_SCARECROWS_SONG, "", 0, DrawItem),
 };
 
 std::vector<ItemTrackerItem> beanSoulItems = {
@@ -1196,6 +1202,9 @@ void DrawItem(ItemTrackerItem item) {
             case RG_OPEN_CHEST:
                 itemName = "Open";
                 break;
+            case RG_SCARECROWS_SONG:
+                itemName = "Scarecrow's Song";
+                break;
         }
     } else if (item.kind == ITEM_KIND_DUMMY) {
         if (item.id == ITEMTYPE_SILVER) {
@@ -1620,6 +1629,9 @@ void UpdateVectors() {
     if (IS_RANDO && RAND_GET_OPTION(RSK_SHUFFLE_OPEN_CHEST)) {
         mainWindowItems.insert(mainWindowItems.end(), openChestItems.begin(), openChestItems.end());
     }
+    if (IS_RANDO && RAND_GET_OPTION(RSK_SHUFFLE_SCARECROWS_SONG)) {
+        mainWindowItems.insert(mainWindowItems.end(), scarecrowsSongItems.begin(), scarecrowsSongItems.end());
+    }
 
     // if we're adding greg to the misc window,
     // and misc isn't on the main window,
@@ -2020,9 +2032,9 @@ void ItemTrackerSettingsWindow::DrawElement() {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-        SohGui::mSohMenu->MenuDrawItem(backgroundColor, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(backgroundColor, THEME_COLOR);
         ImGui::PopItemWidth();
-        SohGui::mSohMenu->MenuDrawItem(windowTypeWidget, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(windowTypeWidget, THEME_COLOR);
 
         if (CVarGetInteger(CVAR_TRACKER_ITEM("WindowType"), TRACKER_WINDOW_FLOATING) == TRACKER_WINDOW_FLOATING) {
             if (CVarCheckbox("Enable Dragging", CVAR_TRACKER_ITEM("Draggable"), CheckboxOptions().Color(THEME_COLOR))) {
@@ -2069,7 +2081,7 @@ void ItemTrackerSettingsWindow::DrawElement() {
                       IntSliderOptions().Min(1).Max(30).DefaultValue(13).Color(THEME_COLOR));
 
         ImGui::NewLine();
-        SohGui::mSohMenu->MenuDrawItem(ammoTracking, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(ammoTracking, THEME_COLOR);
         if (CVarGetInteger(CVAR_TRACKER_ITEM("ItemCountType"), ITEM_TRACKER_NUMBER_CURRENT_CAPACITY_ONLY) ==
                 ITEM_TRACKER_NUMBER_CURRENT_CAPACITY_ONLY ||
             CVarGetInteger(CVAR_TRACKER_ITEM("ItemCountType"), ITEM_TRACKER_NUMBER_CURRENT_CAPACITY_ONLY) ==
@@ -2080,8 +2092,8 @@ void ItemTrackerSettingsWindow::DrawElement() {
             }
         }
 
-        SohGui::mSohMenu->MenuDrawItem(keyTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(triforcePieceCount, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(keyTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(triforcePieceCount, THEME_COLOR);
 
         ImGui::TableNextColumn();
 
@@ -2132,7 +2144,7 @@ void ItemTrackerSettingsWindow::DrawElement() {
                              .Color(THEME_COLOR))) {
             RefreshItemTrackerMainWindow();
         }
-        SohGui::mSohMenu->MenuDrawItem(dungeonItemTracking, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(dungeonItemTracking, THEME_COLOR);
         if (CVarGetInteger(CVAR_TRACKER_ITEM("DisplayType.DungeonItems"), SECTION_DISPLAY_HIDDEN) !=
             SECTION_DISPLAY_HIDDEN) {
             if (CVarGetInteger(CVAR_TRACKER_ITEM("DisplayType.DungeonItems"), SECTION_DISPLAY_HIDDEN) ==
@@ -2147,15 +2159,15 @@ void ItemTrackerSettingsWindow::DrawElement() {
                 RefreshItemTrackerMainWindow();
             }
         }
-        SohGui::mSohMenu->MenuDrawItem(gregTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(triforcePieceTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(beanSoulsTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(bossSoulsTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(jabberNutsTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(ocarinaButtonTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(overworldKeysTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(silverRupeeTracking, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(fishingPoleTracking, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(gregTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(triforcePieceTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(beanSoulsTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(bossSoulsTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(jabberNutsTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(ocarinaButtonTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(overworldKeysTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(silverRupeeTracking, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(fishingPoleTracking, THEME_COLOR);
 
         if (CVarCombobox("Total Checks", CVAR_TRACKER_ITEM("TotalChecks.DisplayType"), minimalDisplayTypes,
                          ComboboxOptions()
@@ -2166,9 +2178,9 @@ void ItemTrackerSettingsWindow::DrawElement() {
             RefreshItemTrackerMainWindow();
         }
 
-        SohGui::mSohMenu->MenuDrawItem(personalNotesWiget, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(hookshotIdentWidget, 250, THEME_COLOR);
-        SohGui::mSohMenu->MenuDrawItem(openChestIdentWidget, 250, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(personalNotesWiget, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(hookshotIdentWidget, THEME_COLOR);
+        SohGui::mSohMenu->MenuDrawItem(openChestIdentWidget, THEME_COLOR);
 
         ImGui::PopStyleVar(1);
         ImGui::EndTable();

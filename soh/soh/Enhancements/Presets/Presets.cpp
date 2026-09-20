@@ -15,6 +15,7 @@
 #include "soh/Enhancements/randomizer/randomizer_entrance_tracker.h"
 #include "soh/Enhancements/randomizer/randomizer_item_tracker.h"
 #include "soh/Enhancements/randomizer/settings.h"
+#include "soh/ShipInit.hpp"
 
 namespace fs = std::filesystem;
 

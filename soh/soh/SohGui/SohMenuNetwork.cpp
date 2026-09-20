@@ -1,3 +1,4 @@
+
 #include "SohMenu.h"
 #include "soh/SohContext.h"
 #include <soh/Notification/Notification.h>
@@ -6,6 +7,7 @@
 #include "soh/util.h"
 #include <soh/Network/Sail/Sail.h>
 #include <soh/Network/CrowdControl/CrowdControl.h>
+#include "soh/SohGui/UIWidgets.hpp"
 
 namespace SohGui {
 
