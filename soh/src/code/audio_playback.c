@@ -3,6 +3,8 @@
 
 extern bool gUseLegacySD;
 
+extern s32 SOH_OpusStream_ContinuePos(const void* sampleAddr, s32 fallback);
+
 #if ENABLE_FLUIDSYNTH
 extern bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan,
                                            float channelVolume, uint8_t fontId, int16_t instOrWave, uint8_t semitone,
@@ -835,6 +837,10 @@ void Audio_NoteInitForLayer(Note* note, SequenceLayer* layer) {
     layer->channel->layerUnused = layer;
     layer->noteVelocity = 0.0f;
     Audio_NoteInit(note);
+    // 2S2H [Port] [Custom audio] A streamed track restarted to crossfade out continues from the
+    // position its cut note reached instead of the beginning of the sample.
+    note->unk_BC = SOH_OpusStream_ContinuePos(
+        layer->sound != NULL && layer->sound->sample != NULL ? layer->sound->sample->sampleAddr : NULL, 0);
     instId = layer->instOrWave;
 
     if (instId == 0xFF) {

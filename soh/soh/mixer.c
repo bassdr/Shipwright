@@ -126,6 +126,90 @@ struct OpusDecState {
     const void* source;
 };
 
+// Streamed tracks restart on another player to crossfade out. Each note decodes from its own
+// decoder, so track how far each sample was decoded: the restarted note claims that position
+// through Audio_NoteInitForLayer and continues where the cut note was instead of at the start.
+#define OPUS_STREAM_CACHE_SIZE 8
+#define OPUS_STREAM_CONTINUE_TTL 30
+static struct {
+    const void* source;
+    int32_t pos;
+} sOpusStreamPos[OPUS_STREAM_CACHE_SIZE];
+static int32_t sOpusStreamPosNext = 0;
+static struct {
+    const void* source;
+    int8_t ttl;
+} sOpusStreamContinue[4];
+static int32_t sOpusStreamContinueNext = 0;
+
+static int32_t SOH_OpusStreamCachePos(const void* source) {
+    int32_t i;
+
+    for (i = 0; i < OPUS_STREAM_CACHE_SIZE; i++) {
+        if (sOpusStreamPos[i].source == source) {
+            return sOpusStreamPos[i].pos;
+        }
+    }
+    return -1;
+}
+
+static void SOH_OpusStreamCacheSet(const void* source, int32_t pos) {
+    int32_t i;
+
+    for (i = 0; i < OPUS_STREAM_CACHE_SIZE; i++) {
+        if (sOpusStreamPos[i].source == source) {
+            sOpusStreamPos[i].pos = pos;
+            return;
+        }
+    }
+    sOpusStreamPos[sOpusStreamPosNext].source = source;
+    sOpusStreamPos[sOpusStreamPosNext].pos = pos;
+    sOpusStreamPosNext = (sOpusStreamPosNext + 1) % OPUS_STREAM_CACHE_SIZE;
+}
+
+void SOH_OpusStream_ArmContinue(struct OpusDecState* dec) {
+    int32_t i;
+
+    if (dec == NULL) {
+        return;
+    }
+    for (i = 0; i < 4; i++) {
+        if (sOpusStreamContinue[i].source == dec->source) {
+            sOpusStreamContinue[i].ttl = OPUS_STREAM_CONTINUE_TTL;
+            return;
+        }
+    }
+    sOpusStreamContinue[sOpusStreamContinueNext].source = dec->source;
+    sOpusStreamContinue[sOpusStreamContinueNext].ttl = OPUS_STREAM_CONTINUE_TTL;
+    sOpusStreamContinueNext = (sOpusStreamContinueNext + 1) % 4;
+}
+
+int32_t SOH_OpusStream_ContinuePos(const void* sampleAddr, int32_t fallback) {
+    int32_t i;
+    int32_t pos;
+
+    if (sampleAddr == NULL) {
+        return fallback;
+    }
+    for (i = 0; i < 4; i++) {
+        if (sOpusStreamContinue[i].source == sampleAddr) {
+            pos = SOH_OpusStreamCachePos(sampleAddr);
+            return pos >= 0 ? pos : fallback;
+        }
+    }
+    return fallback;
+}
+
+void SOH_OpusStream_Update(void) {
+    int32_t i;
+
+    for (i = 0; i < 4; i++) {
+        if (sOpusStreamContinue[i].source != NULL && --sOpusStreamContinue[i].ttl <= 0) {
+            sOpusStreamContinue[i].source = NULL;
+        }
+    }
+}
+
 void aOPUSdecImpl(void* source_addr, uint16_t dest_addr, uint16_t nbytes, struct OpusDecState** decState, int32_t pos,
                   uint32_t size) {
     int readSamples = 0;
@@ -161,6 +245,7 @@ void aOPUSdecImpl(void* source_addr, uint16_t dest_addr, uint16_t nbytes, struct
             break;
         readSamples += ret;
     }
+    SOH_OpusStreamCacheSet(source_addr, pos + readSamples);
 }
 
 void aOPUSFree(struct OpusDecState* dec) {

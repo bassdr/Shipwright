@@ -63,6 +63,12 @@ void aOPUSdecImpl(void* source_addr, uint16_t dest_addr, uint16_t nbytes, struct
                   uint32_t size);
 void aOPUSFree(struct OpusDecState* dec);
 
+// Streamed tracks restart on another player to crossfade. The decoders are per note, so these
+// remember how far each sample was decoded and hand the restarted note the cut note's position.
+void SOH_OpusStream_ArmContinue(struct OpusDecState* dec);
+int32_t SOH_OpusStream_ContinuePos(const void* sampleAddr, int32_t fallback);
+void SOH_OpusStream_Update(void);
+
 #define aSegment(pkt, s, b) \
     do {                    \
     } while (0)

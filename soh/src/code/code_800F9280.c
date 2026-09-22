@@ -41,18 +41,28 @@ u8 D_80133418 = 0;
 // A streamed song is a single full-volume note held for the whole track, so a swap or stop with
 // no fade cuts it mid-sample instead of ending on an instrument's release the way a sequence does.
 // Ramp the outgoing track down first and hold any follow-up sequence until it is quiet, since
-// starting one resets the player and would discard the ramp. Only custom streamed music reaches
-// these paths; gSeqPlayerIsStreamed is never set for a vanilla sequence.
-#define STREAMED_FADE_OUT_FRAMES 10
+// starting one resets the player and would discard the ramp. When a second sequence player is
+// free, the swap becomes a crossfade instead: the outgoing track restarts on it, continuing from
+// the position the cut note reached (SOH_OpusStream_*), and fades down while the incoming one
+// fades in. Only custom streamed music reaches these paths; gSeqPlayerIsStreamed is never set for
+// a vanilla sequence.
+#define STREAMED_FADE_OUT_FRAMES 20
 #define STREAMED_FADE_OUT_TIMER (STREAMED_FADE_OUT_FRAMES * 4)
 // The audio thread picks the fade command up a frame or two behind the game thread, so hold the
 // swap back a little longer than the ramp or it lands on the tail of it instead of on silence.
 #define STREAMED_FADE_OUT_HOLD_FRAMES (STREAMED_FADE_OUT_FRAMES + 2)
+// A stop waits this long for a fade-less start to pair with: the pair becomes a crossfade, a lone
+// stop ramps out once the wait lapses.
+#define STREAMED_STOP_GRACE_FRAMES 3
 
 static u8 sStreamedFadeOutTimer[4];
 static u8 sStreamedHasPending[4];
 static u8 sStreamedPendingSeqId[4];
 static u8 sStreamedPendingSeqArgs[4];
+static u8 sStreamedStopGrace[4];
+static u8 sStreamedStopSaved[4];
+static u8 sStreamedStopSeqId[4];
+static u8 sStreamedStopSeqArgs[4];
 
 static void Audio_HoldForStreamedFadeOut(u8 playerIdx) {
     sStreamedFadeOutTimer[playerIdx] = STREAMED_FADE_OUT_HOLD_FRAMES;
@@ -61,13 +71,16 @@ static void Audio_HoldForStreamedFadeOut(u8 playerIdx) {
 
 static u8 Audio_FadeOutStreamedSequence(u8 playerIdx, u8 seqId, u8 seqArgs) {
     if (sStreamedFadeOutTimer[playerIdx] == 0) {
-        if (!gSeqPlayerIsStreamed[playerIdx] || (gActiveSeqs[playerIdx].seqId & 0xFF) == seqId) {
+        if (!gSeqPlayerIsStreamed[playerIdx] || (gActiveSeqs[playerIdx].seqId & 0xFF) == seqId ||
+            (sStreamedStopSaved[playerIdx] && sStreamedStopSeqId[playerIdx] == seqId)) {
             return false;
         }
 
         Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
                           (STREAMED_FADE_OUT_TIMER * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
         Audio_HoldForStreamedFadeOut(playerIdx);
+        sStreamedStopGrace[playerIdx] = 0;
+        sStreamedStopSaved[playerIdx] = false;
     }
 
     sStreamedHasPending[playerIdx] = true;
@@ -86,10 +99,107 @@ static void Audio_UpdateStreamedFadeOut(u8 playerIdx) {
 
     if (sStreamedHasPending[playerIdx]) {
         sStreamedHasPending[playerIdx] = false;
+        sStreamedStopGrace[playerIdx] = 0;
+        sStreamedStopSaved[playerIdx] = false;
         // The outgoing track is silent by now; Audio_StartSequence() re-arms the flag for what follows.
         gSeqPlayerIsStreamed[playerIdx] = false;
         Audio_StartSequence(playerIdx, sStreamedPendingSeqId[playerIdx], sStreamedPendingSeqArgs[playerIdx], 0);
     }
+}
+
+// The player to carry the outgoing track of a crossfade: the other bgm player, then the fanfare
+// player, whichever is idle and not already carrying one of these fades.
+static s8 Audio_FindStreamedShadowPlayer(u8 playerIdx) {
+    static const u8 order[2] = { SEQ_PLAYER_BGM_SUB, SEQ_PLAYER_FANFARE };
+    u8 i;
+    u8 candidate;
+
+    for (i = 0; i < 2; i++) {
+        candidate = order[i];
+        if (candidate != playerIdx && !gAudioContext.seqPlayers[candidate].enabled &&
+            sStreamedFadeOutTimer[candidate] == 0 && !sStreamedHasPending[candidate] &&
+            sStreamedStopGrace[candidate] == 0) {
+            return candidate;
+        }
+    }
+    return -1;
+}
+
+// The held note of the outgoing track carries its decoder, whose source identifies the sample
+// the restarted note has to continue from.
+static struct OpusDecState* Audio_FindStreamedNoteDecoder(u8 playerIdx) {
+    SequencePlayer* seqPlayer = &gAudioContext.seqPlayers[playerIdx];
+    Note* note;
+    s32 i;
+
+    for (i = 0; i < gAudioContext.numNotes; i++) {
+        note = &gAudioContext.notes[i];
+        if (note->playbackState.parentLayer != NO_LAYER &&
+            note->playbackState.parentLayer->channel->seqPlayer == seqPlayer && note->synthesisState.opusFile != NULL) {
+            return note->synthesisState.opusFile;
+        }
+    }
+    return NULL;
+}
+
+// A fade-less swap of a streamed track: restart the outgoing one on a free player, continuing
+// from the position the cut note reached, and fade it down while the incoming one fades in on
+// the original player. Returns false when no player is free, and the caller falls back to the
+// sequential ramp.
+static u8 Audio_TryStreamedCrossfade(u8 playerIdx, u8 seqId, u8 seqArgs) {
+    s8 shadow;
+    u8 oldSeqId;
+    u8 oldSeqArgs;
+
+    if (!gSeqPlayerIsStreamed[playerIdx] || sStreamedHasPending[playerIdx] || gAudioContext.seqReplaced[playerIdx]) {
+        return false;
+    }
+
+    if (sStreamedStopSaved[playerIdx]) {
+        // The track is stopping, or already fading out from one: its id lives in the stop record.
+        if (sStreamedStopSeqId[playerIdx] == seqId) {
+            // A re-request of the track that is stopping restarts it instead.
+            sStreamedStopGrace[playerIdx] = 0;
+            sStreamedStopSaved[playerIdx] = false;
+            return false;
+        }
+        oldSeqId = sStreamedStopSeqId[playerIdx];
+        oldSeqArgs = sStreamedStopSeqArgs[playerIdx];
+    } else {
+        oldSeqId = gActiveSeqs[playerIdx].seqId & 0xFF;
+        oldSeqArgs = (gActiveSeqs[playerIdx].seqId >> 8) & 0x7F;
+        if (oldSeqId == (NA_BGM_DISABLED & 0xFF) || oldSeqId == seqId) {
+            return false;
+        }
+    }
+
+    shadow = Audio_FindStreamedShadowPlayer(playerIdx);
+    if (shadow < 0) {
+        return false;
+    }
+
+    // Only an opus track can continue from its cut note's position; anything else falls back to
+    // the sequential ramp.
+    if (Audio_FindStreamedNoteDecoder(playerIdx) == NULL) {
+        return false;
+    }
+    SOH_OpusStream_ArmContinue(Audio_FindStreamedNoteDecoder(playerIdx));
+
+    // The shadow start has to pass through the fade-out interception, so drop the player's
+    // stale streamed state first.
+    sStreamedFadeOutTimer[shadow] = 0;
+    sStreamedHasPending[shadow] = false;
+    sStreamedStopGrace[shadow] = 0;
+    sStreamedStopSaved[shadow] = false;
+    gSeqPlayerIsStreamed[shadow] = false;
+    Audio_StartSequence(shadow, oldSeqId, oldSeqArgs, 0);
+    Audio_QueueCmdS32(0x83000000 | ((u8)shadow << 16),
+                      (STREAMED_FADE_OUT_TIMER * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
+
+    sStreamedStopGrace[playerIdx] = 0;
+    sStreamedStopSaved[playerIdx] = false;
+    sStreamedHasPending[playerIdx] = false;
+    return true;
 }
 
 void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
@@ -99,8 +209,19 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
     s32 pad;
 
     if (D_80133408 == 0 || playerIdx == SEQ_PLAYER_SFX) {
-        if (fadeTimer == 0 && Audio_FadeOutStreamedSequence(playerIdx, seqId, arg2 & 0x7F)) {
-            return;
+        arg2 &= 0x7F;
+        if (fadeTimer == 0) {
+            if (Audio_TryStreamedCrossfade(playerIdx, seqId, arg2)) {
+                // The outgoing track is fading on the shadow player; take the same window to
+                // fade the incoming one in.
+                fadeTimer = STREAMED_FADE_OUT_TIMER;
+            } else if (Audio_FadeOutStreamedSequence(playerIdx, seqId, arg2)) {
+                return;
+            }
+        } else {
+            // Any start takes the player over from a stop that is still waiting or fading.
+            sStreamedStopGrace[playerIdx] = 0;
+            sStreamedStopSaved[playerIdx] = false;
         }
 
         // Resolve here so the full 16-bit id rides in the command (bits 0-15) rather than the shared
@@ -113,7 +234,6 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
             resolvedSeqId = AudioEditor_GetReplacementSeq(seqId);
         }
 
-        arg2 &= 0x7F;
         if (arg2 == 0x7F) {
             dur = (fadeTimer >> 3) * 60 * gAudioContext.audioBufferParameters.updatesPerFrame;
             Audio_QueueCmdS32(0x85000000 | _SHIFTL(playerIdx, 16, 8) | (resolvedSeqId & 0xFFFF), dur);
@@ -149,14 +269,23 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
 
 void func_800F9474(u8 playerIdx, u16 arg1) {
     if (arg1 == 0 && gSeqPlayerIsStreamed[playerIdx]) {
-        arg1 = STREAMED_FADE_OUT_TIMER;
-        Audio_HoldForStreamedFadeOut(playerIdx);
+        // Wait for a possible fade-less start before ramping: paired with one, the stop becomes
+        // a crossfade, and a ramp already in flight would be discarded by that start. The stop
+        // record keeps the dying track's id so the crossfade can restart it on a shadow player.
+        if (gActiveSeqs[playerIdx].seqId != NA_BGM_DISABLED) {
+            sStreamedStopSeqId[playerIdx] = gActiveSeqs[playerIdx].seqId & 0xFF;
+            sStreamedStopSeqArgs[playerIdx] = (gActiveSeqs[playerIdx].seqId >> 8) & 0x7F;
+            sStreamedStopSaved[playerIdx] = true;
+        }
+        sStreamedStopGrace[playerIdx] = STREAMED_STOP_GRACE_FRAMES;
+    } else {
+        Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
+                          (arg1 * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
+        sStreamedStopGrace[playerIdx] = 0;
+        sStreamedStopSaved[playerIdx] = false;
+        gSeqPlayerIsStreamed[playerIdx] = false;
     }
-
-    Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
-                      (arg1 * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
     gActiveSeqs[playerIdx].seqId = NA_BGM_DISABLED;
-    gSeqPlayerIsStreamed[playerIdx] = false;
 }
 
 typedef enum {
@@ -518,6 +647,18 @@ void Audio_SetVolScale(u8 playerIdx, u8 scaleIdx, u8 targetVol, u8 volFadeTimer)
     }
 }
 
+static void Audio_UpdateStreamedStopGrace(u8 playerIdx) {
+    if (sStreamedStopGrace[playerIdx] != 0 && --sStreamedStopGrace[playerIdx] == 0) {
+        Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
+                          (STREAMED_FADE_OUT_TIMER * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
+    }
+
+    // Once the fading track has taken its player down, the stop record is spent.
+    if (sStreamedStopSaved[playerIdx] && !gAudioContext.seqPlayers[playerIdx].enabled) {
+        sStreamedStopSaved[playerIdx] = false;
+    }
+}
+
 void func_800FA3DC(void) {
     u32 temp_a1;
     u16 temp_lo;
@@ -536,7 +677,9 @@ void func_800FA3DC(void) {
     u8 j;
     u8 k;
 
+    SOH_OpusStream_Update();
     for (playerIdx = 0; playerIdx < 4; playerIdx++) {
+        Audio_UpdateStreamedStopGrace(playerIdx);
         Audio_UpdateStreamedFadeOut(playerIdx);
 
         if (gActiveSeqs[playerIdx].isWaitingForFonts != 0) {
@@ -777,6 +920,8 @@ void Audio_ResetActiveSequences(void) {
         sNumSeqRequests[seqPlayerIndex] = 0;
         sStreamedFadeOutTimer[seqPlayerIndex] = 0;
         sStreamedHasPending[seqPlayerIndex] = false;
+        sStreamedStopGrace[seqPlayerIndex] = 0;
+        sStreamedStopSaved[seqPlayerIndex] = false;
 
         gActiveSeqs[seqPlayerIndex].seqId = NA_BGM_DISABLED;
         gActiveSeqs[seqPlayerIndex].prevSeqId = NA_BGM_DISABLED;
