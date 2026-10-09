@@ -1,7 +1,6 @@
 #include <spdlog/spdlog.h>
-#include "soh/SohContext.h"
 #include <libultraship/bridge/consolevariablebridge.h>
-#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <ship/window/Window.h>
 
 #include "settings.h"
@@ -1863,9 +1862,7 @@ void Settings::CreateOptions() {
     tricksOption.reserve(mTrickSettings.size());
     for (int i = 0; i < RT_MAX; i++) {
         auto trick = &mTrickSettings[i];
-        // Unassigned slots are default-constructed Options, which report OptionCategory::Setting
-        // and key 0 - asking one for its name translates randomizer.settings.none.name.
-        if (trick->GetOptionCount() > 0 && !trick->GetName().empty()) {
+        if (trick->GetCategory() == OptionCategory::Trick) {
             tricksOption.push_back(trick);
             mTrickNameToEnum[std::string(trick->GetName())] = static_cast<RandomizerTrick>(i);
             mTricksByArea[trick->GetArea()].push_back(static_cast<RandomizerTrick>(i));

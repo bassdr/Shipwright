@@ -23,6 +23,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/gameplaystats.h"
 #include "soh/ObjectExtension/ActorMaximumHealth.h"
+#include "soh/Enhancements/speedrun/Speedrun.h"
 
 #include "message_data_static.h"
 extern MessageTableEntry* sNesMessageEntryTablePtr;
@@ -6532,6 +6533,7 @@ void Interface_DrawTotalGameplayTimer(PlayState* play) {
                 rectLeftOri = -9999;
             }
         }
+        Ship_PinSpeedrunTimer(&rectLeftOri, &rectTopOri);
 
         s32 rectLeft;
         s32 rectTop;
