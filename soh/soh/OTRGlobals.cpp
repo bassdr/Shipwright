@@ -33,6 +33,7 @@
 #include "soh/Enhancements/audio/MidiSynthManager.h"
 #include "soh/Enhancements/audio/AudioResampler.h"
 #include "Enhancements/speechsynthesizer/SpeechSynthesizer.h"
+#include "Enhancements/audio/SpeechPlayer.h"
 #include "Enhancements/controls/SohInputEditorWindow.h"
 #include "Enhancements/audio/AudioCollection.h"
 #include "Enhancements/debugconsole.h"
@@ -133,6 +134,9 @@ const uint32_t defaultImGuiScale = 1;
 const float imguiScaleOptionToValue[4] = { 0.75f, 1.0f, 1.5f, 2.0f };
 
 bool SoH_HandleConfigDrop(char* filePath);
+
+// The rate the game renders at, and so the rate anything mixed into it has to match.
+#define AUDIO_SAMPLE_RATE 32000
 
 OTRGlobals* OTRGlobals::Instance;
 SaveManager* SaveManager::Instance;
@@ -1118,6 +1122,9 @@ static void OTRAudio_ProduceUpdate() {
 
     AudioMgr_CreateNextAudioBuffer(native_s16, num_audio_samples);
 
+    // Mixed in here, not played by the speech engine, so it lands on the game's device under the game's volume.
+    SOH::SpeechPlayer::Instance().Mix(native_s16, num_audio_samples, AUDIO_SAMPLE_RATE);
+
 #if ENABLE_FLUIDSYNTH
     auto synth = SOH::MidiSynthManager::Instance().GetActiveSynth();
     const bool haveSynth = (bool)synth;
@@ -1747,6 +1754,10 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     SpeechSynthesizer::Instance = new SpeechLogger();
 #endif
     SpeechSynthesizer::Instance->Init();
+#if ESPEAK
+    SOH::SpeechPlayer::Instance().SetSeparateOutput(CVarGetInteger(CVAR_SETTING("A11yTTSSeparateOutput"), 1) != 0,
+                                                    CVarGetString(CVAR_SETTING("A11yTTSOutputDevice"), ""));
+#endif
 
     CrowdControl::Instance = new CrowdControl();
     Sail::Instance = new Sail();
