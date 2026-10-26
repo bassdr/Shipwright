@@ -220,8 +220,8 @@ extern "C" void SOH_StreamedMusic_RegisterSequence(uint16_t seqId, uint8_t isStr
         return;
     }
 
-    const auto sequence = std::static_pointer_cast<SOH::AudioSequence>(
-        SohResourceManager()->LoadResource(resourcePath));
+    const auto sequence =
+        std::static_pointer_cast<SOH::AudioSequence>(SohResourceManager()->LoadResource(resourcePath));
     Fades fades{ 0.0f, 0.0f };
     if (sequence != nullptr) {
         fades.inSeconds = std::clamp(sequence->fadeInSeconds, 0.0f, kMaxFadeSeconds);

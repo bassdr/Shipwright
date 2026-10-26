@@ -228,8 +228,7 @@ bool OotrsArchive::WriteFile(const std::string& filename, const std::vector<uint
 }
 
 std::shared_ptr<Ship::File> OotrsArchive::LoadFile(uint64_t hash) {
-    const std::string* filePath =
-        SohResourceManager()->GetArchiveManager()->HashToString(hash);
+    const std::string* filePath = SohResourceManager()->GetArchiveManager()->HashToString(hash);
     if (filePath == nullptr) {
         return nullptr;
     }
