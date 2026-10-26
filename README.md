@@ -2,8 +2,8 @@
 
 > [!IMPORTANT]
 > **This is a fork, not Ship of Harkinian.** It carries features that are still in review — or too
-> large to land — upstream, and is moving onto libultraship's `main` (the 2.0.0 line, SDL3) rather
-> than the `port-maintenance` branch upstream SoH ships. Report bugs you hit here to
+> large to land — upstream, and runs on libultraship's `main` (the 2.0.0 line, SDL3) rather than
+> the `port-maintenance` branch upstream SoH ships. Report bugs you hit here to
 > [this fork](https://github.com/bassdr/Shipwright/issues), not to HarbourMasters.
 >
 > If you want the stable, supported game, use
@@ -11,42 +11,55 @@
 
 ## What this fork adds
 
-| Feature | Upstream PR | Status upstream |
+| Feature | PR | Status |
 | --- | --- | --- |
 | FluidSynth SoundFont replacement | [#6668](https://github.com/HarbourMasters/Shipwright/pull/6668) | open, stalled on size |
 | Ocarina songs from the pause menu | [#6951](https://github.com/HarbourMasters/Shipwright/pull/6951) | open |
-| Streamed music kept alive across the enemy BGM crossfade | [#7126](https://github.com/HarbourMasters/Shipwright/pull/7126) | open |
 | Song of Time plays out before the age shift | [#7058](https://github.com/HarbourMasters/Shipwright/pull/7058) | open |
-| Undefined left-shift fixes | [#6640](https://github.com/HarbourMasters/Shipwright/pull/6640) | approved, unmerged |
+| Streamed music kept alive across the enemy BGM crossfade | [#7126](https://github.com/HarbourMasters/Shipwright/pull/7126) | open |
+| Streamed music fades instead of cutting | [#7225](https://github.com/HarbourMasters/Shipwright/pull/7225) | open |
+| Streamed scene music resumes instead of restarting | [#7259](https://github.com/HarbourMasters/Shipwright/pull/7259) | open |
+| Music packs can replace ocarina and ending tracks | [#7224](https://github.com/HarbourMasters/Shipwright/pull/7224) | open |
+| Audio pump gated without engine races or added latency | [#7289](https://github.com/HarbourMasters/Shipwright/pull/7289) | open |
+| Speech rate, volume and pitch | [#7208](https://github.com/HarbourMasters/Shipwright/pull/7208) | open |
+| Choose where accessibility speech plays | [#7221](https://github.com/HarbourMasters/Shipwright/pull/7221) | open |
+| Pause Warp no longer fires from L/Z | [#7261](https://github.com/HarbourMasters/Shipwright/pull/7261) | open |
+| Active mods visible in the log and menu | [#7442](https://github.com/HarbourMasters/Shipwright/pull/7442) | open |
+| Assign songs to the C-buttons and Dpad; Navi answers Saria's Song | — | fork only |
 
 ## What this fork changes in libultraship
 
 Most of the change is not in this repository. It pins
 [a libultraship fork](https://github.com/bassdr/libultraship/tree/main) that is current with
-upstream `main` and adds ~100 commits on top of it, about +10,700/-1,900 lines across 78 files —
+upstream `main` and adds 111 commits on top of it, about +10,950/-1,990 lines across 81 files —
 mostly the renderer.
 
-| What the fork carries | Where it comes from |
-| --- | --- |
-| Vulkan rendering backend | [#1265](https://github.com/Kenix3/libultraship/pull/1265) (KiritoDv), open |
-| GPU vertex pipeline, mipmapping, two-tile LOD, postprocessing and custom shaders | [#1262](https://github.com/Kenix3/libultraship/pull/1262) (KiritoDv), open |
-| SDL3 pull-model audio | [#1250](https://github.com/Kenix3/libultraship/pull/1250), open |
-| CVar thread-safety, lock-free readers | [#1227](https://github.com/Kenix3/libultraship/pull/1227), backported from `port-maintenance` onto epoch 2 |
-| stb_image.h download verify and retry | [#1248](https://github.com/Kenix3/libultraship/pull/1248), open |
-| Unsigned GBI macros, two div-by-zero guards | [#1115](https://github.com/Kenix3/libultraship/pull/1115), open |
-| Epoch-2 bootstrap fixes, fast3d segment table bounds, and the Vulkan and vertex-pipeline fixes on top of the two stacks above | not upstreamed yet |
+| What the fork carries | PR | Status |
+| --- | --- | --- |
+| Vulkan rendering backend | [#1265](https://github.com/Kenix3/libultraship/pull/1265) (KiritoDv) | open |
+| GPU vertex pipeline, mipmapping, two-tile LOD, postprocessing and custom shaders | [#1262](https://github.com/Kenix3/libultraship/pull/1262), [#1263](https://github.com/Kenix3/libultraship/pull/1263) (KiritoDv) | open |
+| SDL3 pull-model audio | [#1250](https://github.com/Kenix3/libultraship/pull/1250) | open |
+| WASAPI start threshold and callback deadlock | [#1272](https://github.com/Kenix3/libultraship/pull/1272), [#1281](https://github.com/Kenix3/libultraship/pull/1281) | open |
+| `CreateDefaultInstance` wiring, bridge component, root Context init | [#1291](https://github.com/Kenix3/libultraship/pull/1291), [#1292](https://github.com/Kenix3/libultraship/pull/1292), [#1293](https://github.com/Kenix3/libultraship/pull/1293) | open |
+| Windows and macOS includes SDL2 used to provide | [#1290](https://github.com/Kenix3/libultraship/pull/1290) | open |
+| fast3d segment table and `GetPixelDepth` bounds | [#1289](https://github.com/Kenix3/libultraship/pull/1289), [#1295](https://github.com/Kenix3/libultraship/pull/1295) | open |
+| Window title uses the application name | [#1297](https://github.com/Kenix3/libultraship/pull/1297) | open |
+| stb_image.h download verify and retry | [#1248](https://github.com/Kenix3/libultraship/pull/1248) | open |
+| Unsigned GBI macros, two div-by-zero guards | [#1115](https://github.com/Kenix3/libultraship/pull/1115) | open |
+| Crash handler, atomic config save, pyramidlike test (cherry-picks from `port-maintenance`) | [#1276](https://github.com/Kenix3/libultraship/pull/1276), [#1277](https://github.com/Kenix3/libultraship/pull/1277), [#1278](https://github.com/Kenix3/libultraship/pull/1278) | open |
+| CPU vertex transform, Vulkan fixes, build and crash-dialog tweaks | — | fork only |
 
 **SDL3 is the only audio backend.** WASAPI and CoreAudio were deleted rather than maintained —
 the fork carried fixes for both first, then dropped them — so everything goes through one SDL3
-player.
+player. This removal has no PR.
 
 Both sides are on SDL3: the game was ported to the epoch 2 component API to match.
 
 ## Why a fork
 
 Upstream targets `port-maintenance` and moves deliberately. This fork exists to run the above
-together, and to get onto the SDL3 engine line, without waiting for each piece to land. Everything
-here is intended to go upstream eventually — the fork is a staging area, not a divergence.
+together, and to get onto the SDL3 engine line, without waiting for each piece to land. Rows marked
+"fork only" are not proposed upstream yet; everything else is.
 
 ---
 
