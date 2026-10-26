@@ -1,7 +1,7 @@
 #include <vector>
+#include "soh/SohContext.h"
 
 #include <fast/Fast3dGui.h>
-#include <ship/Context.h>
 
 #include "soh/SohGui/SohGui.hpp"
 #include "soh/SohGui/UIWidgets.hpp"
@@ -19,11 +19,11 @@ static constexpr float kIconSize = 48.0f;
 static const ImVec2 kSongSize = ImVec2(32.0f, 48.0f);
 
 static std::shared_ptr<Fast::Fast3dGui> GetFast3dGui() {
-    return std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    return std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
 }
 
 static void SaveStartingItemCVars() {
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 // Toggleable item icon (lit when the starting CVar is set, faded when not), mirroring

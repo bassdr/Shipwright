@@ -6,6 +6,7 @@
 //
 
 #include <imgui.h>
+#include "soh/SohContext.h"
 
 #include "SohGui.hpp"
 
@@ -121,7 +122,7 @@ std::shared_ptr<SohMenu> GetSohMenu() {
 }
 
 std::vector<std::shared_ptr<Ship::GuiWindow>> GetAllGuiWindows() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
     return {
         mConsoleWindow,
         mStatsWindow,
@@ -163,7 +164,7 @@ std::vector<std::shared_ptr<Ship::GuiWindow>> GetAllGuiWindows() {
 }
 
 void SetupMenu() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
     mSohMenu = std::make_shared<SohMenu>(CVAR_WINDOW("Menu"), "Port Menu");
     gui->SetMenu(mSohMenu);
 
@@ -177,13 +178,15 @@ void SetupMenuElements() {
 }
 
 void SetupGuiElements() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
 
     mConsoleWindow = std::make_shared<SohConsoleWindow>(CVAR_WINDOW("SohConsole"), "Console##SoH", ImVec2(820, 630));
     gui->AddGuiWindow(mConsoleWindow);
 
+    auto fast3dWindow = std::dynamic_pointer_cast<Fast::Fast3dWindow>(SohWindow());
     mGfxDebuggerWindow =
-        std::make_shared<SohGfxDebuggerWindow>(CVAR_WINDOW("SohGfxDebugger"), "GfxDebugger##SoH", ImVec2(820, 630));
+        std::make_shared<SohGfxDebuggerWindow>(CVAR_WINDOW("SohGfxDebugger"), "GfxDebugger##SoH", ImVec2(820, 630),
+                                               fast3dWindow, fast3dWindow->GetGfxDebugger(), SohResourceManager());
     gui->AddGuiWindow(mGfxDebuggerWindow);
 
     mStatsWindow = std::make_shared<SohStatsWindow>(CVAR_WINDOW("SohStats"), "Stats##Soh", ImVec2(400, 100));
@@ -273,7 +276,7 @@ void SetupGuiElements() {
 }
 
 void Destroy() {
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
     gui->RemoveAllGuiWindows();
 
     mNotificationWindow = nullptr;

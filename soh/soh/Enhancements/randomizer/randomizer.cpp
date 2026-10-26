@@ -1,12 +1,12 @@
 #include <atomic>
+#include "soh/SohContext.h"
 #include <fstream>
 #include <sstream>
 #include <tuple>
 
 #include <nlohmann/json.hpp>
-#include <ship/window/FileDropMgr.h>
+#include <ship/window/FileDrop.h>
 #include <spdlog/spdlog.h>
-#include <ship/Context.h>
 
 #include "randomizer.h"
 #include "3drando/menu.hpp"
@@ -91,7 +91,7 @@ Randomizer::Randomizer() {
         SpoilerfileHintTypeNameToEnum[Rando::StaticData::hintTypeNames[(HintType)c].GetEnglish(MF_CLEAN)] = (HintType)c;
     }
 
-    Ship::Context::GetRawInstance()->GetFileDropMgr()->RegisterDropHandler(Rando_HandleSpoilerDrop);
+    SohContext()->GetFirstInChildren<Ship::FileDrop>()->RegisterDropHandler(Rando_HandleSpoilerDrop);
 }
 
 Randomizer::~Randomizer() {
@@ -167,7 +167,7 @@ bool Randomizer::SpoilerFileExists(const char* spoilerFileName) {
                         "\nwas made by a version that doesn't match the currently running version.\n" +
                         "Loading for this file has been cancelled.");
                 CVarClear(CVAR_GENERAL("SpoilerLog"));
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             }
 
             // Update cache
@@ -966,7 +966,7 @@ void GenerateRandomizerImgui(std::string seed = "") {
     }
 
     Rando::Context::GetInstance()->SetSeedGenerated(GenerateRandomizer(excludedLocations, enabledTricks, seed));
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 
     GameInteractor::Instance->ExecuteHooks<GameInteractor::OnGenerationCompletion>();
 

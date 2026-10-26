@@ -2,6 +2,7 @@
 #include <libultraship/libultraship.h>
 #include "fast/Fast3dGui.h"
 
+#include "soh/SohContext.h"
 #include "soh/ShipUtils.h"
 
 extern "C" {
@@ -150,7 +151,7 @@ void SplitsPopImageButtonStyle() {
 }
 
 void DrawSplitsList(bool isMain) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     float columnSizeMultiplier = isMain ? 1.0f : 1.5f;
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 7.0f);

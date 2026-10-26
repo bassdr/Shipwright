@@ -1,4 +1,5 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <ship/resource/archive/Archive.h>
 #include <ship/resource/ResourceManager.h>
 
@@ -186,7 +187,7 @@ static void OggDecoderWorker(std::shared_ptr<SOH::AudioSample> audioSample, std:
         }
         case OggType::None: {
             char buff[2048];
-            snprintf(buff, 2048, "Ogg file %s is not Vorbis or OPUS", initData->Path.c_str());
+            snprintf(buff, 2048, "Ogg file %s is not Vorbis or OPUS", initData->Identifier.GetPath().c_str());
             throw std::runtime_error(buff);
             break;
         }
@@ -255,9 +256,9 @@ ResourceFactoryXMLAudioSampleV0::ReadResource(std::shared_ptr<Ship::File> file,
     const char* customFormatStr = child->Attribute("CustomFormat");
     memset(&audioSample->sample, 0, sizeof(audioSample->sample));
     audioSample->sample.isRelocated = 0;
-    audioSample->sample.codec = CodecStrToInt(child->Attribute("Codec"), initData->Path.c_str());
-    audioSample->sample.medium =
-        ResourceFactoryXMLSoundFontV0::MediumStrToInt(child->Attribute("Medium"), initData->Path.c_str());
+    audioSample->sample.codec = CodecStrToInt(child->Attribute("Codec"), initData->Identifier.GetPath().c_str());
+    audioSample->sample.medium = ResourceFactoryXMLSoundFontV0::MediumStrToInt(child->Attribute("Medium"),
+                                                                               initData->Identifier.GetPath().c_str());
     audioSample->sample.unk_bit26 = child->IntAttribute("bit26");
 
     tinyxml2::XMLElement* loopRoot = child->FirstChildElement("ADPCMLoop");
@@ -294,7 +295,7 @@ ResourceFactoryXMLAudioSampleV0::ReadResource(std::shared_ptr<Ship::File> file,
 
     const char* path = child->Attribute("Path");
 
-    auto sampleFile = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->LoadFile(path);
+    auto sampleFile = SohResourceManager()->GetArchiveManager()->LoadFile(path);
     audioSample->sample.fileSize = static_cast<u32>(sampleFile->Buffer.get()->size());
     if (customFormatStr != nullptr) {
         // Compressed files can take a really long time to decode (~250ms per).

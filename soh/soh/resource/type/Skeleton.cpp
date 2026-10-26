@@ -1,4 +1,5 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <ship/resource/ResourceManager.h>
 
 #include "Skeleton.h"
@@ -106,7 +107,7 @@ void SkeletonPatcher::ClearSkeletons() {
 }
 
 void SkeletonPatcher::UpdateSkeletons() {
-    auto resourceMgr = Ship::Context::GetRawInstance()->GetResourceManager();
+    auto resourceMgr = SohResourceManager();
     bool isAlt = resourceMgr->IsAltAssetsEnabled();
     for (auto& skel : skeletons) {
         Skeleton* newSkel =
@@ -196,15 +197,13 @@ void SkeletonPatcher::UpdateTunicSkeletons(SkeletonPatchInfo& skel) {
 void SkeletonPatcher::UpdateCustomSkeletonFromPath(const std::string& skeletonPath, SkeletonPatchInfo& skel) {
     Skeleton* newSkel = nullptr;
     Skeleton* altSkel = nullptr;
-    auto resourceMgr = Ship::Context::GetRawInstance()->GetResourceManager();
+    auto resourceMgr = SohResourceManager();
     bool isAlt = resourceMgr->IsAltAssetsEnabled();
 
     // If alt assets are on, look for alt tagged skeletons
     if (isAlt) {
-        altSkel = (Skeleton*)Ship::Context::GetRawInstance()
-                      ->GetResourceManager()
-                      ->LoadResource(Ship::IResource::gAltAssetPrefix + skeletonPath, true)
-                      .get();
+        altSkel =
+            (Skeleton*)SohResourceManager()->LoadResource(Ship::IResource::gAltAssetPrefix + skeletonPath, true).get();
 
         // Override non-alt skeleton if necessary
         if (altSkel != nullptr) {
@@ -214,8 +213,7 @@ void SkeletonPatcher::UpdateCustomSkeletonFromPath(const std::string& skeletonPa
 
     // Load new skeleton based on the custom model if it exists
     if (altSkel == nullptr) {
-        newSkel =
-            (Skeleton*)Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(skeletonPath, true).get();
+        newSkel = (Skeleton*)SohResourceManager()->LoadResource(skeletonPath, true).get();
     }
 
     // Change back to the original skeleton if no skeleton's were found

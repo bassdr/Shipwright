@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.29.0 FATAL_ERROR)
 
 set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard to use")
@@ -105,9 +105,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     vcpkg_bootstrap()
     # libsndfile (with Ogg/Vorbis) decodes SF3 SoundFonts; FluidSynth itself is built
     # from source (static, glib-free osal=cpp11) in soh/CMakeLists.txt and links against it.
-    vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile libsndfile)
+    vcpkg_install_packages(zlib bzip2 libzip libpng sdl3 sdl3-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile libsndfile)
     if (CMAKE_C_COMPILER_LAUNCHER MATCHES "ccache|sccache")
-        set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
+        # Release links without /DEBUG, so CodeView here rides in every object only to be
+        # discarded - and LLVM 20.1.8's ThinLTO backend segfaults emitting it.
+        set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<NOT:$<CONFIG:Release>>:Embedded>")
     endif()
 endif()
 
@@ -135,19 +137,58 @@ set(CMAKE_C_FLAGS_DEBUG "-g -DDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -DDEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-else()
+elseif(NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+# GNU spellings only. An MSVC-style driver has its own Release defaults, and overwriting them
+# here drops /Ob2 for every target on Windows.
 set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 set(CMAKE_OBJCXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 endif()
 
+# Which command line a compiler speaks is a different question from which compiler it is:
+# clang-cl reports its id as Clang and takes MSVC flags, so neither CMAKE_CXX_COMPILER_ID nor
+# MSVC answers it alone. CMAKE_<LANG>_COMPILER_FRONTEND_VARIANT is the one that does, and every
+# flag decision below keys on it. MSVC stays the test for link-command shape, which is what it
+# actually describes.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(SOH_CLANG_CL TRUE)
+else()
+    set(SOH_CLANG_CL FALSE)
+endif()
+
 # Enforce strict, deterministic IEEE-754 floating-point to match N64 (MIPS) semantics.
 # Never enable fast-math, and disable FMA contraction: the R4300 CPU and RSP have no
 # fused multiply-add, so contracting mul+add into an FMA produces extra precision.
-add_compile_options($<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-fno-fast-math>)
-add_compile_options($<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/fp:precise>)
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/fp:except->)
+# One spelling for all three platforms. clang-cl's driver drops the GNU forms silently and
+# /fp:precise still leaves contraction on, so hand them to the frontend with /clang: instead
+# of reaching for the MSVC switches that do not mean the same thing.
+set(SOH_FP_FLAGS -fno-fast-math -ffp-contract=off)
+if(SOH_CLANG_CL)
+    list(TRANSFORM SOH_FP_FLAGS PREPEND "/clang:")
+    add_compile_options(${SOH_FP_FLAGS})
+elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    add_compile_options(/fp:precise /fp:except-)
+else()
+    add_compile_options(${SOH_FP_FLAGS})
+endif()
+
+# CMake drives the link with lld-link directly rather than through the clang-cl driver, so
+# nothing pulls in the builtins the compiler emits calls to. StormLib's bignum code divides
+# 128-bit integers, which cl never had and so never needed a runtime call for.
+if(SOH_CLANG_CL)
+    execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" --rtlib=compiler-rt -print-libgcc-file-name
+        OUTPUT_VARIABLE SOH_CLANG_RT_BUILTINS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(EXISTS "${SOH_CLANG_RT_BUILTINS}")
+        message(STATUS "clang-cl builtins: ${SOH_CLANG_RT_BUILTINS}")
+        add_link_options("${SOH_CLANG_RT_BUILTINS}")
+    else()
+        message(WARNING "clang_rt.builtins not found; the link may fail on compiler builtins")
+    endif()
+endif()
 
 if(NOT CMAKE_BUILD_TYPE )
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)
@@ -193,6 +234,73 @@ set(INCLUDE_MPQ_SUPPORT ON)
 # Set CONTROLLERBUTTONS_T
 ################################################################################
 add_compile_definitions(CONTROLLERBUTTONS_T=uint32_t)
+
+################################################################################
+# Link-time optimisation
+################################################################################
+# Set before anything is fetched or added, so every target in the build inherits it: the port,
+# libultraship, and the dependencies we build from source. Scoping it to the soh target alone
+# left everything else as ordinary objects, and LTO stopped at that boundary.
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+
+# A dependency whose cmake_minimum_required predates 3.9 gets CMP0069 OLD, under which the
+# property is ignored outside Intel compilers - prism builds that way and silently opted out.
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
+
+# ThinLTO redoes backend codegen for every module on every link unless the linker is handed a
+# cache to reuse, and CMake has no property for one. Only ThinLTO has such a cache - GCC's LTO
+# has no equivalent - and which flag spells it depends on the linker rather than the compiler,
+# so probe candidates instead of guessing.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+set(SOH_LTO_CACHE_DIR "" CACHE PATH "ThinLTO link cache directory (empty picks a per-user default)")
+if(NOT SOH_LTO_CACHE_DIR)
+    if(DEFINED ENV{XDG_CACHE_HOME})
+        set(SOH_LTO_CACHE_DIR "$ENV{XDG_CACHE_HOME}/soh-lto")
+    elseif(WIN32 AND DEFINED ENV{LOCALAPPDATA})
+        set(SOH_LTO_CACHE_DIR "$ENV{LOCALAPPDATA}/soh-lto")
+    elseif(DEFINED ENV{HOME})
+        set(SOH_LTO_CACHE_DIR "$ENV{HOME}/.cache/soh-lto")
+    else()
+        # Last resort only: the point of the cache is surviving a clean of the build tree.
+        set(SOH_LTO_CACHE_DIR "${CMAKE_BINARY_DIR}/lto-cache")
+    endif()
+endif()
+
+include(CheckLinkerFlag)
+# An unbounded cache on a whole-game link grows fast, so every candidate carries its pruning
+# policy. Apple's ld64 prunes on its own defaults. Each candidate is held in its own variable
+# and reached by name: a list cannot hold a multi-flag element, since foreach(IN LISTS) cannot
+# tell an embedded separator from a real one and would silently split the policy off.
+set(_lto_cache_lld
+    "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR}"
+    "-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h")
+set(_lto_cache_ld64 "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}")
+set(_lto_cache_gold "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}")
+set(_lto_cache_lld_link
+    "/lldltocache:${SOH_LTO_CACHE_DIR}"
+    "/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h")
+
+# lld-link only warns about a flag it does not know, so probing cannot tell the two spellings
+# apart there and would settle on the GNU one it silently drops.
+if(MSVC)
+    set(_lto_cache_candidates _lto_cache_lld_link)
+else()
+    set(_lto_cache_candidates _lto_cache_lld _lto_cache_ld64 _lto_cache_gold)
+endif()
+foreach(_name IN LISTS _lto_cache_candidates)
+    check_linker_flag(CXX "${${_name}}" SOH_LTO_CACHE_OK${_name})
+    if(SOH_LTO_CACHE_OK${_name})
+        file(MAKE_DIRECTORY "${SOH_LTO_CACHE_DIR}")
+        foreach(_flag IN LISTS ${_name})
+            add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:${_flag}>")
+        endforeach()
+        message(STATUS "ThinLTO link cache: ${SOH_LTO_CACHE_DIR}")
+        break()
+    endif()
+endforeach()
+endif()
 
 ################################################################################
 # Torch (ROM asset extraction)
@@ -268,6 +376,11 @@ function(quiet_target target override)
 endfunction()
 
 function(quiet_dependency_tree dir)
+    # A dependency satisfied by the system or by vcpkg was never fetched, so it has no source
+    # directory and nothing of ours to quiet.
+    if(NOT dir OR NOT IS_DIRECTORY "${dir}")
+        return()
+    endif()
     get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
     foreach(_target IN LISTS _targets)
         get_target_property(_type ${_target} TYPE)
@@ -283,7 +396,8 @@ function(quiet_dependency_tree dir)
 endfunction()
 
 add_subdirectory(torch SYSTEM)
-quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/torch)
+quiet_dependency_tree("${CMAKE_CURRENT_SOURCE_DIR}/torch")
+quiet_dependency_tree("${spdlog_SOURCE_DIR}")
 
 target_compile_definitions(torch INTERFACE YAML_CPP_STATIC_DEFINE)
 
@@ -375,6 +489,10 @@ endif()
 option(ENABLE_FLUIDSYNTH "Enable the FluidSynth synth backend" ON)
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship SYSTEM)
 quiet_target(libultraship "${WARNING_OVERRIDE}")
+# libultraship fetches its own dependencies into its directory scope, so walking torch alone
+# left StormLib, FluidSynth, ImGui, spdlog, libgfxd, prism and monocypher reporting warnings
+# nobody here is going to fix.
+quiet_dependency_tree("${CMAKE_CURRENT_SOURCE_DIR}/libultraship")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)
 add_subdirectory(soh)
 

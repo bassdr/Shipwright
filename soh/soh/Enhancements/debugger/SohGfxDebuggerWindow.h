@@ -1,5 +1,6 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
 #include <libultraship/window/gui/GfxDebuggerWindow.h>
 
 class SohGfxDebuggerWindow : public LUS::GfxDebuggerWindow {
@@ -7,7 +8,7 @@ class SohGfxDebuggerWindow : public LUS::GfxDebuggerWindow {
     using GfxDebuggerWindow::GfxDebuggerWindow;
 
   protected:
-    void InitElement() override;
+    void OnInit(const nlohmann::json& initArgs = nlohmann::json::object()) override;
     void UpdateElement() override;
     void DrawElement() override;
 };

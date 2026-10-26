@@ -1,4 +1,5 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <fast/Fast3dGui.h>
 
 #include "ImGuiUtils.h"
@@ -220,69 +221,69 @@ const char* GetTextureForItemId(uint32_t itemId) {
 }
 
 void RegisterImGuiItemIcons() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     for (const auto& entry : itemMapping) {
-        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, "", ImVec4(1, 1, 1, 1));
-        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, "", ImVec4(1, 1, 1, 0.3f));
+        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, ImVec4(1, 1, 1, 1));
+        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, ImVec4(1, 1, 1, 0.3f));
     }
 
     for (const auto& entry : gregMapping) {
         ImVec4 gregGreen = ImVec4(42.0f / 255.0f, 169.0f / 255.0f, 40.0f / 255.0f, 1.0f);
         ImVec4 gregFadedGreen = gregGreen;
         gregFadedGreen.w = 0.3f;
-        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, "", gregGreen);
-        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, "", gregFadedGreen);
+        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, gregGreen);
+        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, gregFadedGreen);
     }
 
     for (const auto& entry : customItemsMapping) {
-        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, "", ImVec4(1, 1, 1, 1));
-        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, "", ImVec4(1, 1, 1, 0.3f));
+        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, ImVec4(1, 1, 1, 1));
+        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, ImVec4(1, 1, 1, 0.3f));
     }
 
     for (const auto& entry : jabbernutMapping) {
-        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, "", ImVec4(1, 1, 1, 1));
-        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, "", ImVec4(1, 1, 1, 0.3f));
+        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, ImVec4(1, 1, 1, 1));
+        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, ImVec4(1, 1, 1, 0.3f));
     }
 
     ImVec4 silver = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
     ImVec4 silverFaded = silver;
     silverFaded.w = 0.3f;
-    gui->LoadGuiTexture("ITEM_RUPEE_SILVER", gRupeeCounterIconTex, "", silver);
-    gui->LoadGuiTexture("ITEM_RUPEE_SILVER_Faded", gRupeeCounterIconTex, "", silverFaded);
+    gui->LoadGuiTexture("ITEM_RUPEE_SILVER", gRupeeCounterIconTex, silver);
+    gui->LoadGuiTexture("ITEM_RUPEE_SILVER_Faded", gRupeeCounterIconTex, silverFaded);
 
     ImVec4 scarecrow = ImVec4(40.0f / 255.0f, 160.0f / 255.0f, 40.0f / 255.0f, 1.0f);
     ImVec4 scarecrowFaded = scarecrow;
     scarecrowFaded.w = 0.3f;
-    gui->LoadGuiTexture("RG_SCARECROWS_SONG", gSongNoteTex, "", scarecrow);
-    gui->LoadGuiTexture("RG_SCARECROWS_SONG_Faded", gSongNoteTex, "", scarecrowFaded);
+    gui->LoadGuiTexture("RG_SCARECROWS_SONG", gSongNoteTex, scarecrow);
+    gui->LoadGuiTexture("RG_SCARECROWS_SONG_Faded", gSongNoteTex, scarecrowFaded);
 
     for (const auto& entry : questMapping) {
-        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, "", ImVec4(1, 1, 1, 1));
-        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, "", ImVec4(1, 1, 1, 0.3f));
+        gui->LoadGuiTexture(entry.second.name, entry.second.texturePath, ImVec4(1, 1, 1, 1));
+        gui->LoadGuiTexture(entry.second.nameFaded, entry.second.texturePath, ImVec4(1, 1, 1, 0.3f));
     }
 
     for (const auto& [quest, entry] : songMapping) {
-        gui->LoadGuiTexture(entry.name, gSongNoteTex, "", entry.color);
+        gui->LoadGuiTexture(entry.name, gSongNoteTex, entry.color);
         ImVec4 fadedCol = entry.color;
         fadedCol.w = 0.3f;
-        gui->LoadGuiTexture(entry.nameFaded, gSongNoteTex, "", fadedCol);
+        gui->LoadGuiTexture(entry.nameFaded, gSongNoteTex, fadedCol);
     }
 
     for (const auto& entry : vanillaSongMapping) {
-        gui->LoadGuiTexture(entry.name, gSongNoteTex, "", entry.color);
+        gui->LoadGuiTexture(entry.name, gSongNoteTex, entry.color);
         ImVec4 fadedCol = entry.color;
         fadedCol.w = 0.3f;
-        gui->LoadGuiTexture(entry.nameFaded, gSongNoteTex, "", fadedCol);
+        gui->LoadGuiTexture(entry.nameFaded, gSongNoteTex, fadedCol);
     }
 
     for (const auto& entry : gSeedTextures) {
-        gui->LoadGuiTexture(entry.tex, entry.tex, "", ImVec4(1, 1, 1, 1));
+        gui->LoadGuiTexture(entry.tex, entry.tex, ImVec4(1, 1, 1, 1));
     }
 
-    gui->LoadGuiTexture("gPauseUnusedCursorTex", gPauseUnusedCursorTex, "", ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("gPauseUnusedCursorTex", gPauseUnusedCursorTex, ImVec4(1, 1, 1, 1));
 
-    gui->LoadGuiTexture("gWTriforcePieceTex", gWTriforcePieceTex, "", ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("gWTriforcePieceTex", gWTriforcePieceTex, ImVec4(1, 1, 1, 1));
 
     // TODO: Figure out why this texture wouldn't load in the TimeSplits Windows
-    gui->LoadGuiTexture("gSongNoteTex", gSongNoteTex, "", ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("gSongNoteTex", gSongNoteTex, ImVec4(1, 1, 1, 1));
 }

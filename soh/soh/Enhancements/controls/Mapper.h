@@ -9,11 +9,12 @@
 // The binding state machine (axis commit/return distances, binding override rules, mapping string layout)
 // is adapted from https://github.com/General-Arcade/sdl2-gamepad-tool (MIT).
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <imgui.h>
 #include <ship/window/gui/GuiWindow.h>
 
@@ -32,10 +33,10 @@ enum AxisBinding {
     AXIS_BINDING_MAX,
 };
 
-constexpr int32_t BINDING_COUNT = SDL_CONTROLLER_BUTTON_MAX + AXIS_BINDING_MAX;
+constexpr int32_t BINDING_COUNT = SDL_GAMEPAD_BUTTON_COUNT + AXIS_BINDING_MAX;
 
 struct ExtendedBind {
-    SDL_GameControllerBindType bindType;
+    SDL_GamepadBindingType bindType;
     union {
         int32_t button;
 
@@ -100,7 +101,7 @@ class MappingSession {
     std::vector<int32_t> mOrder;
     std::vector<AxisState> mAxisState;
     int32_t mCurrentStep;
-    uint32_t mPendingAdvanceTime;
+    uint64_t mPendingAdvanceTime;
     bool mActive;
     bool mComplete;
 };
@@ -119,9 +120,9 @@ bool LoadUserMappings();
 bool SaveUserMapping(const std::string& mapping);
 bool DeleteUserMapping(const std::string& guid);
 
-class MapperWindow final : public Ship::GuiWindow {
+class MapperWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     ~MapperWindow();
 
   protected:
@@ -131,7 +132,6 @@ class MapperWindow final : public Ship::GuiWindow {
 
   private:
     struct DeviceInfo {
-        int32_t deviceIndex;
         SDL_JoystickID instanceId;
         std::string name;
         std::string guid;
@@ -173,9 +173,9 @@ class MapperWindow final : public Ship::GuiWindow {
     std::vector<uint8_t> mPreviousHats;
 
     int32_t mGameInputBlockTimer = INT32_MAX;
-    uint32_t mLastDeviceScanTicks = 0;
+    uint64_t mLastDeviceScanTicks = 0;
     uint64_t mLastUserFileWriteTime = 0;
-    uint32_t mLastUserFileCheckTicks = 0;
+    uint64_t mLastUserFileCheckTicks = 0;
 };
 
 } // namespace Mapper

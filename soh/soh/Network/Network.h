@@ -3,13 +3,14 @@
 #ifdef __cplusplus
 
 #include <thread>
-#include <SDL2/SDL_net.h>
+#include <SDL3_net/SDL_net.h>
 #include <nlohmann/json.hpp>
 
 class Network {
   private:
-    IPaddress networkAddress;
-    TCPsocket networkSocket;
+    NET_Address* networkAddress = nullptr;
+    NET_StreamSocket* networkSocket = nullptr;
+    uint16_t networkPort = 0;
     std::thread receiveThread;
     std::string receivedData;
 

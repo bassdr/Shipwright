@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <ship/window/gui/GuiWindow.h>
 
 #include <vector>
@@ -8,9 +9,9 @@
 #ifdef __cplusplus
 namespace TimeSplits {
 
-class TimesplitsWindow : public Ship::GuiWindow {
+class TimesplitsWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override{};

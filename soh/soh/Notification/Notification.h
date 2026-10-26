@@ -2,6 +2,7 @@
 
 #ifdef __cplusplus
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <string>
 #include <ship/window/gui/GuiWindow.h>
 
@@ -20,9 +21,9 @@ struct Options {
     bool mute = false;          // whether notification should make a noise
 };
 
-class Window final : public Ship::GuiWindow {
+class Window final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override{};
     void DrawElement() override{};

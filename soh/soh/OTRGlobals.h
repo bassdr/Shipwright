@@ -48,6 +48,8 @@ class OTRGlobals {
   public:
     static OTRGlobals* Instance;
 
+    // CreateDefaultInstance hands back ownership; the raw pointer below points into it.
+    std::shared_ptr<Ship::Context> contextOwner;
     Ship::Context* context;
     std::shared_ptr<SaveStateMgr> gSaveStateMgr;
     std::shared_ptr<Randomizer> gRandomizer;
@@ -77,6 +79,9 @@ class OTRGlobals {
     bool hasOriginal;
     ImFont* CreateFontWithSize(float size, std::string fontPath, bool isJapaneseFont = false);
 };
+
+// Applies the vertex transform graphics setting to the renderer.
+void SohApplyVertexTransformSetting();
 #endif
 
 #ifndef __cplusplus

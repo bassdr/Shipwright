@@ -1,6 +1,5 @@
 ﻿#include "FileSelectEnhancements.h"
-
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
@@ -121,8 +120,8 @@ void SohFileSelect_ShowPresetModal() {
     if (CVarGetInteger(CVAR_GENERAL("HasSeenPresetModal"), 0)) {
         return;
     }
-    std::shared_ptr<SohModalWindow> modal = static_pointer_cast<SohModalWindow>(
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Modal Window"));
+    std::shared_ptr<SohModalWindow> modal =
+        static_pointer_cast<SohModalWindow>(SohWindow()->GetGui()->GetGuiWindow("Modal Window"));
     if (modal->IsPopupOpen("Take a look at our presets!")) {
         modal->DismissPopup();
     } else {

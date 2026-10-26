@@ -1,10 +1,11 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <ship/window/gui/GuiWindow.h>
 
-class SohStatsWindow final : public Ship::GuiWindow {
+class SohStatsWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     ~SohStatsWindow(){};
 
   protected:

@@ -10,6 +10,10 @@ Requires:
   * Python 3 (can be installed manually or as part of Visual Studio)
   * Git (can be installed manually or as part of Visual Studio)
   * Cmake (can be installed via chocolatey or manually)
+  * Optional: the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows), for the Vulkan
+    rendering backend. Without it CMake reports `Vulkan rendering backend disabled` and the
+    build offers DirectX 11 and OpenGL only. CMake picks up `VULKAN_SDK`, or the newest
+    install under `C:\VulkanSDK`. CI installs it, so the published Windows builds have it.
 
 During installation, check the "Desktop development with C++" feature set:
 
@@ -145,6 +149,24 @@ nix develop ./linux-build-deps
 
 from the repo root and you'll be dropped into a shell with all dependencies, ensuring that all build commands work.
 
+#### The Vulkan rendering backend (optional)
+
+The backend needs the Vulkan loader and shaderc, which compiles its shaders at runtime.
+Without both, CMake reports `Vulkan rendering backend disabled` and the build offers OpenGL
+only. Ubuntu 22.04 packages neither, so CI takes them from LunarG:
+
+```sh
+wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+  | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+  https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+sudo apt-get update && sudo apt-get install -y vulkan-headers libvulkan-dev shaderc
+```
+
+Newer releases and other distros package them directly: `libvulkan-dev libshaderc-dev` on
+Ubuntu 24.04 and later, `vulkan-icd-loader shaderc` on Arch, `vulkan-loader-devel
+libshaderc-devel` on Fedora.
+
 ### Verify cmake version
 Older distros may ship a cmake older than this project requires. Compare:
 ```sh
@@ -187,7 +209,6 @@ cmake --build build-cmake
 > 
 > Known failing package versions:
 > - [tinyxml2](https://github.com/leethomason/tinyxml2) < 10.0.0
-> - [SDL2_net](https://github.com/libsdl-org/SDL_net) < 2.2.0
 >
 > You can install a newer version of that package either
 >
@@ -203,7 +224,6 @@ cmake --build build-cmake
 >
 > Reference examples:
 > - [`.github/actions/install-tinyxml2/action.yml`](../.github/actions/install-tinyxml2/action.yml)
-> - [`.github/actions/install-sdl2-net/action.yml`](../.github/actions/install-sdl2-net/action.yml)
 
 > [!TIP]
 > There are known incompatibilities between some newer versions of `clang` and older versions of [`{fmt}`](https://github.com/fmtlib/fmt) (see https://github.com/fmtlib/fmt/issues/4807). If you see a `call to consteval function 'fmt::basic_format_string<...>' is not a constant expression` error, you can work around it by passing `-DCMAKE_CXX_FLAGS=-DFMT_CONSTEVAL=constexpr` to `cmake`.
@@ -236,7 +256,12 @@ cmake --build build-cmake --target ExtractAssetHeaders
 ```
 
 ## macOS
-Requires Xcode (or xcode-tools) && `sdl2, sdl2_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+Requires Xcode (or xcode-tools) && `sdl3, sdl3_net, libpng, glew, ninja, cmake, tinyxml2, nlohmann-json, libzip, opusfile, libvorbis` (can be installed via [homebrew](https://brew.sh/), macports, etc)
+
+Apple builds do not use Vulkan. The renderer has a native Metal backend, and Vulkan on macOS
+runs through MoltenVK, which is itself a translation layer onto Metal. Installing the Vulkan
+SDK will enable the backend locally, but CI does not, and the published `.dmg` has no
+MoltenVK in it.
 
 **Important: For maximum performance make sure you have ninja build tools installed!**
 
@@ -251,7 +276,7 @@ cd ShipWright
 git submodule update --init
 
 # Install development dependencies (assuming homebrew)
-brew install sdl2 sdl2_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis libsndfile pkg-config
+brew install sdl3 sdl3_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis libsndfile pkg-config
 
 # Generate Ninja project
 # Add `-DCMAKE_BUILD_TYPE:STRING=Release` if you're packaging

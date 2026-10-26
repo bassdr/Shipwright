@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include "z64.h"
 
 #ifdef __cplusplus
@@ -25,10 +26,10 @@ void MessageDebug_DisplayCustomMessage(const char* customMessage);
 #ifdef __cplusplus
 }
 
-class MessageViewer final : public Ship::GuiWindow {
+class MessageViewer final : public SohGui::Window {
   public:
     static inline const char* TABLE_ID = "MessageViewer";
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override;

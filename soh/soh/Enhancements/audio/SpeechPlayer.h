@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+struct SDL_AudioStream;
+
 namespace SOH {
 
 // Where spoken text goes once the speech engine has been asked for samples rather
@@ -45,7 +47,7 @@ class SpeechPlayer {
   private:
     SpeechPlayer() = default;
 
-    static void Feed(void* self, uint8_t* stream, int length);
+    static void Feed(void* self, SDL_AudioStream* stream, int additional, int total);
     void MixLocked(int16_t* buffer, uint32_t frames, int32_t outRate);
 
     std::mutex mHandoff;
@@ -67,7 +69,7 @@ class SpeechPlayer {
     // the same cursor; only one of them is ever active for longer than that.
     std::mutex mMixing;
     std::atomic<bool> mSeparate{ false };
-    uint32_t mDeviceId = 0;
+    SDL_AudioStream* mStream = nullptr;
     std::string mDevice;
 };
 

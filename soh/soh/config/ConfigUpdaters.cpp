@@ -1,3 +1,4 @@
+#include <ship/controller/controldevice/controller/mapping/keyboard/KeyboardScancodes.h>
 #include "ConfigUpdaters.h"
 
 #include <array>
@@ -5,7 +6,7 @@
 #include <memory>
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <spdlog/spdlog.h>
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 #include "soh/Enhancements/randomizer/randomizerEnums.h"
 
 namespace SOH {
@@ -1731,7 +1732,7 @@ void RunVersionUpdatesFrom(uint32_t fromVersion) {
         SPDLOG_INFO("Migrating config from ConfigVersion {} to {}", fromVersion, GetLatestConfigVersion());
     }
     fromVersion = std::max(fromVersion, 3u);
-    Ship::Config* conf = Ship::Context::GetRawInstance()->GetConfig().get();
+    Ship::Config* conf = SohConfig().get();
     for (const auto& updater : GetVersionUpdaters()) {
         if (updater->GetVersion() > fromVersion) {
             updater->Update(conf);

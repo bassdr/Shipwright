@@ -2,6 +2,7 @@
 
 #ifdef __cplusplus
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <nlohmann/json.hpp>
 #include <ship/window/gui/GuiWindow.h>
 
@@ -78,9 +79,9 @@ typedef enum {
     VVE_MAX,
 } ValueViewerEntry;
 
-class ValueViewerWindow final : public Ship::GuiWindow {
+class ValueViewerWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override;

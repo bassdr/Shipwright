@@ -1,7 +1,8 @@
 #include <memory>
+#include "soh/SohContext.h"
 
 #include <libultraship/bridge/consolevariablebridge.h>
-#include "ship/Context.h"
+#include "ship/core/Context.h"
 #include "ship/resource/File.h"
 #include "ship/resource/type/Json.h"
 #include "ship/utils/StringHelper.h"
@@ -134,12 +135,11 @@ void Lang::LoadLangs() {
     initData->Type = static_cast<uint32_t>(Ship::ResourceType::Json);
     initData->ResourceVersion = 0;
     const static std::string folder = "lang/*";
-    auto langFiles = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->ListFiles(folder);
+    auto langFiles = SohResourceManager()->GetArchiveManager()->ListFiles(folder);
     size_t start = std::string(folder).size() - 1;
     for (size_t i = 0; i < langFiles->size(); i++) {
         std::string filePath = langFiles->at(i);
-        auto json = std::static_pointer_cast<Ship::Json>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(filePath, true, initData));
+        auto json = std::static_pointer_cast<Ship::Json>(SohResourceManager()->LoadResource(filePath, true, initData));
 
         std::string fileName = filePath.substr(start, filePath.size() - start - 5); // 5 for length of ".json"
         langs.insert_or_assign(fileName, json->Data);

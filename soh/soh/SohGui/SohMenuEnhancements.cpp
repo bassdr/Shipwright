@@ -1,19 +1,20 @@
 ﻿#include "SohMenu.h"
+#include "soh/SohContext.h"
 #include <soh/Enhancements/enhancementTypes.h>
+#include <soh/Enhancements/assignableSongs.h>
 #include "soh/Enhancements/SwitchAge.h"
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/BunnyHood.h"
-#include "soh/Enhancements/FileSelectEnhancements.h"
 #include <soh/Enhancements/game-interactor/GameInteractor.h>
 #include <soh/OTRGlobals.h>
 #include <soh/Enhancements/cosmetics/authenticGfxPatches.h>
 #include <soh/Enhancements/TimeDisplay/TimeDisplay.h>
 #include "soh/Enhancements/Restorations/GetItemManipulation.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <libultraship/bridge/consolevariablebridge.h>
-#include <soh/ResourceManagerHelpers.h>
 #include "soh/ShipInit.hpp"
+#include <soh/ResourceManagerHelpers.h>
 
 extern "C" {
 #include "functions.h"
@@ -178,20 +179,26 @@ static const std::map<int32_t, const char*> mirroredWorldModes = {
     { MIRRORED_WORLD_DUNGEONS_RANDOM_SEEDED, "Dungeons Random (Seeded)" },
 };
 
-// Disables a File Select "Hide" checkbox when its O2R is missing, or when it would hide the last visible quest
-static WidgetFunc HideQuestPreFunc(Quest quest) {
-    return [quest](WidgetInfo& info) {
-        if ((quest == QUEST_NORMAL || quest == QUEST_SPEEDRUN) && !ResourceMgr_GameHasOriginal()) {
-            info.options->disabled = true;
-            info.options->disabledTooltip = "This option requires a loaded original O2R.";
-        } else if ((quest == QUEST_MASTER || quest == QUEST_SPEEDRUN_MASTER) && !ResourceMgr_GameHasMasterQuest()) {
-            info.options->disabled = true;
-            info.options->disabledTooltip = "This option requires a loaded Master Quest O2R.";
-        } else if (!SohFileSelect_IsQuestHidden(quest) && SohFileSelect_CountVisibleQuests() <= 1) {
-            info.options->disabled = true;
-            info.options->disabledTooltip = "At least one quest type must remain visible.";
-        }
-    };
+static uint8_t CountVisibleFileSelectQuests() {
+    uint8_t count = 0;
+
+    if (ResourceMgr_GameHasOriginal() && !CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideNormalQuest"), 0)) {
+        count++;
+    }
+
+    if (ResourceMgr_GameHasMasterQuest() && !CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideMasterQuest"), 0)) {
+        count++;
+    }
+
+    if (!CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideRandomizerQuest"), 0)) {
+        count++;
+    }
+
+    if (!CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideBossRushQuest"), 0)) {
+        count++;
+    }
+
+    return count;
 }
 
 void SohMenu::AddMenuEnhancements() {
@@ -446,7 +453,7 @@ void SohMenu::AddMenuEnhancements() {
             CVAR_INT_SHIP_INIT(CVAR_ENHANCEMENT("TimeSavers.SkipMiscInteractions"), true);
             CVAR_INT_SHIP_INIT(CVAR_ENHANCEMENT("TimeSavers.DisableTitleCard"), true);
 
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         });
     AddWidget(path, "None##Skips", WIDGET_BUTTON)
         .SameLine(true)
@@ -464,7 +471,7 @@ void SohMenu::AddMenuEnhancements() {
             CVAR_INT_SHIP_INIT(CVAR_ENHANCEMENT("TimeSavers.SkipMiscInteractions"), false);
             CVAR_INT_SHIP_INIT(CVAR_ENHANCEMENT("TimeSavers.DisableTitleCard"), false);
 
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         });
     AddWidget(path, "Skip Intro", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("TimeSavers.SkipCutscene.Intro"))
@@ -805,39 +812,57 @@ void SohMenu::AddMenuEnhancements() {
     AddWidget(path, "Hide Original", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("FileSelect.HideNormalQuest"))
         .RaceDisable(false)
-        .PreFunc(HideQuestPreFunc(QUEST_NORMAL))
+        .PreFunc([](const WidgetInfo& info) {
+            if (!ResourceMgr_GameHasOriginal()) {
+                info.options->disabled = true;
+                info.options->disabledTooltip = "This option requires a loaded original O2R.";
+            } else if (CountVisibleFileSelectQuests() <= 1 &&
+                       !CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideNormalQuest"), 0)) {
+                info.options->disabled = true;
+                info.options->disabledTooltip = "At least one quest type must remain visible.";
+            }
+        })
         .Options(CheckboxOptions().Tooltip(
             "Hides the original game when selecting a quest type on the File Select screen."));
     AddWidget(path, "Hide Master Quest", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("FileSelect.HideMasterQuest"))
         .RaceDisable(false)
-        .PreFunc(HideQuestPreFunc(QUEST_MASTER))
+        .PreFunc([](const WidgetInfo& info) {
+            if (!ResourceMgr_GameHasMasterQuest()) {
+                info.options->disabled = true;
+                info.options->disabledTooltip = "This option requires a loaded Master Quest O2R.";
+            } else if (CountVisibleFileSelectQuests() <= 1 &&
+                       !CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideMasterQuest"), 0)) {
+                info.options->disabled = true;
+                info.options->disabledTooltip = "At least one quest type must remain visible.";
+            }
+        })
         .Options(CheckboxOptions().Tooltip(
             "Hides the Master Quest option when selecting a quest type on the File Select screen."));
     AddWidget(path, "Hide Randomizer", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("FileSelect.HideRandomizerQuest"))
         .RaceDisable(false)
-        .PreFunc(HideQuestPreFunc(QUEST_RANDOMIZER))
+        .PreFunc([](const WidgetInfo& info) {
+            if (CountVisibleFileSelectQuests() <= 1 &&
+                !CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideRandomizerQuest"), 0)) {
+                info.options->disabled = true;
+                info.options->disabledTooltip = "At least one quest type must remain visible.";
+            }
+        })
         .Options(CheckboxOptions().Tooltip(
             "Hides the Randomizer option when selecting a quest type on the File Select screen."));
     AddWidget(path, "Hide Boss Rush", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("FileSelect.HideBossRushQuest"))
         .RaceDisable(false)
-        .PreFunc(HideQuestPreFunc(QUEST_BOSSRUSH))
+        .PreFunc([](const WidgetInfo& info) {
+            if (CountVisibleFileSelectQuests() <= 1 &&
+                !CVarGetInteger(CVAR_ENHANCEMENT("FileSelect.HideBossRushQuest"), 0)) {
+                info.options->disabled = true;
+                info.options->disabledTooltip = "At least one quest type must remain visible.";
+            }
+        })
         .Options(CheckboxOptions().Tooltip(
             "Hides the Boss Rush option when selecting a quest type on the File Select screen."));
-    AddWidget(path, "Hide Speedrun", WIDGET_CVAR_CHECKBOX)
-        .CVar(CVAR_ENHANCEMENT("FileSelect.HideSpeedrunQuest"))
-        .RaceDisable(false)
-        .PreFunc(HideQuestPreFunc(QUEST_SPEEDRUN))
-        .Options(CheckboxOptions().Tooltip(
-            "Hides the Speedrun option when selecting a quest type on the File Select screen."));
-    AddWidget(path, "Hide Speedrun Master Quest", WIDGET_CVAR_CHECKBOX)
-        .CVar(CVAR_ENHANCEMENT("FileSelect.HideSpeedrunMasterQuest"))
-        .RaceDisable(false)
-        .PreFunc(HideQuestPreFunc(QUEST_SPEEDRUN_MASTER))
-        .Options(CheckboxOptions().Tooltip(
-            "Hides the Speedrun Master Quest option when selecting a quest type on the File Select screen."));
 
     path.column = SECTION_COLUMN_3;
     AddWidget(path, "Misc.", WIDGET_SEPARATOR_TEXT);
@@ -914,6 +939,11 @@ void SohMenu::AddMenuEnhancements() {
     AddWidget(path, "Assignable Shields, Tunics and Boots", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"))
         .Options(CheckboxOptions().Tooltip("Allows equipping Shields, Tunics and Boots to C-Buttons/D-pad."));
+    AddWidget(path, "Assignable Songs", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ASSIGNABLE_SONGS)
+        .Options(CheckboxOptions().Tooltip(
+            "Allows assigning learned Ocarina songs to C-Buttons/D-pad from the Quest Status subscreen. "
+            "An assigned song plays on a button press, wherever the Ocarina itself could be played."));
     // TODO: Revist strength toggle, it's currently separate but should probably be locked behind the
     // Equipment toggle settings or be absorbed by it completely.
     AddWidget(path, "Equipment Toggle", WIDGET_CVAR_CHECKBOX)
@@ -1395,9 +1425,6 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions().Tooltip(
             "Restores a bug from NTSC 1.0/1.1 that allows you to obtain the eyeball frog from King Zora "
             "instead of the Zora Tunic by Holding Shield."));
-    AddWidget(path, "Child Hookshot Softlock", WIDGET_CVAR_CHECKBOX)
-        .CVar(CVAR_ENHANCEMENT("ChildHookshotSoftlock"))
-        .Options(CheckboxOptions().Tooltip("Using the Hookshot as child softlocks."));
     AddWidget(path, "Get Item Manipulation", WIDGET_CVAR_COMBOBOX)
         .CVar(CVAR_ENHANCEMENT("GetItemManipulation"))
         .Options(ComboboxOptions()
@@ -2098,7 +2125,7 @@ void SohMenu::AddMenuEnhancements() {
         .CVar(CVAR_CHEAT("SaveStatePromise"))
         .Callback([](WidgetInfo& info) {
             CVarSetInteger(CVAR_CHEAT("SaveStatesEnabled"), 0);
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         });
     AddWidget(path, "I understand, enable save states", WIDGET_CVAR_CHECKBOX)
         .PreFunc([](WidgetInfo& info) { info.isHidden = CVarGetInteger(CVAR_CHEAT("SaveStatePromise"), 0) == 0; })
@@ -2115,10 +2142,9 @@ void SohMenu::AddMenuEnhancements() {
             } else {
                 CVarSetInteger(CVAR_CHEAT("BetaQuestWorld"), 0);
             }
-            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))
                 ->Dispatch("reset");
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         })
         .Options(CheckboxOptions().Tooltip("Turns on OoT Beta Quest. *WARNING*: This will reset your game!"));
     AddWidget(path, "Beta Quest World: %d", WIDGET_CVAR_SLIDER_INT)
@@ -2127,10 +2153,9 @@ void SohMenu::AddMenuEnhancements() {
             info.options->disabled = info.isHidden = CVarGetInteger(CVAR_CHEAT("EnableBetaQuest"), 0) == 0;
         })
         .Callback([](WidgetInfo& info) {
-            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))
                 ->Dispatch("reset");
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         })
         .Options(IntSliderOptions().DefaultValue(0).Min(0).Max(8).Tooltip(
             "Set the Beta Quest world to explore. *WARNING*: Changing this will reset your game!\n"
@@ -2170,9 +2195,12 @@ void SohMenu::AddMenuEnhancements() {
     // Time Splits
     path.sidebarName = "Time Splits";
     AddSidebarEntry("Enhancements", path.sidebarName, 1);
-    AddWidget(path, "Popout Timesplits Settings", WIDGET_WINDOW_BUTTON)
-        .CVar("gWindows.Timesplits.Settings")
-        .WindowName("Time Splits Settings Window");
+    AddWidget(path, "Popout Time Splits Window", WIDGET_WINDOW_BUTTON)
+        .CVar(CVAR_WINDOW("TimeSplits"))
+        .RaceDisable(false)
+        .WindowName("Time Splits")
+        .HideInSearch(true)
+        .Options(WindowButtonOptions().Tooltip("Enables the separate Time Splits Window."));
 
     // Timers
     path.sidebarName = "Timers";

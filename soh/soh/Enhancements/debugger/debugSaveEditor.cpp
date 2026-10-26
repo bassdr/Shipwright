@@ -1,11 +1,11 @@
 #include <algorithm>
+#include "soh/SohContext.h"
 #include <array>
 #include <bit>
 #include <map>
 #include <string>
 
 #include <fast/Fast3dGui.h>
-#include <ship/Context.h>
 
 #include "debugSaveEditor.h"
 #include "soh/Enhancements/randomizer/randomizer.h"
@@ -172,7 +172,7 @@ static bool DungeonHasBossKey(int32_t dungeonIndex) {
 // restrictToValid: pointer to shared restrict flag (nullptr = use internal static)
 static void DrawButtonItemSelector(const char* label, int buttonIndex, UIWidgets::Colors color, bool isBButton = false,
                                    const bool* restrictToValidPtr = nullptr) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     // Use provided restrictToValid or default to true (restricted mode)
     bool useRestriction = restrictToValidPtr ? *restrictToValidPtr : true;
     uint8_t* buttonItem = &gSaveContext.equips.buttonItems[buttonIndex];
@@ -971,7 +971,7 @@ void DrawGeneralTab() {
 }
 
 void DrawBGSItemFlag(uint8_t itemID) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     const ItemMapEntry& slotEntry = itemMapping[itemID];
     ImGui::Image(gui->GetTextureByName(slotEntry.name), ImVec2(32.0f, 32.0f), ImVec2(0, 0), ImVec2(1, 1));
 }
@@ -990,7 +990,7 @@ static void SyncButtonItemsForSlot(uint8_t slot) {
 }
 
 void DrawInventoryTab() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 3.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
     ImGui::BeginChild("inventoryTab", ImVec2(0, 0), true);
@@ -1925,7 +1925,7 @@ void DrawUpgrade(const std::string& categoryName, int32_t categoryId, const std:
 
 // Draws a combo that lets you choose and upgrade value from a popup grid of icons
 void DrawUpgradeIcon(const std::string& categoryName, int32_t categoryId, const std::vector<uint8_t>& items) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     static const char* upgradePopupPicker = "upgradePopupPicker";
 
     ImGui::PushID(categoryName.c_str());
@@ -1974,7 +1974,7 @@ void DrawUpgradeIcon(const std::string& categoryName, int32_t categoryId, const 
 }
 
 void DrawEquipmentTab() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 3.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
     ImGui::BeginChild("equipmentTab", ImVec2(0, 0), true);
@@ -2283,7 +2283,7 @@ void DrawEquipmentTab() {
 
 // Draws a toggleable icon for a quest item that is faded when disabled
 void DrawQuestItemButton(uint32_t item) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     const QuestMapEntry& entry = questMapping[item];
     uint32_t bitMask = 1 << entry.id;
     bool hasQuestItem = (bitMask & gSaveContext.inventory.questItems) != 0;
@@ -2304,7 +2304,7 @@ void DrawQuestItemButton(uint32_t item) {
 
 // Draws a toggleable icon for a dungeon item that is faded when disabled
 void DrawDungeonItemButton(uint32_t item, uint32_t scene) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     const ItemMapEntry& entry = itemMapping[item];
     uint32_t bitMask = 1 << (entry.id - ITEM_KEY_BOSS); // Bitset starts at ITEM_KEY_BOSS == 0. the rest are sequential
     bool hasItem = (bitMask & gSaveContext.inventory.dungeonItems[scene]) != 0;
@@ -2323,7 +2323,7 @@ void DrawDungeonItemButton(uint32_t item, uint32_t scene) {
 }
 
 void DrawQuestStatusTab() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 3.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
     ImGui::BeginChild("questStatusTab", ImVec2(0, 0), true);
@@ -2473,8 +2473,7 @@ void DrawDungeonItemsTab() {
 
         // Small keys - clickable button with popup (only for dungeons that have keys)
         if (GetMaxKeysForDungeon(dungeonIndex) > 0) {
-            auto gui =
-                std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+            auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
             // Save cursor position before small key button to restore for boss key alignment
             ImVec2 smallKeyCursor = ImGui::GetCursorScreenPos();
 
@@ -2833,7 +2832,7 @@ void SaveEditorWindow::DrawElement() {
 }
 
 void SaveEditorWindow::InitElement() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
-    gui->LoadGuiTexture("ROCS_FEATHER", gRocsFeatherTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("RG_ROCS_FEATHER_PICKER", gRocsFeatherTex, "", ImVec4(1, 1, 1, 1));
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
+    gui->LoadGuiTexture("ROCS_FEATHER", gRocsFeatherTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("RG_ROCS_FEATHER_PICKER", gRocsFeatherTex, ImVec4(1, 1, 1, 1));
 }

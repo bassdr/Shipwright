@@ -1,10 +1,6 @@
 #include "SpeechPlayer.h"
 
-#ifdef __APPLE__
-#include <SDL.h>
-#else
-#include <SDL2/SDL.h>
-#endif
+#include <SDL3/SDL.h>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -126,57 +122,70 @@ void SpeechPlayer::Mix(int16_t* buffer, uint32_t frames, int32_t outRate) {
     }
 }
 
-void SpeechPlayer::Feed(void* self, uint8_t* stream, int length) {
-    std::memset(stream, 0, size_t(length));
-
-    auto& player = *static_cast<SpeechPlayer*>(self);
-    if (player.mMixing.try_lock()) {
-        const auto frames = uint32_t(size_t(length) / (kChannels * sizeof(int16_t)));
-        player.MixLocked(reinterpret_cast<int16_t*>(stream), frames, kDeviceRate);
-        player.mMixing.unlock();
-    }
-}
-
-void SpeechPlayer::SetSeparateOutput(bool separate, const std::string& device) {
-    if (separate && mDeviceId != 0 && device == mDevice) {
+void SpeechPlayer::Feed(void* self, SDL_AudioStream* stream, int additional, int) {
+    if (additional <= 0) {
         return;
     }
 
-    if (mDeviceId != 0) {
+    std::vector<int16_t> buffer(size_t(additional) / sizeof(int16_t), 0);
+    auto& player = *static_cast<SpeechPlayer*>(self);
+    if (player.mMixing.try_lock()) {
+        player.MixLocked(buffer.data(), uint32_t(buffer.size() / kChannels), kDeviceRate);
+        player.mMixing.unlock();
+    }
+    SDL_PutAudioStreamData(stream, buffer.data(), int(buffer.size() * sizeof(int16_t)));
+}
+
+void SpeechPlayer::SetSeparateOutput(bool separate, const std::string& device) {
+    if (separate && mStream != nullptr && device == mDevice) {
+        return;
+    }
+
+    if (mStream != nullptr) {
         // Ordered so the callback cannot be mixing while its device goes away.
-        const SDL_AudioDeviceID id = mDeviceId;
-        mDeviceId = 0;
+        SDL_AudioStream* stream = mStream;
+        mStream = nullptr;
         mSeparate.store(false, std::memory_order_relaxed);
-        SDL_CloseAudioDevice(id);
+        SDL_DestroyAudioStream(stream);
     }
     if (!separate) {
         return;
     }
 
     // Refcounted, and the game's own audio may not have brought this up yet.
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         SPDLOG_WARN("Speech could not start its own output ({}); it stays in the game mix", SDL_GetError());
         return;
     }
 
+    SDL_AudioDeviceID deviceId = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    if (!device.empty()) {
+        int count = 0;
+        SDL_AudioDeviceID* ids = SDL_GetAudioPlaybackDevices(&count);
+        for (int i = 0; ids != nullptr && i < count; i++) {
+            const char* name = SDL_GetAudioDeviceName(ids[i]);
+            if (name != nullptr && device == name) {
+                deviceId = ids[i];
+                break;
+            }
+        }
+        SDL_free(ids);
+    }
+
     SDL_AudioSpec want{};
     want.freq = kDeviceRate;
-    want.format = AUDIO_S16SYS;
+    want.format = SDL_AUDIO_S16;
     want.channels = kChannels;
-    want.samples = 1024;
-    want.callback = &SpeechPlayer::Feed;
-    want.userdata = this;
 
-    SDL_AudioSpec have{};
-    mDeviceId = SDL_OpenAudioDevice(device.empty() ? nullptr : device.c_str(), 0, &want, &have, 0);
-    if (mDeviceId == 0) {
+    mStream = SDL_OpenAudioDeviceStream(deviceId, &want, &SpeechPlayer::Feed, this);
+    if (mStream == nullptr) {
         SPDLOG_WARN("Speech could not open output device \"{}\" ({}); it stays in the game mix", device,
                     SDL_GetError());
         return;
     }
 
     mDevice = device;
-    SDL_PauseAudioDevice(mDeviceId, 0);
+    SDL_ResumeAudioStreamDevice(mStream);
     mSeparate.store(true, std::memory_order_relaxed);
 }
 

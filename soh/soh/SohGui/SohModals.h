@@ -1,12 +1,13 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <functional>
 #include <ship/window/gui/GuiWindow.h>
 #include <ship/window/gui/GuiMenuBar.h>
 
-class SohModalWindow final : public Ship::GuiWindow {
+class SohModalWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     void Draw() override;
 
     void InitElement() override{};

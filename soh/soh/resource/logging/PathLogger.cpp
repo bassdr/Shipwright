@@ -29,6 +29,6 @@ void LogPathAsXML(std::shared_ptr<Ship::IResource> resource) {
     tinyxml2::XMLPrinter printer;
     doc.Accept(&printer);
 
-    SPDLOG_INFO("{}: {}", resource->GetInitData()->Path, printer.CStr());
+    SPDLOG_INFO("{}: {}", resource->GetInitData()->Identifier.GetPath(), printer.CStr());
 }
 } // namespace SOH

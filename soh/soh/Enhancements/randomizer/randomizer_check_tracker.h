@@ -1,14 +1,15 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <nlohmann/json.hpp>
 #include "randomizerTypes.h"
 #include "soh/SohGui/UIWidgets.hpp"
 
 namespace CheckTracker {
 
-class CheckTrackerSettingsWindow final : public Ship::GuiWindow {
+class CheckTrackerSettingsWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     ~CheckTrackerSettingsWindow(){};
 
   protected:
@@ -17,9 +18,9 @@ class CheckTrackerSettingsWindow final : public Ship::GuiWindow {
     void UpdateElement() override{};
 };
 
-class CheckTrackerWindow final : public Ship::GuiWindow {
+class CheckTrackerWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     void Draw() override;
     ~CheckTrackerWindow(){};
 

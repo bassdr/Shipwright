@@ -1,10 +1,10 @@
 #include "CosmeticsEditor.h"
+#include "soh/SohContext.h"
 #include "cosmeticsTypes.h"
 #include "authenticGfxPatches.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 
 #include <ship/controller/controldeck/ControlDeck.h>
-#include <ship/Context.h>
 #include <algorithm>
 #include <string>
 
@@ -1603,8 +1603,7 @@ void C_Button_Dropdown(const char* Header_Title, const char* Table_ID, const cha
             DrawScaleSlider(Slider_ID, Slider_Scale_Value);
             ImGui::EndTable();
         }
-        std::shared_ptr<Ship::Controller> controller =
-            Ship::Context::GetRawInstance()->GetControlDeck()->GetControllerByPort(0);
+        std::shared_ptr<Ship::Controller> controller = SohControlDeck()->GetControllerByPort(0);
         for (auto [id, mapping] : controller->GetButton(BTN_DDOWN)->GetAllButtonMappings()) {
             controller->GetButton(BTN_CUSTOM_OCARINA_NOTE_F4)->AddButtonMapping(mapping);
         }
@@ -2110,7 +2109,7 @@ void DrawCosmeticRow(CosmeticOption& cosmeticOption) {
         CVarSetInteger((cosmeticOption.changedCvar), 1);
         ApplySideEffects(cosmeticOption);
         ApplyOrResetCustomGfxPatches();
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
     // the longest option name
     ImGui::SameLine((ImGui::CalcTextSize("Message Light Blue (None No Shadow)").x * 1.0f) + 60.0f);
@@ -2119,7 +2118,7 @@ void DrawCosmeticRow(CosmeticOption& cosmeticOption) {
             UIWidgets::ButtonOptions().Size(ImVec2(80, 31)).Padding(ImVec2(2.0f, 0.0f)).Color(THEME_COLOR))) {
         RandomizeColor(cosmeticOption);
         ApplyOrResetCustomGfxPatches();
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
     if (cosmeticOption.supportsRainbow) {
         ImGui::SameLine();
@@ -2128,7 +2127,7 @@ void DrawCosmeticRow(CosmeticOption& cosmeticOption) {
             CVarSetInteger((cosmeticOption.changedCvar), 1);
             ApplySideEffects(cosmeticOption);
             ApplyOrResetCustomGfxPatches();
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         }
     }
     ImGui::SameLine();
@@ -2142,7 +2141,7 @@ void DrawCosmeticRow(CosmeticOption& cosmeticOption) {
                               UIWidgets::ButtonOptions().Size(ImVec2(80, 31)).Padding(ImVec2(2.0f, 0.0f)))) {
             ResetColor(cosmeticOption);
             ApplyOrResetCustomGfxPatches();
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         }
     }
 }
@@ -2496,7 +2495,7 @@ void RegisterOnGameFrameUpdateHook() {
 }
 
 void CosmeticsEditorWindow::InitElement() {
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ScanCustomCosmetics();
     ApplyOrResetCustomGfxPatches();
     ApplyAuthenticGfxPatches();
@@ -2511,7 +2510,7 @@ void CosmeticsEditor_RandomizeAll() {
         }
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ApplyOrResetCustomGfxPatches();
 }
 
@@ -2523,7 +2522,7 @@ void CosmeticsEditor_AutoRandomizeAll() {
         }
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ApplyOrResetCustomGfxPatches();
     ApplyCustomCosmetics();
 }
@@ -2537,7 +2536,7 @@ void CosmeticsEditor_RandomizeGroup(CosmeticGroup group) {
         }
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ApplyOrResetCustomGfxPatches();
 }
 
@@ -2548,7 +2547,7 @@ void CosmeticsEditor_ResetAll() {
         }
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ApplyOrResetCustomGfxPatches();
 }
 
@@ -2559,7 +2558,7 @@ void CosmeticsEditor_ResetGroup(CosmeticGroup group) {
         }
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ApplyOrResetCustomGfxPatches();
 }
 

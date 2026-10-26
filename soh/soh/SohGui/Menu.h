@@ -3,14 +3,15 @@
 #include <libultraship/libultra.h>
 #include <ship/audio/Audio.h>
 #include <ship/window/gui/GuiWindow.h>
+#include "soh/SohGui/SohGuiWindow.h"
 #include <fast/Fast3dWindow.h>
 #include "MenuTypes.h"
 
 namespace Ship {
 uint32_t GetVectorIndexOf(std::vector<std::string>& vector, std::string value);
-class Menu : public GuiWindow {
+class Menu : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     Menu(const std::string& cVar, const std::string& name, uint8_t searchSidebarIndex_ = 0,
          UIWidgets::Colors menuThemeIndex_ = UIWidgets::Colors::LightBlue);

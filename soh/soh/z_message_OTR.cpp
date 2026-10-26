@@ -1,4 +1,5 @@
-#include <ship/Context.h>
+#include <ship/core/Context.h>
+#include "soh/SohContext.h"
 #include <ship/resource/ResourceManager.h>
 
 #include "soh/resource/type/Text.h"
@@ -22,11 +23,10 @@ static void SetMessageEntry(MessageTableEntry& entry, const SOH::MessageEntry& m
 }
 
 static void OTRMessage_LoadCustom(const std::string& folderPath, MessageTableEntry*& table, size_t tableSize) {
-    auto lst = *Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->ListFiles(folderPath).get();
+    auto lst = *SohResourceManager()->GetArchiveManager()->ListFiles(folderPath).get();
 
     for (auto& tPath : lst) {
-        auto file = std::static_pointer_cast<SOH::Text>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(tPath));
+        auto file = std::static_pointer_cast<SOH::Text>(SohResourceManager()->LoadResource(tPath));
 
         for (size_t j = 0; j < file->messages.size(); ++j) {
             // Check if same text ID exists already
@@ -43,8 +43,7 @@ static void OTRMessage_LoadCustom(const std::string& folderPath, MessageTableEnt
 }
 
 MessageTableEntry* OTRMessage_LoadTable(const std::string& filePath, bool isNES) {
-    auto file = std::static_pointer_cast<SOH::Text>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(filePath));
+    auto file = std::static_pointer_cast<SOH::Text>(SohResourceManager()->LoadResource(filePath));
 
     if (file == nullptr)
         return nullptr;
@@ -93,9 +92,8 @@ extern "C" void OTRMessage_Init() {
     }
 
     if (sStaffMessageEntryTablePtr == NULL) {
-        auto file2 =
-            std::static_pointer_cast<SOH::Text>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
-                "text/staff_message_data_static/staff_message_data_static"));
+        auto file2 = std::static_pointer_cast<SOH::Text>(
+            SohResourceManager()->LoadResource("text/staff_message_data_static/staff_message_data_static"));
         // OTRTODO: Should not be malloc'ing here. It's fine for now since we check that the message table is already
         // null.
         sStaffMessageEntryTablePtr = (MessageTableEntry*)malloc(sizeof(MessageTableEntry) * file2->messages.size());

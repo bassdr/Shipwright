@@ -2,6 +2,7 @@
 
 #ifdef __cplusplus
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include "soh/Network/Network.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <ship/window/gui/GuiWindow.h>
@@ -185,9 +186,9 @@ typedef enum {
     DUMMY_PLAYER_HIT_RESPONSE_NORMAL,
 } DummyPlayerDamageResponseType;
 
-class AnchorRoomWindow : public Ship::GuiWindow {
+class AnchorRoomWindow : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override{};
     void DrawElement() override;

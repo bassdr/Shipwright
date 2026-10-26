@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <string>
 #include <map>
 #include <vector>
@@ -116,9 +117,9 @@ s16 GetCurrentGrottoId();
 const EntranceData* GetEntranceData(s16);
 void LoadFromPreset(const nlohmann::json& info);
 
-class EntranceTrackerSettingsWindow final : public Ship::GuiWindow {
+class EntranceTrackerSettingsWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
   protected:
     void InitElement() override{};
@@ -126,9 +127,9 @@ class EntranceTrackerSettingsWindow final : public Ship::GuiWindow {
     void UpdateElement() override{};
 };
 
-class EntranceTrackerWindow final : public Ship::GuiWindow {
+class EntranceTrackerWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     void Draw() override;
 
     void InitElement() override;

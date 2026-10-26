@@ -3,8 +3,8 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 #include "soh/cvar_prefixes.h"
 
-void SohGfxDebuggerWindow::InitElement() {
-    GfxDebuggerWindow::InitElement();
+void SohGfxDebuggerWindow::OnInit(const nlohmann::json& initArgs) {
+    LUS::GfxDebuggerWindow::OnInit(initArgs);
 }
 
 void SohGfxDebuggerWindow::UpdateElement() {

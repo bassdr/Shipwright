@@ -1,10 +1,11 @@
 #include "soh/resource/importer/AudioSoundFontFactory.h"
+#include "soh/SohContext.h"
 #include "soh/resource/type/AudioSoundFont.h"
 #include "soh/Enhancements/audio/InstrumentNames.h"
 #include <tinyxml2.h>
 #include <z64.h>
 #include "z64audio.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/archive/Archive.h>
 #include <ship/resource/ResourceManager.h>
 #include <spdlog/spdlog.h>
@@ -73,8 +74,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
         if (sampleFileName.empty()) {
             drum->sound.sample = nullptr;
         } else {
-            auto res =
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
+            auto res = SohResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             drum->sound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
         }
 
@@ -138,8 +138,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             bool hasSampleRef = reader->ReadInt8();
             std::string sampleFileName = reader->ReadString();
             instrument->lowNotesSound.tuning = reader->ReadFloat();
-            auto res =
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
+            auto res = SohResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             instrument->lowNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
             lowName = sampleFileName;
             SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::Low, std::move(sampleFileName));
@@ -155,8 +154,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             bool hasSampleRef = reader->ReadInt8();
             std::string sampleFileName = reader->ReadString();
             instrument->normalNotesSound.tuning = reader->ReadFloat();
-            auto res =
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
+            auto res = SohResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             instrument->normalNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
             normalName = sampleFileName;
             SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::Normal, std::move(sampleFileName));
@@ -171,8 +169,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             bool hasSampleRef = reader->ReadInt8();
             std::string sampleFileName = reader->ReadString();
             instrument->highNotesSound.tuning = reader->ReadFloat();
-            auto res =
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
+            auto res = SohResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             instrument->highNotesSound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
             highName = sampleFileName;
             SOH::SetInstrumentSampleName(fntIdx, slot, SOH::SampleRange::High, std::move(sampleFileName));
@@ -209,8 +206,7 @@ ResourceFactoryBinaryAudioSoundFontV2::ReadResource(std::shared_ptr<Ship::File> 
             bool hasSampleRef = reader->ReadInt8();
             std::string sampleFileName = reader->ReadString();
             soundEffect.tuning = reader->ReadFloat();
-            auto res =
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleFileName.c_str());
+            auto res = SohResourceManager()->LoadResourceProcess(sampleFileName.c_str());
             soundEffect.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
         }
 
@@ -281,7 +277,7 @@ void ResourceFactoryXMLSoundFontV0::ParseDrums(AudioSoundFont* soundFont, tinyxm
         const char* sampleStr = element->Attribute("SampleRef");
 
         if (sampleStr != nullptr && sampleStr[0] != 0) {
-            auto res = Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleStr);
+            auto res = SohResourceManager()->LoadResourceProcess(sampleStr);
             drum->sound.sample = static_cast<Sample*>(res ? res->GetRawPointer() : nullptr);
         } else {
             drum->sound.sample = nullptr;
@@ -356,8 +352,8 @@ void ResourceFactoryXMLSoundFontV0::ParseInstruments(AudioSoundFont* soundFont, 
             instrument->lowNotesSound.tuning = instrumentElement->FloatAttribute("Tuning");
             const char* sampleStr = instrumentElement->Attribute("SampleRef");
             if (sampleStr != nullptr && sampleStr[0] != 0) {
-                std::shared_ptr<SOH::AudioSample> res = static_pointer_cast<SOH::AudioSample>(
-                    Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleStr));
+                std::shared_ptr<SOH::AudioSample> res =
+                    static_pointer_cast<SOH::AudioSample>(SohResourceManager()->LoadResourceProcess(sampleStr));
                 if (res->tuning != -1.0f) {
                     instrument->lowNotesSound.tuning = res->tuning;
                 }
@@ -370,8 +366,8 @@ void ResourceFactoryXMLSoundFontV0::ParseInstruments(AudioSoundFont* soundFont, 
             instrument->normalNotesSound.tuning = instrumentElement->FloatAttribute("Tuning");
             const char* sampleStr = instrumentElement->Attribute("SampleRef");
             if (sampleStr != nullptr && sampleStr[0] != 0) {
-                std::shared_ptr<SOH::AudioSample> res = static_pointer_cast<SOH::AudioSample>(
-                    Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleStr));
+                std::shared_ptr<SOH::AudioSample> res =
+                    static_pointer_cast<SOH::AudioSample>(SohResourceManager()->LoadResourceProcess(sampleStr));
                 if (res->tuning != -1.0f) {
                     instrument->normalNotesSound.tuning = res->tuning;
                 }
@@ -384,8 +380,8 @@ void ResourceFactoryXMLSoundFontV0::ParseInstruments(AudioSoundFont* soundFont, 
             instrument->highNotesSound.tuning = instrumentElement->FloatAttribute("Tuning");
             const char* sampleStr = instrumentElement->Attribute("SampleRef");
             if (sampleStr != nullptr && sampleStr[0] != 0) {
-                std::shared_ptr<SOH::AudioSample> res = static_pointer_cast<SOH::AudioSample>(
-                    Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleStr));
+                std::shared_ptr<SOH::AudioSample> res =
+                    static_pointer_cast<SOH::AudioSample>(SohResourceManager()->LoadResourceProcess(sampleStr));
                 if (res->tuning != -1.0f) {
                     instrument->highNotesSound.tuning = res->tuning;
                 }
@@ -424,8 +420,7 @@ void ResourceFactoryXMLSoundFontV0::ParseSfxTable(AudioSoundFont* soundFont, tin
 
         sound.tuning = element->FloatAttribute("Tuning");
         if (sampleStr[0] != 0) {
-            auto res = static_pointer_cast<SOH::AudioSample>(
-                Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(sampleStr));
+            auto res = static_pointer_cast<SOH::AudioSample>(SohResourceManager()->LoadResourceProcess(sampleStr));
             if (res->tuning != -1.0f) {
                 sound.tuning = res->tuning;
             }
@@ -479,8 +474,7 @@ ResourceFactoryXMLSoundFontV0::ReadResource(std::shared_ptr<Ship::File> file,
     if (patch != nullptr) {
         std::string origName = "audio/fonts/";
         origName += patch;
-        audioSoundFont = dynamic_pointer_cast<AudioSoundFont>(
-            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(origName));
+        audioSoundFont = dynamic_pointer_cast<AudioSoundFont>(SohResourceManager()->LoadResourceProcess(origName));
     } else {
         audioSoundFont = std::make_shared<AudioSoundFont>(initData);
         memset(&audioSoundFont->soundFont, 0, sizeof(audioSoundFont->soundFont));
@@ -489,10 +483,10 @@ ResourceFactoryXMLSoundFontV0::ReadResource(std::shared_ptr<Ship::File> file,
     audioSoundFont->soundFont.fntIndex = child->IntAttribute("Num", 0);
 
     const char* mediumStr = child->Attribute("Medium");
-    audioSoundFont->medium = MediumStrToInt(mediumStr, initData->Path.c_str());
+    audioSoundFont->medium = MediumStrToInt(mediumStr, initData->Identifier.GetPath().c_str());
 
     const char* cachePolicyStr = child->Attribute("CachePolicy");
-    audioSoundFont->cachePolicy = CachePolicyToInt(cachePolicyStr, initData->Path.c_str());
+    audioSoundFont->cachePolicy = CachePolicyToInt(cachePolicyStr, initData->Identifier.GetPath().c_str());
 
     audioSoundFont->data1 = child->IntAttribute("Data1");
     audioSoundFont->data2 = child->IntAttribute("Data2");

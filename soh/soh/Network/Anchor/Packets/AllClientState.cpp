@@ -1,7 +1,8 @@
 #include "soh/Network/Anchor/Anchor.h"
+#include "soh/SohContext.h"
 #include "soh/Network/Anchor/JsonConversions.hpp"
 #include <nlohmann/json.hpp>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/window/Window.h>
 #include "soh/OTRGlobals.h"
 #include "soh/Notification/Notification.h"
@@ -23,7 +24,7 @@ void Anchor::HandlePacket_AllClientState(nlohmann::json payload) {
         if (client.self) {
             ownClientId = client.clientId;
             CVarSetInteger(CVAR_REMOTE_ANCHOR("LastClientId"), ownClientId);
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             clients[client.clientId].self = true;
         } else {
             clients[client.clientId].self = false;

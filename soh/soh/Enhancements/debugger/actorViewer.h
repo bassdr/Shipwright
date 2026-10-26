@@ -1,14 +1,15 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <ship/window/gui/GuiWindow.h>
 
 #include "z64actor.h"
 
 #include <vector>
 
-class ActorViewerWindow final : public Ship::GuiWindow {
+class ActorViewerWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void DrawElement() override;
     void InitElement() override;

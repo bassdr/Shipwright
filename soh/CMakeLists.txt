@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.29.0 FATAL_ERROR)
 
 set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
 
@@ -51,38 +51,9 @@ set(CMAKE_CONFIGURATION_TYPES
     CACHE STRING "" FORCE
 )
 
-################################################################################
-# Global compiler options
-################################################################################
-if(MSVC)
-    # remove default flags provided with CMake for MSVC
-    set(CMAKE_C_FLAGS "")
-    set(CMAKE_C_FLAGS_DEBUG "")
-    set(CMAKE_C_FLAGS_RELEASE "")
-    # Keep /EHsc: the code uses try/catch.
-    set(CMAKE_CXX_FLAGS "/EHsc")
-    set(CMAKE_CXX_FLAGS_DEBUG "")
-    set(CMAKE_CXX_FLAGS_RELEASE "")
-endif()
-
-################################################################################
-# Global linker options
-################################################################################
-if(MSVC)
-    # remove default flags provided with CMake for MSVC
-    set(CMAKE_EXE_LINKER_FLAGS "")
-    set(CMAKE_MODULE_LINKER_FLAGS "")
-    set(CMAKE_SHARED_LINKER_FLAGS "")
-    set(CMAKE_STATIC_LINKER_FLAGS "")
-    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS}")
-    set(CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_MODULE_LINKER_FLAGS}")
-    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS}")
-    set(CMAKE_STATIC_LINKER_FLAGS_DEBUG "${CMAKE_STATIC_LINKER_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS}")
-    set(CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_MODULE_LINKER_FLAGS}")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS}")
-    set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS}")
-endif()
+# CMake's per-platform compiler and linker defaults are kept. Clearing them, as the Visual Studio
+# generator's boilerplate did, dropped /O2 /Ob2 /DNDEBUG and the default linker flags, which then
+# had to be put back one at a time (#7185, #7188).
 
 ################################################################################
 # Common utils
@@ -142,8 +113,9 @@ foreach(source IN LISTS soh__)
     source_group("${source_path_adjusted}" FILES "${source}")
 endforeach()
 
-# Fix UTF-8 issues for MSVC
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+# Fix UTF-8 issues for MSVC. Keyed on the MSVC variable, not the compiler id, so it also covers
+# clang-cl, which reports its id as Clang.
+if (MSVC)
     set_source_files_properties(soh/OTRGlobals.cpp PROPERTIES COMPILE_FLAGS "/utf-8")
     set_source_files_properties(soh/Enhancements/tts/tts.cpp PROPERTIES COMPILE_FLAGS "/utf-8")
     set_source_files_properties(soh/Enhancements/custom-message/CustomMessageManager.cpp PROPERTIES COMPILE_FLAGS "/utf-8")
@@ -282,19 +254,15 @@ if(ENABLE_FLUIDSYNTH)
     if(MSVC)
         set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
-    # Nothing links FluidSynth's CLI player, so keep it out of the build along with the
-    # install rules it brings. The keyword landed in CMake 3.28; below that the dependency
-    # is added as before and the player is simply built.
-    set(_fluidsynth_exclude "")
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-        set(_fluidsynth_exclude EXCLUDE_FROM_ALL)
-    endif()
+    # EXCLUDE_FROM_ALL drops what we never use: FluidSynth's CLI player, which nothing links,
+    # and the install rules that would otherwise package a binary this build no longer produces.
     FetchContent_Declare(fluidsynth
         GIT_REPOSITORY https://github.com/FluidSynth/fluidsynth.git
         GIT_TAG v2.5.5
         GIT_SHALLOW TRUE
-        ${_fluidsynth_exclude})
+        EXCLUDE_FROM_ALL)
     FetchContent_MakeAvailable(fluidsynth)
+    quiet_dependency_tree("${fluidsynth_SOURCE_DIR}")
     target_link_libraries(${PROJECT_NAME} PRIVATE libfluidsynth)
     target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_FLUIDSYNTH=1)
 else()
@@ -307,15 +275,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set_target_properties(${PROJECT_NAME} PROPERTIES
         VS_GLOBAL_KEYWORD "Win32Proj"
     )
-    if(SOH_WINDOWS_64BIT)
-        set_target_properties(${PROJECT_NAME} PROPERTIES
-            INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
-        )
-    elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
-        set_target_properties(${PROJECT_NAME} PROPERTIES
-            INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
-        )
-    endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set_target_properties(${PROJECT_NAME} PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
@@ -366,15 +325,25 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(dr_libs)
 
-find_package(SDL2)
-set(SDL2-INCLUDE ${SDL2_INCLUDE_DIRS})
+find_package(SDL3)
+set(SDL3-INCLUDE ${SDL3_INCLUDE_DIRS})
 
-find_package(SDL2_net)
+# SDL3_net is too new to be packaged on most distros (Gentoo has no ebuild yet), so
+# build it rather than making the remote features depend on the platform.
+find_package(SDL3_net QUIET)
 
-if(NOT SDL2_net_FOUND)
-    message(STATUS "SDL2_net not found (it's possible the version installed is too old).")
+if(NOT SDL3_net_FOUND)
+    message(STATUS "SDL3_net not found; building it from source.")
+    set(SDLNET_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDLNET_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3_net
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL_net.git
+        GIT_TAG release-3.2.0
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(SDL3_net)
+    quiet_dependency_tree("${SDL3_net_SOURCE_DIR}")
 else()
-    set(SDL2-NET-INCLUDE ${SDL_NET_INCLUDE_DIRS})
+    set(SDL3-NET-INCLUDE ${SDL3_net_INCLUDE_DIRS})
 endif()
 
 if (ESPEAK)
@@ -393,8 +362,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-    ${SDL2-INCLUDE}
-    ${SDL2-NET-INCLUDE}
+    ${SDL3-INCLUDE}
+    ${SDL3-NET-INCLUDE}
     ${dr_libs_SOURCE_DIR}
 )
 
@@ -477,7 +446,43 @@ endif()
 ################################################################################
 # Compile and link options
 ################################################################################
+# One warning vocabulary for every platform. clang-cl's driver reinterprets the GNU
+# spellings - -Wall there is an alias for -Weverything - so it gets them through /clang:,
+# which reaches the same frontend the other two platforms use.
+set(SOH_WARNINGS
+    -Wall -Wextra -Wno-error
+    -Wformat-security
+    -Wno-unused-parameter
+    -Wno-unused-function
+    -Wno-unused-variable
+    -Wno-missing-field-initializers
+    -Wno-parentheses
+    -Wno-narrowing
+    -Wno-missing-braces
+    -Wno-unknown-pragmas # #pragma region is an editor folding marker, GCC doesn't know it
+)
+# Decompiled C leans on conversions that clang makes hard errors in C23, which no warning
+# level and no -Wno-error will undo.
+set(SOH_C_WARNINGS
+    -Werror-implicit-function-declaration
+    -Wno-implicit-int
+    -Wno-incompatible-pointer-types
+    -Wno-int-conversion
+)
+if(SOH_CLANG_CL)
+    list(TRANSFORM SOH_WARNINGS PREPEND "/clang:")
+    list(TRANSFORM SOH_C_WARNINGS PREPEND "/clang:")
+endif()
+
 if(MSVC)
+    # cl's level, for cl only: clang-cl takes its warnings from SOH_WARNINGS above, where
+    # /W3 would mean clang's -Wall on top of the list rather than a level.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(SOH_MSVC_WARNING_LEVEL /W3)
+        set_property(TARGET ${PROJECT_NAME} PROPERTY COMPILE_WARNING_AS_ERROR ON)
+    else()
+        set(SOH_MSVC_WARNING_LEVEL "")
+    endif()
     if(SOH_WINDOWS_64BIT)
         target_compile_options(${PROJECT_NAME} PRIVATE
             $<$<CONFIG:Debug>:
@@ -488,12 +493,10 @@ if(MSVC)
                 /Oi;
                 /Gy;
             >
-            /W3;
-            /WX;
+            ${SOH_MSVC_WARNING_LEVEL};
             /bigobj;
             /sdl-;
             /permissive-;
-            /MP;
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
             ${DEFAULT_CXX_EXCEPTION_HANDLING}
         )
@@ -509,10 +512,8 @@ if(MSVC)
                 /Gy
             >
             /permissive-;
-            /MP;
             /sdl-;
-            /W3;
-            /WX;
+            ${SOH_MSVC_WARNING_LEVEL};
             ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
             ${DEFAULT_CXX_EXCEPTION_HANDLING}
         )
@@ -529,7 +530,7 @@ if(MSVC)
                 /FORCE:MULTIPLE
             >
             /MANIFEST:NO;
-            /DEBUG;
+            $<$<NOT:$<CONFIG:Release>>:/DEBUG>;
             /SUBSYSTEM:WINDOWS
         )
     elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
@@ -544,31 +545,25 @@ if(MSVC)
                 /FORCE:MULTIPLE
             >
             /MANIFEST:NO;
-            /DEBUG;
+            $<$<NOT:$<CONFIG:Release>>:/DEBUG>;
             /SUBSYSTEM:WINDOWS
+        )
+    endif()
+
+    if(SOH_CLANG_CL)
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            ${SOH_WARNINGS}
+            $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
         )
     endif()
 endif()
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -Wall -Wextra -Wno-error
-            -Wformat-security
+            ${SOH_WARNINGS}
             -Wno-return-type
-            -Wno-unused-parameter
-            -Wno-unused-function
-            -Wno-unused-variable
-            -Wno-missing-field-initializers
-            -Wno-parentheses
-            -Wno-narrowing
-            -Wno-missing-braces
-            -Wno-unknown-pragmas # #pragma region is an editor folding marker, GCC doesn't know it
-            $<$<COMPILE_LANGUAGE:C>:
-                -Werror-implicit-function-declaration
-                -Wno-incompatible-pointer-types
-                -Wno-int-conversion
-            >
+            $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
             $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>
             $<$<COMPILE_LANGUAGE:CXX>:
                 -Wno-c++11-narrowing
@@ -635,22 +630,8 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         endif()
 
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -Wall -Wextra -Wno-error
-            -Wformat-security
-            -Wno-unused-parameter
-            -Wno-unused-function
-            -Wno-unused-variable
-            -Wno-missing-field-initializers
-            -Wno-parentheses
-            -Wno-narrowing
-            -Wno-missing-braces
-            -Wno-unknown-pragmas # #pragma region is an editor folding marker, GCC doesn't know it
-            $<$<COMPILE_LANGUAGE:C>:
-                -Werror-implicit-function-declaration
-                -Wno-implicit-int
-                -Wno-incompatible-pointer-types
-                -Wno-int-conversion
-            >
+            ${SOH_WARNINGS}
+            $<$<COMPILE_LANGUAGE:C>:${SOH_C_WARNINGS}>
             $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>
             $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>
             -pthread
@@ -704,9 +685,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "libultraship;"
             "torch;"
             "glu32;"
-            "SDL2::SDL2;"
-            "SDL2::SDL2main;"
-            "SDL2_net::SDL2_net-static"
+            "SDL3::SDL3;"
+            "SDL3_net::SDL3_net-static"
             "glfw;"
             "winmm;"
             "imm32;"
@@ -724,8 +704,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "libultraship;"
             "torch;"
             "glu32;"
-            "SDL2::SDL2;"
-            "SDL2::SDL2main;"
+            "SDL3::SDL3;"
             "glfw;"
             "winmm;"
             "imm32;"
@@ -733,29 +712,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "setupapi"
         )
     endif()
-elseif(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
-    find_package(SDL2)
-    set(THREADS_PREFER_PTHREAD_FLAG ON)
-    find_package(Threads REQUIRED)
-    set(ADDITIONAL_LIBRARY_DEPENDENCIES
-        "libultraship;"
-        SDL2::SDL2
-        -lglad
-        Threads::Threads
-    )
-elseif(CMAKE_SYSTEM_NAME STREQUAL "CafeOS")
-    find_package(SDL2 REQUIRED)
-    set(ADDITIONAL_LIBRARY_DEPENDENCIES
-        "libultraship;"
-        SDL2::SDL2-static
-
-        "$<$<CONFIG:Debug>:-Wl,--wrap=abort>"
-    )
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-        ${DEVKITPRO}/portlibs/wiiu/include/
-    )
 else()
-    find_package(SDL2)
+    find_package(SDL3)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     find_package(Ogg REQUIRED)
@@ -767,14 +725,14 @@ else()
     set(ADDITIONAL_LIBRARY_DEPENDENCIES
     "libultraship;"
         "torch;"
-        SDL2::SDL2
+        SDL3::SDL3
         "Ogg::ogg"
         "Vorbis::vorbis"
         "Vorbis::vorbisenc"
         "Vorbis::vorbisfile"
         "Opus::opus"
         "Opusfile::Opusfile"
-        "SDL2_net::SDL2_net"
+        "SDL3_net::SDL3_net"
         ${CMAKE_DL_LIBS}
         Threads::Threads
     )
@@ -787,14 +745,22 @@ find_package(libzip REQUIRED)
 list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES libzip::zip)
 
 if(USE_ASAN)
-    target_compile_options(libultraship PRIVATE -fsanitize=address)
-    target_link_options(libultraship PRIVATE -fsanitize=address)
-    target_compile_options(soh PRIVATE -fsanitize=address)
-    target_link_options(soh PRIVATE -fsanitize=address)
-    target_link_options(ZAPD PRIVATE -fsanitize=address)
-    target_link_options(OTRExporter PRIVATE -fsanitize=address)
-    target_compile_options(ZAPD PRIVATE -fsanitize=address)
-    target_compile_options(OTRExporter PRIVATE -fsanitize=address)
+    # ZAPD and OTRExporter are gone (torch replaced them); naming them here made -DUSE_ASAN=ON
+    # fail at configure time, so the option had been unusable.
+    foreach(_asan_target libultraship soh)
+        target_compile_options(${_asan_target} PRIVATE -fsanitize=address)
+        target_link_options(${_asan_target} PRIVATE -fsanitize=address)
+        # A report is only as good as its stack trace.
+        if(NOT MSVC)
+            target_compile_options(${_asan_target} PRIVATE -fno-omit-frame-pointer -g)
+        endif()
+        # LTO inlines away the frames ASan wants to name, and doubles the link it would
+        # otherwise take to get a build in front of a repro.
+        set_target_properties(${_asan_target} PROPERTIES
+            INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE
+            INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO FALSE
+        )
+    endforeach()
     if (MSVC)
         target_compile_definitions(ImGui PRIVATE _DISABLE_VECTOR_ANNOTATION)
         target_compile_definitions(ImGui PRIVATE _DISABLE_STRING_ANNOTATION)
@@ -818,8 +784,12 @@ INSTALL(TARGETS soh DESTINATION . COMPONENT ship)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-INSTALL(FILES $<TARGET_PDB_FILE:soh> DESTINATION debug COMPONENT ship)
+INSTALL(FILES $<TARGET_PDB_FILE:soh> DESTINATION debug COMPONENT ship OPTIONAL)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION . COMPONENT ship)
+# The only shared library the Vulkan backend pulls in; everything else here is static.
+if (TARGET Vulkan::shaderc_shared)
+INSTALL(FILES $<TARGET_FILE:Vulkan::shaderc_shared> DESTINATION . COMPONENT ship)
+endif()
 endif()
 
 find_program(CURL NAMES curl DOC "Path to the curl program.  Used to download files.")

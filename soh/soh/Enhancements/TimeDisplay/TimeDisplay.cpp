@@ -1,6 +1,7 @@
 #include <fast/Fast3dGui.h>
+#include "soh/SohContext.h"
 #include <libultraship/bridge/consolevariablebridge.h>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 
 #include "TimeDisplay.h"
 #include "soh/Enhancements/gameplaystats.h"
@@ -84,8 +85,8 @@ static void TimeDisplayGetTimer(uint32_t timeID) {
     Player* player = GET_PLAYER(gPlayState);
     uint32_t timer1 = gSaveContext.timerSeconds;
 
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(
-        std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui()));
+    auto gui =
+        std::dynamic_pointer_cast<Fast::Fast3dGui>(std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui()));
 
     switch (timeID) {
         case DISPLAY_IN_GAME_TIMER:
@@ -200,8 +201,7 @@ void TimeDisplayWindow::Draw() {
             ImGui::TableNextColumn();
 
             if (timeDisplayTime != "-:--") {
-                auto gui =
-                    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+                auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
                 char* textToDecode = new char[timeDisplayTime.size() + 1];
                 textToDecode = std::strcpy(textToDecode, timeDisplayTime.c_str());
                 size_t textLength = timeDisplayTime.length();
@@ -257,14 +257,14 @@ static void TimeDisplayInitTimers() {
 }
 
 void TimeDisplayWindow::InitElement() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
-    gui->LoadGuiTexture("GAMEPLAY_TIMER", gClockIconTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("DAY_TIME_TIMER", gSunIconTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("NIGHT_TIME_TIMER", gMoonIconTex, "", ImVec4(1, 1, 1, 1));
-    gui->LoadGuiTexture("NAVI_TIMER", gNaviIconTex, "", ImVec4(1, 1, 1, 1));
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
+    gui->LoadGuiTexture("GAMEPLAY_TIMER", gClockIconTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("DAY_TIME_TIMER", gSunIconTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("NIGHT_TIME_TIMER", gMoonIconTex, ImVec4(1, 1, 1, 1));
+    gui->LoadGuiTexture("NAVI_TIMER", gNaviIconTex, ImVec4(1, 1, 1, 1));
 
     for (auto& load : digitList) {
-        gui->LoadGuiTexture(load.first.c_str(), load.second, "", ImVec4(1, 1, 1, 1));
+        gui->LoadGuiTexture(load.first.c_str(), load.second, ImVec4(1, 1, 1, 1));
     }
 
     TimeDisplayInitSettings();

@@ -9,6 +9,9 @@ jobs:
 
   generate-soh-otr:
     runs-on: ubuntu-22.04
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -46,6 +49,9 @@ jobs:
   build-macos:
     needs: generate-soh-otr
     runs-on: macos-14
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -69,6 +75,7 @@ jobs:
         path: build-cmake/soh
     - name: Build SoH
       run: |
+        cmake --version
         cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DBUILD_REMOTE_CONTROL=1
         cmake --build build-cmake -j
         # Spotlight indexing the disk image CPack just made keeps hdiutil from
@@ -88,15 +95,10 @@ jobs:
 
   build-linux:
     needs: generate-soh-otr
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            arch: x86_64
-          - runner: ubuntu-22.04-arm
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-22.04
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -112,18 +114,18 @@ jobs:
         max-size: "2G"
         evict-old-files: job
         save: ${{ github.ref_name == github.event.repository.default_branch }}
-        key: ${{ runner.os }}-${{ matrix.arch }}-ccache-${{ github.ref }}-${{ github.sha }}
+        key: ${{ runner.os }}-ccache-${{ github.ref }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-${{ matrix.arch }}-ccache-${{ github.ref }}
-          ${{ runner.os }}-${{ matrix.arch }}-ccache
+          ${{ runner.os }}-ccache-${{ github.ref }}
+          ${{ runner.os }}-ccache
     - name: Restore Cached deps folder
       id: restore-cache-deps
       uses: actions/cache/restore@v5
       with:
-        key: ${{ runner.os }}-${{ matrix.arch }}-deps-${{ github.ref }}-${{ github.sha }}
+        key: ${{ runner.os }}-deps-${{ github.ref }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-${{ matrix.arch }}-deps-${{ github.ref }}-
-          ${{ runner.os }}-${{ matrix.arch }}-deps-
+          ${{ runner.os }}-deps-${{ github.ref }}-
+          ${{ runner.os }}-deps-
         path: deps
     - name: Create deps folder
       run: mkdir -p deps
@@ -133,18 +135,29 @@ jobs:
         echo "/usr/local/opt/ccache/libexec" >> "$GITHUB_PATH"
     - name: Install latest SDL
       run: |
-        if [ ! -d "deps/SDL2-2.30.3" ]; then
-          wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.3/SDL2-2.30.3.tar.gz
-          tar -xzf SDL2-2.30.3.tar.gz -C deps
+        if [ ! -d "deps/SDL3-3.4.12" ]; then
+          wget https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz
+          tar -xzf SDL3-3.4.12.tar.gz -C deps
         fi
-        cd deps/SDL2-2.30.3
-        ./configure --enable-hidapi-libusb
-        make -j 10
-        sudo make install
-        sudo cp -av /usr/local/lib/libSDL* /lib/${{ matrix.arch }}-linux-gnu/
-    - uses: ./.github/actions/install-sdl2-net
+        cmake -S deps/SDL3-3.4.12 -B deps/SDL3-3.4.12/build -GNinja -DCMAKE_BUILD_TYPE=Release
+        cmake --build deps/SDL3-3.4.12/build --parallel 10
+        sudo cmake --install deps/SDL3-3.4.12/build --prefix /usr/local
+        # PipeWire and PulseAudio are dlopened by SDL3 at runtime, but only if their
+        # headers were present here: a missing dev package silently drops the driver.
+        cmake -LA -N deps/SDL3-3.4.12/build | grep -E "SDL_(PIPEWIRE|PULSEAUDIO|ALSA)(_SHARED)?:" || true
+        sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
     - name: Copy SDL libs to multiarch dir
-      run: sudo cp -av /usr/local/lib/libSDL* /lib/${{ matrix.arch }}-linux-gnu/
+      run: sudo cp -av /usr/local/lib/libSDL* /lib/x86_64-linux-gnu/
+    # The Vulkan backend compiles its shaders with shaderc, which jammy does not package at
+    # all, so both it and the loader come from LunarG's repository for this release.
+    - name: Install the Vulkan loader and shaderc
+      run: |
+        wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+          | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+          https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+        sudo apt-get update
+        sudo apt-get install -y vulkan-headers libvulkan-dev shaderc
     - name: Remove distro tinyxml2
       run: sudo apt-get remove libtinyxml2-dev
     - uses: ./.github/actions/install-tinyxml2
@@ -161,26 +174,55 @@ jobs:
         cmake .. -DENABLE_COMMONCRYPTO=OFF -DENABLE_GNUTLS=OFF -DENABLE_MBEDTLS=OFF -DENABLE_OPENSSL=OFF
         make
         sudo make install
-        sudo cp -av /usr/local/lib/libzip* /lib/${{ matrix.arch }}-linux-gnu/
+        sudo cp -av /usr/local/lib/libzip* /lib/x86_64-linux-gnu/
     - name: Download soh.o2r
       uses: actions/download-artifact@v8
       with:
         name: soh.o2r
         path: build-cmake/soh
+    # Clang, not the distro gcc: ThinLTO is what makes a whole-game LTO link affordable, and
+    # only clang has it. lld comes along because the ThinLTO cache flag is a linker flag.
+    - name: Install clang and lld
+      run: |
+        V=$(cat linux-build-deps/minimum-clang-version.txt)
+        if ! command -v "clang-$V" >/dev/null; then
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$V"
+        fi
+        sudo apt-get install -y "lld-$V"
+        clang-$V --version | head -1
+    - name: Restore ThinLTO cache
+      id: restore-cache-thinlto
+      uses: actions/cache/restore@v5
+      with:
+        key: ${{ runner.os }}-thinlto-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-thinlto-${{ github.ref }}-
+          ${{ runner.os }}-thinlto-
+        path: ~/.cache/soh-lto
     - name: Build SoH
       run: |
-        cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_REMOTE_CONTROL=1
+        V=$(cat linux-build-deps/minimum-clang-version.txt)
+        export CC="clang-$V" CXX="clang++-$V"
+        LLD=$(command -v "ld.lld-$V" || command -v ld.lld)
+        cmake --version
+        cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_REMOTE_CONTROL=1 \
+          -DCMAKE_EXE_LINKER_FLAGS="--ld-path=$LLD" -DCMAKE_SHARED_LINKER_FLAGS="--ld-path=$LLD"
         cmake --build build-cmake --config Release -j4
         (cd build-cmake && cpack -G External)
 
         mv build-cmake/*.appimage soh.appimage
-      env:
-        CC: gcc-12
-        CXX: g++-12
+    - name: Save ThinLTO cache
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-cache-thinlto.outputs.cache-primary-key }}
+        path: ~/.cache/soh-lto
     - name: Upload build
       uses: actions/upload-artifact@v7
       with:
-        name: soh-linux-${{ matrix.arch }}
+        name: soh-linux
         path: soh.appimage
     - name: Save Cache deps folder
       if: ${{ github.ref_name == github.event.repository.default_branch }}
@@ -192,6 +234,11 @@ jobs:
   build-windows:
     needs: generate-soh-otr
     runs-on: windows-latest
+    env:
+      VULKAN_SDK_VERSION: 1.4.357.0
+    # A same-repo PR already got a push event for this commit; only fork PRs need the
+    # pull_request one. Keeps every branch and main checked, exactly once.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Install dependencies
       run: |
@@ -229,12 +276,58 @@ jobs:
       with:
         name: soh.o2r
         path: build-windows/soh
+    # find_package(Vulkan) wants a real SDK; there is no Windows package of the loader and
+    # shaderc on their own. Only the core component is installed - the debug libraries, the
+    # 32-bit build and the samples triple the size for nothing.
+    - name: Restore cached Vulkan SDK
+      id: restore-cache-vulkan
+      uses: actions/cache/restore@v5
+      with:
+        key: ${{ runner.os }}-vulkansdk-${{ env.VULKAN_SDK_VERSION }}
+        path: C:\VulkanSDK
+    - name: Install Vulkan SDK
+      run: |
+        $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+        if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) {
+          curl.exe -sSfL -o vulkan-sdk.exe `
+            "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkan_sdk.exe"
+          $common = @('--root', $sdk, '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          Start-Process -FilePath .\vulkan-sdk.exe -ArgumentList ($common + 'com.lunarg.vulkan.core') -Wait
+          if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) {
+            Start-Process -FilePath .\vulkan-sdk.exe -ArgumentList $common -Wait
+          }
+        }
+        if (-not (Test-Path "$sdk\Bin\shaderc_shared.dll")) {
+          throw "Vulkan SDK install left no shaderc_shared.dll under $sdk"
+        }
+        "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+    - name: Save cached Vulkan SDK
+      if: ${{ steps.restore-cache-vulkan.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-cache-vulkan.outputs.cache-primary-key }}
+        path: C:\VulkanSDK
+    - name: Restore ThinLTO cache
+      id: restore-cache-thinlto-win
+      uses: actions/cache/restore@v5
+      with:
+        key: ${{ runner.os }}-thinlto-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-thinlto-${{ github.ref }}-
+          ${{ runner.os }}-thinlto-
+        path: ~/AppData/Local/soh-lto
+    # clang-cl, not cl: one frontend across all three platforms, so a diagnostic that fires
+    # anywhere fires everywhere instead of only in CI. It keeps the MSVC ABI, so the vcpkg
+    # x64-windows-static packages and the /MT runtime are unaffected. lld-link comes with it and
+    # is what carries the ThinLTO cache.
     - name: Build SoH
       env:
         VCPKG_ROOT: ${{github.workspace}}/vcpkg
       run: |
-        set $env:PATH="$env:USERPROFILE/.cargo/bin;$env:PATH"
-        cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1
+        $env:PATH = "C:\Program Files\LLVM\bin;$env:USERPROFILE/.cargo/bin;$env:PATH"
+        clang-cl --version
+        cmake --version
+        cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER_TYPE=LLD -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1
         cmake --build build-windows --config Release --parallel 10
 
         (cd build-windows && cpack)
@@ -247,6 +340,12 @@ jobs:
       with:
         name: soh-windows
         path: soh-windows
+    - name: Save ThinLTO cache
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-cache-thinlto-win.outputs.cache-primary-key }}
+        path: ~/AppData/Local/soh-lto
     - name: Save Cache VCPKG folder
       if: ${{ github.ref_name == github.event.repository.default_branch }}
       uses: actions/cache/save@v5

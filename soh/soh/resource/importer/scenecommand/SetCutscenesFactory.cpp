@@ -1,7 +1,8 @@
 #include "soh/resource/importer/scenecommand/SetCutscenesFactory.h"
+#include "soh/SohContext.h"
 #include "soh/resource/type/scenecommand/SetCutscenes.h"
 #include "soh/resource/logging/SceneCommandLoggers.h"
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/resource/ResourceManager.h>
 #include <tinyxml2.h>
 
@@ -13,8 +14,8 @@ std::shared_ptr<Ship::IResource> SetCutscenesFactory::ReadResource(std::shared_p
     ReadCommandId(setCutscenes, reader);
 
     setCutscenes->fileName = reader->ReadString();
-    setCutscenes->cutscene = std::static_pointer_cast<Cutscene>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(setCutscenes->fileName.c_str()));
+    setCutscenes->cutscene =
+        std::static_pointer_cast<Cutscene>(SohResourceManager()->LoadResourceProcess(setCutscenes->fileName.c_str()));
 
     if (CVarGetInteger(CVAR_DEVELOPER_TOOLS("ResourceLogging"), 0)) {
         LogCutscenesAsXML(setCutscenes);
@@ -30,8 +31,8 @@ std::shared_ptr<Ship::IResource> SetCutscenesFactoryXML::ReadResource(std::share
     setCutscenes->cmdId = SceneCommandID::SetCutscenes;
 
     setCutscenes->fileName = reader->Attribute("FileName");
-    setCutscenes->cutscene = std::static_pointer_cast<Cutscene>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(setCutscenes->fileName.c_str()));
+    setCutscenes->cutscene =
+        std::static_pointer_cast<Cutscene>(SohResourceManager()->LoadResourceProcess(setCutscenes->fileName.c_str()));
 
     return setCutscenes;
 }

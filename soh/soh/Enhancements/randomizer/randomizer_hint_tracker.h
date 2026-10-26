@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <ship/window/gui/GuiWindow.h>
 
 typedef enum {
@@ -11,9 +12,9 @@ typedef enum {
 
 namespace HintTracker {
 
-class HintTrackerSettingsWindow final : public Ship::GuiWindow {
+class HintTrackerSettingsWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
   protected:
     void InitElement() override{};
@@ -21,9 +22,9 @@ class HintTrackerSettingsWindow final : public Ship::GuiWindow {
     void UpdateElement() override{};
 };
 
-class HintTrackerWindow final : public Ship::GuiWindow {
+class HintTrackerWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     void Draw() override;
 
     void InitElement() override;

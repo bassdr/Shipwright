@@ -1,3 +1,55 @@
+# bassdr's fork of SoH
+
+> [!IMPORTANT]
+> **This is a fork, not Ship of Harkinian.** It carries features that are still in review — or too
+> large to land — upstream, and is moving onto libultraship's `main` (the 2.0.0 line, SDL3) rather
+> than the `port-maintenance` branch upstream SoH ships. Report bugs you hit here to
+> [this fork](https://github.com/bassdr/Shipwright/issues), not to HarbourMasters.
+>
+> If you want the stable, supported game, use
+> [Ship of Harkinian](https://github.com/HarbourMasters/Shipwright) instead.
+
+## What this fork adds
+
+| Feature | Upstream PR | Status upstream |
+| --- | --- | --- |
+| FluidSynth SoundFont replacement | [#6668](https://github.com/HarbourMasters/Shipwright/pull/6668) | open, stalled on size |
+| Ocarina songs from the pause menu | [#6951](https://github.com/HarbourMasters/Shipwright/pull/6951) | open |
+| Streamed music kept alive across the enemy BGM crossfade | [#7126](https://github.com/HarbourMasters/Shipwright/pull/7126) | open |
+| Song of Time plays out before the age shift | [#7058](https://github.com/HarbourMasters/Shipwright/pull/7058) | open |
+| Undefined left-shift fixes | [#6640](https://github.com/HarbourMasters/Shipwright/pull/6640) | approved, unmerged |
+
+## What this fork changes in libultraship
+
+Most of the change is not in this repository. It pins
+[a libultraship fork](https://github.com/bassdr/libultraship/tree/main) that is current with
+upstream `main` and adds ~100 commits on top of it, about +10,700/-1,900 lines across 78 files —
+mostly the renderer.
+
+| What the fork carries | Where it comes from |
+| --- | --- |
+| Vulkan rendering backend | [#1265](https://github.com/Kenix3/libultraship/pull/1265) (KiritoDv), open |
+| GPU vertex pipeline, mipmapping, two-tile LOD, postprocessing and custom shaders | [#1262](https://github.com/Kenix3/libultraship/pull/1262) (KiritoDv), open |
+| SDL3 pull-model audio | [#1250](https://github.com/Kenix3/libultraship/pull/1250), open |
+| CVar thread-safety, lock-free readers | [#1227](https://github.com/Kenix3/libultraship/pull/1227), backported from `port-maintenance` onto epoch 2 |
+| stb_image.h download verify and retry | [#1248](https://github.com/Kenix3/libultraship/pull/1248), open |
+| Unsigned GBI macros, two div-by-zero guards | [#1115](https://github.com/Kenix3/libultraship/pull/1115), open |
+| Epoch-2 bootstrap fixes, fast3d segment table bounds, and the Vulkan and vertex-pipeline fixes on top of the two stacks above | not upstreamed yet |
+
+**SDL3 is the only audio backend.** WASAPI and CoreAudio were deleted rather than maintained —
+the fork carried fixes for both first, then dropped them — so everything goes through one SDL3
+player.
+
+Both sides are on SDL3: the game was ported to the epoch 2 component API to match.
+
+## Why a fork
+
+Upstream targets `port-maintenance` and moves deliberately. This fork exists to run the above
+together, and to get onto the SDL3 engine line, without waiting for each piece to land. Everything
+here is intended to go upstream eventually — the fork is a staging area, not a divergence.
+
+---
+
 ![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
 ![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
 
@@ -6,26 +58,31 @@
 
 If you're having any trouble after reading through this `README`, feel free to ask for help in the Support text channels. Please keep in mind that we do not condone piracy.
 
-# Quick Start
+## Quick Start
 
 The Ship does not include any copyrighted assets.  You are required to provide a supported copy of the game.
 
 ### 1. Verify your ROM dump
-You can verify you have dumped a supported copy of the game by using the compatibility checker at https://ship.equipment/. If you'd prefer to manually validate your ROM dump, you can cross-reference its `sha1` hash with the hashes [here](docs/supportedHashes.json).
+
+You can verify you have dumped a supported copy of the game by using the compatibility checker at <https://ship.equipment/>. If you'd prefer to manually validate your ROM dump, you can cross-reference its `sha1` hash with the [supported hashes](docs/supportedHashes.json).
 
 ### 2. Download The Ship of Harkinian from [Releases](https://github.com/HarbourMasters/Shipwright/releases)
 
 ### 3. Launch the Game!
+
 #### Windows
+
 * Extract the zip
 * Launch `soh.exe`
 
 #### Linux
+
 * Execute `soh.appimage`.  You may have to `chmod +x` the appimage via terminal.
 * When prompted, select your supported copy of the game.
 * Saves, settings and `oot.o2r` are stored in `~/.local/share/soh/`. If the folder you launch from already has `shipofharkinian.json`, `oot.o2r` or `oot-mq.o2r`, that folder is used instead. Set `SHIP_HOME` to choose another folder.
 
 #### macOS
+
 * Run `soh.app`. When prompted, select your supported copy of the game.
 * You should see a notification saying `Processing OTR`, then, once the process is complete, you should get a notification saying `OTR Successfully Generated`, then the game should start.
 
@@ -33,14 +90,16 @@ You can verify you have dumped a supported copy of the game by using the compati
 
 Congratulations, you are now sailing with the Ship of Harkinian! Have fun!
 
-# Configuration
+## Configuration
 
 ### Default keyboard configuration
+
 | N64 | A | B | Z | Start | Analog stick | C buttons | D-Pad |
 | - | - | - | - | - | - | - | - |
 | Keyboard | X | C | Z | Space | WASD | Arrow keys | TFGH |
 
 ### Other shortcuts
+
 | Keys | Action |
 | - | - |
 | ESC | Toggle menu |
@@ -53,29 +112,34 @@ Congratulations, you are now sailing with the Ship of Harkinian! Have fun!
 | Tab | Toggle Alternate assets |
 | Ctrl+R | Reset |
 
-# Project Overview
+## Project Overview
+
 Ship of Harkinian (SOH) is built atop a custom library dubbed libultraship (LUS). Back in the N64 days, there was an SDK distributed to developers named libultra; LUS is designed to mimic the functionality of libultra on modern hardware. In addition, we are dependent on the source code provided by the OOT decompilation project.
 
-In order for the game to function, you will require a **legally acquired** ROM for Ocarina of Time. Click [here](https://ship.equipment/) to check the compatibility of your specific rom. Any copyrighted assets are extracted from the ROM and reformatted as a .o2r archive file which the code uses.
+In order for the game to function, you will require a **legally acquired** ROM for Ocarina of Time. The [Compatibility Checker](https://ship.equipment/) can be used to check the compatibility of your specific rom. Any copyrighted assets are extracted from the ROM and reformatted as a .o2r archive file which the code uses.
 
 ### Graphics Backends
-Currently, there are three rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), and Metal (MacOS). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
 
-# Custom Assets
+Currently, there are four rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), Metal (MacOS), and Vulkan (Windows and Linux). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
+
+## Custom Assets
 
 Custom assets are packed in `.otr` archive files. To use custom assets, place them in the `mods` folder.
 
 If you're interested in creating and/or packing your own custom asset `.otr` files, check out the following tools:
+
 * [**retro - OTR generator**](https://github.com/HarbourMasters64/retro)
 * [**fast64 - Blender plugin**](https://github.com/HarbourMasters/fast64)
 
-# Development
+## Development
+
 ### Building
 
 If you want to manually compile SoH, please consult the [building instructions](docs/BUILDING.md).
 
 ### Playtesting
-If you want to playtest a continuous integration build, you can find them at the links below. Keep in mind that these are for playtesting only, and you will likely encounter bugs and possibly crashes. 
+
+If you want to playtest a continuous integration build, you can find them at the links below. Keep in mind that these are for playtesting only, and you will likely encounter bugs and possibly crashes.
 
 * [Windows](https://nightly.link/HarbourMasters/Shipwright/workflows/generate-builds/develop/soh-windows.zip)
 * [macOS](https://nightly.link/HarbourMasters/Shipwright/workflows/generate-builds/develop/soh-mac.zip)
@@ -83,6 +147,7 @@ If you want to playtest a continuous integration build, you can find them at the
 * [Linux ARM](https://nightly.link/HarbourMasters/Shipwright/workflows/generate-builds/develop/soh-linux-aarch64.zip)
 
 ### Further Reading
+
 More detailed documentation can be found in the 'docs' directory, including the aforementioned [building instructions](docs/BUILDING.md).
 
 * [Credits](docs/CREDITS.md)

@@ -1,9 +1,13 @@
 #pragma once
 
 #include "UIWidgetOptions.hpp"
+#include "soh/SohContext.h"
 
 #include <libultraship/bridge/consolevariablebridge.h>
+#include <ship/core/Context.h>
 #include <ship/window/gui/GuiWindow.h>
+#include <ship/window/Window.h>
+#include "soh/ShipInit.hpp"
 #include <spdlog/spdlog.h>
 
 namespace UIWidgets {

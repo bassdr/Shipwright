@@ -1,5 +1,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
-#include <ship/Context.h>
+#include <spdlog/spdlog.h>
+#include "soh/SohContext.h"
+#include <ship/core/Context.h>
 
 #include "SohMenu.h"
 
@@ -122,7 +124,7 @@ void SohMenu::AddMenuDevTools() {
                      .ComboMap(logLevels)
                      .DefaultIndex(defaultLogLevel))
         .Callback([](WidgetInfo& info) {
-            Ship::Context::GetRawInstance()->GetLogger()->set_level(
+            spdlog::default_logger()->set_level(
                 (spdlog::level::level_enum)CVarGetInteger(CVAR_DEVELOPER_TOOLS("LogLevel"), defaultLogLevel));
         });
 

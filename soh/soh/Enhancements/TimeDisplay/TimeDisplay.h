@@ -1,11 +1,12 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include <vector>
 #include <ship/window/gui/GuiWindow.h>
 
-class TimeDisplayWindow final : public Ship::GuiWindow {
+class TimeDisplayWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override{};

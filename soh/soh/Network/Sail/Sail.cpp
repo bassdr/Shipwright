@@ -1,6 +1,7 @@
 #include "Sail.h"
+#include "soh/SohContext.h"
 #include <nlohmann/json.hpp>
-#include <ship/Context.h>
+#include <ship/core/Context.h>
 #include <ship/window/Window.h>
 #include <ship/window/gui/ConsoleWindow.h>
 #include <spdlog/spdlog.h>
@@ -64,8 +65,7 @@ void Sail::OnIncomingJson(nlohmann::json payload) {
             }
 
             std::string command = payload["command"].get<std::string>();
-            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+            std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))
                 ->Dispatch(command);
             responsePayload["status"] = "success";
             SendJsonToRemote(responsePayload);
@@ -88,8 +88,7 @@ void Sail::OnIncomingJson(nlohmann::json payload) {
                 }
 
                 std::string command = payload["effect"]["command"].get<std::string>();
-                std::reinterpret_pointer_cast<Ship::ConsoleWindow>(
-                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+                std::reinterpret_pointer_cast<Ship::ConsoleWindow>(SohWindow()->GetGui()->GetGuiWindow("Console"))
                     ->Dispatch(command);
                 responsePayload["status"] = "success";
                 SendJsonToRemote(responsePayload);
