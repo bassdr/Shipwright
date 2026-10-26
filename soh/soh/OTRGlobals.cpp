@@ -840,6 +840,8 @@ void InitGfxDebugger() {
     }
 }
 
+static int sDeviceOutputRate = 32000;
+
 void OTRGlobals::Initialize() {
     std::string mqPath = Ship::Context::LocateFileAcrossAppDirs("oot-mq.o2r", appShortName);
     if (std::filesystem::exists(mqPath)) {
@@ -884,6 +886,7 @@ void OTRGlobals::Initialize() {
     // Output rate is user-selectable (restart-applied); the pipeline resamples the
     // native 32 kHz bus up to it. Default 32 kHz matches the console.
     const int audioOutputRate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000);
+    sDeviceOutputRate = audioOutputRate;
     // ~75 ms reservoir scaled to the rate; long blocking loads are kept audible
     // by OTRAudio_Pump instead of deeper buffering, which would delay every sound.
     context->InitAudio(
@@ -1270,7 +1273,7 @@ extern "C" void OTRAudio_Pump(void) {
 }
 
 void OTRAudio_Init() {
-    sOutputRate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), kNativeRate);
+    sOutputRate = sDeviceOutputRate;
     sResampler = sOutputRate != kNativeRate
                      ? std::make_unique<SOH::AudioResampler>(kNativeRate, sOutputRate, NUM_AUDIO_CHANNELS)
                      : nullptr;
@@ -2447,6 +2450,10 @@ extern "C" int16_t OTRGetRectDimensionFromRightEdge(float v) {
 
 int AudioPlayer_Buffered(void) {
     return AudioPlayerBuffered();
+}
+
+extern "C" int AudioPlayer_GetOutputRate(void) {
+    return sDeviceOutputRate;
 }
 
 extern "C" int AudioPlayer_GetDesiredBuffered(void) {
