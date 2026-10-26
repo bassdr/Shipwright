@@ -1,7 +1,9 @@
 name: generate-builds
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -11,7 +13,7 @@ jobs:
     runs-on: ubuntu-22.04
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -51,7 +53,7 @@ jobs:
     runs-on: macos-14
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -98,7 +100,7 @@ jobs:
     runs-on: ubuntu-22.04
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
@@ -238,7 +240,7 @@ jobs:
       VULKAN_SDK_VERSION: 1.4.357.0
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - name: Install dependencies
       run: |

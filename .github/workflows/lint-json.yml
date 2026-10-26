@@ -1,5 +1,8 @@
 name: lint-json
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
