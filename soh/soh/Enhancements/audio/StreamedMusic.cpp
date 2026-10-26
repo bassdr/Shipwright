@@ -230,14 +230,11 @@ extern "C" void SOH_StreamedMusic_RegisterSequence(uint16_t seqId, uint8_t isStr
         SPDLOG_WARN("[StreamedMusic] failed to load sequence '{}', fades disabled", resourcePath);
     }
     sStreamedSequences.insert_or_assign(seqId, fades);
-    SPDLOG_INFO("[StreamedMusic] registered seqId {} '{}' with fades {:.2f}/{:.2f}s", seqId, resourcePath,
-                fades.inSeconds, fades.outSeconds);
 }
 
 extern "C" void SOH_StreamedMusic_SequenceStarted(uint8_t playerIdx, uint16_t seqId) {
     if (sStreamedSequences.contains(seqId)) {
         sPlayerStreamedSeq.at(playerIdx) = seqId;
-        SPDLOG_INFO("[StreamedMusic] player {} started streamed seqId {}", playerIdx, seqId);
     } else {
         sPlayerStreamedSeq.at(playerIdx).reset();
     }
@@ -245,13 +242,8 @@ extern "C" void SOH_StreamedMusic_SequenceStarted(uint8_t playerIdx, uint16_t se
 
 extern "C" uint8_t SOH_StreamedMusic_SequenceStopped(uint8_t playerIdx, uint16_t fadeTimer) {
     if (fadeTimer > kCutFadeTimer || FadeOutTimerOn(playerIdx) == 0) {
-        SPDLOG_INFO("[StreamedMusic] player {} stop of seqId {} with fadeTimer {} -> game's own stop stands ({}s fade)",
-                    playerIdx, gActiveSeqs[playerIdx].seqId & 0xFF, fadeTimer, FadeOutSecondsOn(playerIdx));
         return 0;
     }
-
-    SPDLOG_INFO("[StreamedMusic] player {} stop of seqId {} with fadeTimer {} -> overriding with {:.2f}s FadeOut",
-                playerIdx, gActiveSeqs[playerIdx].seqId & 0xFF, fadeTimer, FadeOutSecondsOn(playerIdx));
 
     if (gActiveSeqs[playerIdx].seqId != NA_BGM_DISABLED) {
         sStopSeqId.at(playerIdx) = gActiveSeqs[playerIdx].seqId & 0xFF;
@@ -290,10 +282,6 @@ extern "C" uint8_t SOH_StreamedMusic_PrepareStart(uint8_t playerIdx, uint8_t seq
         ClearStopRecord(playerIdx);
     }
 
-    if (!sPendingStart.at(playerIdx).valid) {
-        SPDLOG_INFO("[StreamedMusic] player {} deferring start of seqId {} until the {}s fade completes", playerIdx,
-                    seqId, FadeOutSecondsOn(playerIdx));
-    }
     sPendingStart.at(playerIdx) = { seqId, seqArgs, true };
     // Callers polling func_800FA0B4() would otherwise re-request the start every frame.
     gActiveSeqs[playerIdx].seqId = seqId | (seqArgs << 8);
@@ -341,7 +329,6 @@ extern "C" void SOH_StreamedMusic_Update() {
         pending.valid = false;
         ClearStopRecord(playerIdx);
         sPlayerStreamedSeq.at(playerIdx).reset();
-        SPDLOG_INFO("[StreamedMusic] player {} starting deferred seqId {}", playerIdx, pending.seqId);
         Audio_StartSequence(playerIdx, pending.seqId, pending.seqArgs, 0);
     }
 }
