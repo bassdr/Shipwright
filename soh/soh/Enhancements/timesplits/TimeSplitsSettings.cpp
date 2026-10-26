@@ -2,6 +2,7 @@
 #include "TimeSplitsSettings.h"
 #include "TimeSplits.h"
 #include <libultraship/libultraship.h>
+#include "soh/SohContext.h"
 #include "soh/SohGui/UIWidgets.hpp"
 #include "soh/SohGui/SohGui.hpp"
 #include "fast/Fast3dGui.h"
@@ -553,7 +554,7 @@ void DrawActionButtons() {
 }
 
 void DrawEntranceList() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     UIWidgets::PushStyleCombobox(THEME_COLOR);
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
     if (ImGui::BeginCombo("##SceneFilter", sceneAreaNameMap[sceneFilterIndex])) {
@@ -596,7 +597,7 @@ void DrawEntranceList() {
 }
 
 void DrawItemList(std::string tableName, IndexRangeObject range, uint32_t tableSize) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     if (ImGui::BeginTable(tableName.c_str(), tableSize)) {
         for (uint32_t i = range.startIndex; i <= range.endIndex; i++) {
             const TimesplitObject& split = splitObjectList[i];
@@ -628,7 +629,7 @@ void DrawItemList(std::string tableName, IndexRangeObject range, uint32_t tableS
 }
 
 void TimesplitsSettingsWindow::DrawElement() {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     bool shouldRemoveEntry = false;
     uint32_t entryIndex = 0;
 

@@ -1,5 +1,6 @@
 #include "TimeSplits.h"
 #include <libultraship/libultraship.h>
+#include "soh/SohContext.h"
 #include "soh/SohGui/UIWidgets.hpp"
 #include "fast/Fast3dGui.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -104,7 +105,7 @@ TimesplitObject GetSplitObject(uint32_t splitType, uint32_t splitId) {
 }
 
 void HandlePopUpContext(uint32_t popupId) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     if (shouldPopUpOpen && ImGui::BeginPopup("ItemSubMenu")) {
         std::vector<uint32_t> itemList;
 
@@ -146,7 +147,7 @@ void HandlePopUpContext(uint32_t popupId) {
 }
 
 void HandleDragAndDrop(size_t i) {
-    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
+    auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(SohWindow()->GetGui());
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         ImGui::SetDragDropPayload("SPLIT_DRAG", &i, sizeof(size_t));
         ImGui::ImageButton(std::to_string(splitList[i].splitId).c_str(),

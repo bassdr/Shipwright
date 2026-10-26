@@ -1,5 +1,6 @@
 #pragma once
 
+#include "soh/SohGui/SohGuiWindow.h"
 #include "ship/window/gui/GuiWindow.h"
 #include <nlohmann/json_fwd.hpp>
 #include <string>
@@ -72,9 +73,9 @@ static std::array<const char*, 16> itemTrackerWindowIDs = { "Item Tracker",
                                                             "Total Checks" };
 void ItemTracker_LoadFromPreset(const nlohmann::json& trackerInfo);
 
-class ItemTrackerSettingsWindow final : public Ship::GuiWindow {
+class ItemTrackerSettingsWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
   protected:
     void InitElement() override{};
@@ -82,9 +83,9 @@ class ItemTrackerSettingsWindow final : public Ship::GuiWindow {
     void UpdateElement() override{};
 };
 
-class ItemTrackerWindow final : public Ship::GuiWindow {
+class ItemTrackerWindow final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
     void Draw() override;
 
   protected:

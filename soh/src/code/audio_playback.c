@@ -4,6 +4,13 @@
 
 extern bool gUseLegacySD;
 
+#if ENABLE_FLUIDSYNTH
+extern bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan,
+                                           float channelVolume, uint8_t fontId, int16_t instOrWave, uint8_t semitone,
+                                           bool isFinished, uint8_t channelIdx, float resampleRate, float pitchBend);
+extern void SOH_MidiTranslator_NoteDisabled(int noteIndex);
+#endif
+
 extern s32 SOH_OpusStream_ContinuePos(const void* sampleAddr, u32 sampleLength, s32 fallback);
 
 void Audio_InitNoteSub(Note* note, NoteSubEu* sub, NoteSubAttributes* attrs) {

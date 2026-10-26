@@ -5,6 +5,8 @@
 #include "soh/Enhancements/audio/AudioEditor.h"
 #include "soh/Enhancements/audio/StreamedMusic.h"
 
+extern void OTRAudio_Pump(void);
+
 typedef struct {
     u8 unk_0;
     u8 unk_1; // importance?

@@ -10,7 +10,7 @@
 #include "soh/config/ConfigUpdaters.h"
 #include "soh/util.h"
 
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 #include <ship/config/Config.h>
 #include <ship/window/Window.h>
 #include <ship/window/gui/Gui.h>
@@ -83,7 +83,7 @@ static std::string GetBackupPath() {
 }
 
 static nlohmann::json GetOwnedBlocks() {
-    auto config = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+    auto config = SohConfig()->GetNestedJson();
     nlohmann::json blocks = nlohmann::json::object();
 
     for (const char* block : sOwnedBlocks) {
@@ -98,14 +98,14 @@ static nlohmann::json GetOwnedBlocks() {
 }
 
 static void SetOwnedBlocks(const nlohmann::json& blocks) {
-    auto config = Ship::Context::GetRawInstance()->GetConfig();
+    auto config = SohConfig();
 
     for (auto& item : blocks.items()) {
         config->SetBlock(spdlog::fmt_lib::format("{}.{}", "CVars", item.key()), item.value());
     }
 
     // SetBlock writes the config file, so reload cvars from it.
-    Ship::Context::GetRawInstance()->GetConsoleVariables()->Load();
+    SohConsoleVariables()->Load();
     ShipInit::InitAll();
 }
 
@@ -138,7 +138,7 @@ static bool BackupSettings() {
     }
 
     // Cosmetics are backed up with the owned blocks, since a run clears them too.
-    auto config = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+    auto config = SohConfig()->GetNestedJson();
     nlohmann::json blocks = GetOwnedBlocks();
     blocks[CVAR_PREFIX_COSMETIC] = nlohmann::json::object();
     if (config.contains("CVars") && config["CVars"].contains(CVAR_PREFIX_COSMETIC)) {
@@ -159,7 +159,7 @@ static void LockMenu() {
         return;
     }
 
-    auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    auto gui = SohWindow()->GetGui();
     if (auto menu = gui->GetMenu()) {
         menu->Hide();
     }
@@ -201,7 +201,7 @@ bool Speedrun_EnforceGuiLockdown(Ship::GuiWindow& menu) {
     if (menu.IsVisible()) {
         menu.Hide();
 
-        auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+        auto gui = SohWindow()->GetGui();
         bool anyVisible = false;
         for (auto& name : sRunToggleWindows) {
             auto window = gui->GetGuiWindow(name);
@@ -436,7 +436,7 @@ static void LoadSaveSection() {
         SetOwnedBlocks(blocks);
         SOH::RunVersionUpdatesFrom(sConfigVersion);
         // Updaters change cvars, not the config json GetOwnedBlocks reads.
-        Ship::Context::GetRawInstance()->GetConsoleVariables()->Save();
+        SohConsoleVariables()->Save();
         blocks = GetOwnedBlocks();
     }
 

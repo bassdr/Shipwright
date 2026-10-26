@@ -5,7 +5,7 @@
 #include <tuple>
 #include <unordered_map>
 
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 
 #include "AudioEditor.h"
 #include "sequence.h"
@@ -121,7 +121,7 @@ std::vector<SynthPackEntry> EnumerateSynthPacks() {
     std::vector<SynthPackEntry> result;
 
     // ── Archive-supplied packs ───────────────────────────────────────
-    auto archives = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+    auto archives = SohResourceManager()->GetArchiveManager();
     if (auto matches = archives->ListFiles(std::string(kSynthPackRoot) + "/*/" + kSynthPackSfGlob)) {
         const size_t prefixLen = std::strlen(kSynthPackRoot) + 1;
         const size_t suffixLen = std::strlen(kSynthPackSf2Name) + 1;
@@ -251,7 +251,7 @@ std::vector<uint8_t> ReadPackFile(const SynthPackEntry& entry, bool wantSf) {
         return bytes;
 
     if (entry.source == SynthPackEntry::Source::Archive) {
-        auto archives = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+        auto archives = SohResourceManager()->GetArchiveManager();
         auto file = archives->LoadFile(path);
         if (!file || !file->Buffer || file->Buffer->size() <= file->BufferOffset) {
             return bytes;
@@ -516,7 +516,7 @@ static float SynthMasterGainFromCVar() {
 // enabled pack's SF (with none enabled, native plays unchanged). Returns false
 // -- surfaced as the checkbox flipping back off -- when it can't apply.
 bool ApplyFluidSynthFromCVars() {
-    auto audioPlayer = Ship::Context::GetRawInstance()->GetAudio()->GetAudioPlayer();
+    auto audioPlayer = SohAudio()->GetAudioPlayer();
     if (!audioPlayer) {
         SPDLOG_INFO("[AudioEditor] Float audio: audio player not ready, skipping apply");
         SetStatus("Audio player not ready.", true);
@@ -718,7 +718,7 @@ void ReconcileModernAudioPipelineIfChanged() {
     if (now) {
         if (!EnableModernAudioPipeline()) {
             CVarSetInteger(CVAR_AUDIO("ModernAudioPipeline"), 0);
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             now = 0;
         }
     } else {
@@ -1017,7 +1017,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
         auto currentBGM = GetCurrentBGM();
         auto prevReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         ResetGroup(map, type);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         auto curReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         if (type == SEQ_BGM_WORLD && prevReplacement != curReplacement) {
             ReplayCurrentBGM();
@@ -1029,7 +1029,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
         auto currentBGM = GetCurrentBGM();
         auto prevReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         RandomizeGroup(type);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         auto curReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         if (type == SEQ_BGM_WORLD && prevReplacement != curReplacement) {
             ReplayCurrentBGM();
@@ -1041,7 +1041,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
         auto currentBGM = GetCurrentBGM();
         auto prevReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         LockGroup(map, type);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         auto curReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         if (type == SEQ_BGM_WORLD && prevReplacement != curReplacement) {
             ReplayCurrentBGM();
@@ -1053,7 +1053,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
         auto currentBGM = GetCurrentBGM();
         auto prevReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         UnlockGroup(map, type);
-        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         auto curReplacement = AudioCollection::Instance->GetReplacementSequence(currentBGM);
         if (type == SEQ_BGM_WORLD && prevReplacement != curReplacement) {
             ReplayCurrentBGM();
@@ -1108,7 +1108,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
             if (type == SEQ_BGM_WORLD || type == SEQ_SFX || type == SEQ_VOICE) {
                 if (ImGui::Selectable("None")) {
                     CVarSetInteger(cvarKey.c_str(), NA_BGM_DISABLED);
-                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                     UpdateCurrentBGM(defaultValue, type);
                 }
                 if (isNone) {
@@ -1125,7 +1125,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
 
                 if (ImGui::Selectable(seqData.label.c_str())) {
                     CVarSetInteger(cvarKey.c_str(), value);
-                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                     UpdateCurrentBGM(defaultValue, type);
                 }
 
@@ -1155,7 +1155,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
                                                        .Color(THEME_COLOR))) {
             CVarClear(cvarKey.c_str());
             CVarClear(cvarLockKey.c_str());
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             UpdateCurrentBGM(defaultValue, seqData.category);
         }
         ImGui::SameLine();
@@ -1180,7 +1180,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
                 if (locked) {
                     CVarClear(cvarLockKey.c_str());
                 }
-                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 UpdateCurrentBGM(defaultValue, type);
             }
         }
@@ -1197,7 +1197,7 @@ void Draw_SfxTab(const std::string& tabId, SeqType type, const std::string& tabN
             } else {
                 CVarSetInteger(cvarLockKey.c_str(), 1);
             }
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         }
     }
     ImGui::EndTable();
@@ -1436,7 +1436,7 @@ void AudioEditor::DrawElement() {
                     ImGui::Spacing();
                     if (ImGui::Button("Enable Modern Pipeline", ImVec2(220, 0))) {
                         CVarSetInteger(CVAR_AUDIO("ModernAudioPipeline"), 1);
-                        Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                        SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                     }
                 } else {
                     // ── Status line ──────────────────────────────────────
@@ -1515,10 +1515,7 @@ void AudioEditor::DrawElement() {
                                 ImGui::PushID((int)i);
                                 if (ImGui::Checkbox("##packCheck", &enabled)) {
                                     SetPackDisabled(PackKey(e), !enabled);
-                                    Ship::Context::GetRawInstance()
-                                        ->GetWindow()
-                                        ->GetGui()
-                                        ->SaveConsoleVariablesNextFrame();
+                                    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                                     ReapplyOverrideChain();
                                     ApplyFluidSynthFromCVars();
                                 }
@@ -1573,7 +1570,7 @@ void AudioEditor::DrawElement() {
                             ImGui::SameLine();
                             if (ImGui::RadioButton("Authentic##synthMode", mode == 0)) {
                                 CVarSetInteger(CVAR_AUDIO("FluidSynthMode"), 0);
-                                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                             }
                             if (ImGui::IsItemHovered()) {
                                 ImGui::SetTooltip("Console-style volume curve + console-era reverb.\n"
@@ -1583,7 +1580,7 @@ void AudioEditor::DrawElement() {
                             ImGui::SameLine();
                             if (ImGui::RadioButton("Enhanced##synthMode", mode == 1)) {
                                 CVarSetInteger(CVAR_AUDIO("FluidSynthMode"), 1);
-                                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                             }
                             if (ImGui::IsItemHovered()) {
                                 ImGui::SetTooltip("Stock SF default modulators + subtle reverb.\n"
@@ -1733,7 +1730,7 @@ void AudioEditor::DrawElement() {
                                                   "and drums stay expandable; tuning and split editing live\n"
                                                   "in the full view.");
                             if (changed)
-                                Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                                SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                         }
                         ImGui::Separator();
 
@@ -1986,10 +1983,7 @@ void AudioEditor::DrawElement() {
                                 bool transUnit = transSemis;
                                 if (ImGui::Checkbox("Semitone##transUnit", &transUnit)) {
                                     CVarSetInteger(CVAR_AUDIO("FluidSynthTransSemitones"), transUnit ? 1 : 0);
-                                    Ship::Context::GetRawInstance()
-                                        ->GetWindow()
-                                        ->GetGui()
-                                        ->SaveConsoleVariablesNextFrame();
+                                    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                                 }
                                 if (ImGui::IsItemHovered()) {
                                     ImGui::SetTooltip("Display the Shift column in semitones (+/-24 fine)\n"
@@ -3791,7 +3785,7 @@ void AudioEditor_RandomizeAll() {
         RandomizeGroup(type);
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ReplayCurrentBGM();
 }
 
@@ -3800,14 +3794,14 @@ void AudioEditor_AutoRandomizeAll() {
         RandomizeGroup(type, false);
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ReplayCurrentBGM();
 }
 
 void AudioEditor_RandomizeGroup(SeqType group) {
     RandomizeGroup(group);
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ReplayCurrentBGM();
 }
 
@@ -3816,14 +3810,14 @@ void AudioEditor_ResetAll() {
         ResetGroup(AudioCollection::Instance->GetAllSequences(), type);
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ReplayCurrentBGM();
 }
 
 void AudioEditor_ResetGroup(SeqType group) {
     ResetGroup(AudioCollection::Instance->GetAllSequences(), group);
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     ReplayCurrentBGM();
 }
 
@@ -3832,7 +3826,7 @@ void AudioEditor_LockAll() {
         LockGroup(AudioCollection::Instance->GetAllSequences(), type);
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 void AudioEditor_UnlockAll() {
@@ -3840,7 +3834,7 @@ void AudioEditor_UnlockAll() {
         UnlockGroup(AudioCollection::Instance->GetAllSequences(), type);
     }
 
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 void RegisterAudioWidgets() {
@@ -3978,7 +3972,7 @@ void RegisterAudioWidgets() {
     if (CVarGetInteger(CVAR_AUDIO("ModernAudioPipeline"), 0)) {
         if (!ApplyFluidSynthFromCVars()) {
             CVarSetInteger(CVAR_AUDIO("ModernAudioPipeline"), 0);
-            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
         }
     }
 

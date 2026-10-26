@@ -10,7 +10,7 @@
 #include <utility>
 
 #include <libultraship/libultra.h>
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 #include <ship/resource/ResourceManager.h>
 #include "soh/resource/type/AudioSequence.h"
 #include "AudioEditor.h"
@@ -221,7 +221,7 @@ extern "C" void SOH_StreamedMusic_RegisterSequence(uint16_t seqId, uint8_t isStr
     }
 
     const auto sequence = std::static_pointer_cast<SOH::AudioSequence>(
-        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(resourcePath));
+        SohResourceManager()->LoadResource(resourcePath));
     Fades fades{ 0.0f, 0.0f };
     if (sequence != nullptr) {
         fades.inSeconds = std::clamp(sequence->fadeInSeconds, 0.0f, kMaxFadeSeconds);

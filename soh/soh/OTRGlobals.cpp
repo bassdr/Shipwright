@@ -1317,17 +1317,6 @@ void OTRAudio_Init() {
     // Precache all our samples, sequences, etc...
     ResourceMgr_LoadDirectory("audio");
 
-    // Initialize the output-rate resampler (32 kHz native -> configured rate).
-    // The resampler is stateful, so it is created once and reused; Process()
-    // preserves history across calls so the stream is seamless.
-    // Use the same validated rate as the SDL backend (ReadSavedAudioOutputRate),
-    // not the raw CVar, because the CVar may contain invalid rates (e.g. 96000)
-    // that were rejected when the backend was created. Both must match exactly.
-    sOutputSampleRate = ReadSavedAudioOutputRate(32000);
-    if (sOutputSampleRate != 32000) {
-        sResampler = std::make_unique<SOH::AudioResampler>(32000, sOutputSampleRate, NUM_AUDIO_CHANNELS);
-    }
-
     if (!audio.running) {
         audio.running = true;
         audio.thread = std::thread(OTRAudio_Thread);

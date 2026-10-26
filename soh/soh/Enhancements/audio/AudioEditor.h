@@ -3,13 +3,14 @@
 #ifdef __cplusplus
 
 #include <libultraship/libultra/types.h>
+#include "soh/SohGui/SohGuiWindow.h"
 #include <ship/window/gui/GuiWindow.h>
 
 #include "AudioCollection.h"
 
-class AudioEditor final : public Ship::GuiWindow {
+class AudioEditor final : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void DrawElement() override;
     void InitElement() override;

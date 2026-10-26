@@ -3,13 +3,14 @@
 #define TIMESPLITS_SETTINGS_H
 
 #include <libultraship/libultraship.h>
+#include "soh/SohGui/SohGuiWindow.h"
 
 #ifdef __cplusplus
 namespace TimeSplits {
 
-class TimesplitsSettingsWindow : public Ship::GuiWindow {
+class TimesplitsSettingsWindow : public SohGui::Window {
   public:
-    using GuiWindow::GuiWindow;
+    using SohGui::Window::Window;
 
     void InitElement() override;
     void DrawElement() override;

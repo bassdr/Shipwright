@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 #include <ship/resource/ResourceManager.h>
 
 #include "soh/ResourceManagerHelpers.h"
@@ -42,7 +42,7 @@ static constexpr int32_t TEXTBOX_WORDS = sizeof(CsCmdTextbox) / sizeof(CutsceneD
 static constexpr int32_t ACTOR_CUE_WORDS = sizeof(CsCmdActorCue) / sizeof(CutsceneData);
 
 static SOH::Scene* LoadScene(const std::string& path) {
-    return (SOH::Scene*)Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(path).get();
+    return (SOH::Scene*)SohResourceManager()->LoadResource(path).get();
 }
 
 template <typename T> static T* FindCommand(SOH::Scene* scene, SOH::SceneCommandID id) {

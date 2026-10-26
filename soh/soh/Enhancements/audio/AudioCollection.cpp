@@ -6,7 +6,7 @@
 #include <vector>
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <libultraship/libultra/types.h>
-#include <ship/Context.h>
+#include "soh/SohContext.h"
 #include <ship/utils/StringHelper.h>
 #include <ship/window/Window.h>
 #include <locale>
@@ -401,7 +401,7 @@ void AudioCollection::RemoveFromShufflePool(SequenceInfo* seqInfo) {
     excludedSequences.insert(seqInfo);
     includedSequences.erase(seqInfo);
     CVarSetInteger(cvarKey.c_str(), 1);
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 void AudioCollection::AddToShufflePool(SequenceInfo* seqInfo) {
@@ -409,7 +409,7 @@ void AudioCollection::AddToShufflePool(SequenceInfo* seqInfo) {
     includedSequences.insert(seqInfo);
     excludedSequences.erase(seqInfo);
     CVarClear(cvarKey.c_str());
-    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+    SohWindow()->GetGui()->SaveConsoleVariablesNextFrame();
 }
 
 void AudioCollection::InitializeShufflePool() {
