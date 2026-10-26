@@ -4,12 +4,7 @@
 
 extern bool gUseLegacySD;
 
-#if ENABLE_FLUIDSYNTH
-extern bool SOH_MidiTranslator_ProcessNote(int noteIndex, float freqScale, float velocity, uint8_t pan,
-                                           float channelVolume, uint8_t fontId, int16_t instOrWave, uint8_t semitone,
-                                           bool isFinished, uint8_t channelIdx, float resampleRate, float pitchBend);
-extern void SOH_MidiTranslator_NoteDisabled(int noteIndex);
-#endif
+extern s32 SOH_OpusStream_ContinuePos(const void* sampleAddr, u32 sampleLength, s32 fallback);
 
 void Audio_InitNoteSub(Note* note, NoteSubEu* sub, NoteSubAttributes* attrs) {
     f32 volRight, volLeft;
@@ -836,6 +831,10 @@ void Audio_NoteInitForLayer(Note* note, SequenceLayer* layer) {
     layer->channel->layerUnused = layer;
     layer->noteVelocity = 0.0f;
     Audio_NoteInit(note);
+    // SOH [Port] A streamed track restarted to continue picks up where it was.
+    note->unk_BC = (layer->sound != NULL && layer->sound->sample != NULL)
+                       ? SOH_OpusStream_ContinuePos(layer->sound->sample->sampleAddr, layer->sound->sample->size / 2, 0)
+                       : 0;
     instId = layer->instOrWave;
 
     if (instId == 0xFF) {

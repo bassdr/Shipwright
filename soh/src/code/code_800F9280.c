@@ -5,11 +5,6 @@
 #include "soh/Enhancements/audio/AudioEditor.h"
 #include "soh/Enhancements/audio/StreamedMusic.h"
 
-// The engine advances only when a port-side producer runs an update, and the
-// usual producers can be idle while the game waits here (drainless output
-// backend, no gfx frame window), so the wait itself drives the engine.
-extern void OTRAudio_Pump(void);
-
 typedef struct {
     u8 unk_0;
     u8 unk_1; // importance?
@@ -49,6 +44,10 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
     s32 pad;
 
     if (D_80133408 == 0 || playerIdx == SEQ_PLAYER_SFX) {
+        if (SOH_StreamedMusic_PrepareStart(playerIdx, seqId, arg2 & 0x7F, &fadeTimer)) {
+            return;
+        }
+
         // Resolve here so the full 16-bit id rides in the command (bits 0-15) rather than the shared
         // seqToPlay slot. seqReplaced is set out-of-band by preview/slow load.
         // See AudioEditor_GetReplacementSeq().
@@ -93,7 +92,10 @@ void Audio_StartSequence(u8 playerIdx, u8 seqId, u8 arg2, u16 fadeTimer) {
 }
 
 void func_800F9474(u8 playerIdx, u16 arg1) {
-    SOH_StreamedMusic_SequenceStopped(playerIdx);
+    if (SOH_StreamedMusic_SequenceStopped(playerIdx, arg1)) {
+        gActiveSeqs[playerIdx].seqId = NA_BGM_DISABLED;
+        return;
+    }
 
     Audio_QueueCmdS32(0x83000000 | ((u8)playerIdx << 16),
                       (arg1 * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
@@ -477,6 +479,8 @@ void func_800FA3DC(void) {
     u8 j;
     u8 k;
 
+    SOH_StreamedMusic_Update();
+
     for (playerIdx = 0; playerIdx < 4; playerIdx++) {
         if (gActiveSeqs[playerIdx].isWaitingForFonts != 0) {
             switch (func_800E5E20(&dummy)) {
@@ -715,6 +719,8 @@ u8 func_800FAD34(void) {
 void Audio_ResetActiveSequences(void) {
     u8 seqPlayerIndex;
     u8 scaleIndex;
+
+    SOH_StreamedMusic_Reset();
 
     for (seqPlayerIndex = 0; seqPlayerIndex < 4; seqPlayerIndex++) {
         sNumSeqRequests[seqPlayerIndex] = 0;
