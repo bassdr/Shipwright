@@ -12,6 +12,9 @@
 #include <functions.h>
 #include "soh/ShipUtils.h"
 #include "soh/OTRGlobals.h"
+
+extern "C" int AudioPlayer_GetOutputRate(void);
+
 #include "soh/cvar_prefixes.h"
 #include "soh/SohGui/SohMenu.h"
 #include "soh/SohGui/SohGui.hpp"
