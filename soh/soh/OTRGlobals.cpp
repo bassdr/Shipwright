@@ -296,6 +296,8 @@ static bool sohArchiveVersionMatch = false;
 // CreateDefaultInstance builds Config and Audio in one call, but AudioSettings is
 // constructor-only and its sample rate is a CVar, which does not exist until that call has
 // already run. Read the one key straight off disk instead.
+static int sDeviceOutputRate = 32000;
+
 static int ReadSavedAudioOutputRate(int fallback) {
     try {
         const std::string path = Ship::Context::LocateFileAcrossAppDirs("shipofharkinian.json");
@@ -347,6 +349,7 @@ OTRGlobals::OTRGlobals() {
         std::make_shared<Fast::Fast3dWindow>(std::vector<std::shared_ptr<Ship::GuiWindow>>({ sohInputEditorWindow }));
 
     const int audioOutputRate = ReadSavedAudioOutputRate(32000);
+    sDeviceOutputRate = audioOutputRate;
     // ~128 ms reservoir scaled to the rate, capped below the SDL backend's hard limit.
     int desiredBuffered = 4096 * audioOutputRate / 32000;
     if (desiredBuffered > 5500) {
@@ -1309,7 +1312,7 @@ extern "C" void OTRAudio_Pump(void) {
 }
 
 void OTRAudio_Init() {
-    sOutputRate = CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), kNativeRate);
+    sOutputRate = sDeviceOutputRate;
     sResampler = sOutputRate != kNativeRate
                      ? std::make_unique<SOH::AudioResampler>(kNativeRate, sOutputRate, NUM_AUDIO_CHANNELS)
                      : nullptr;
@@ -2493,6 +2496,10 @@ extern "C" int16_t OTRGetRectDimensionFromRightEdge(float v) {
 
 int AudioPlayer_Buffered(void) {
     return AudioPlayerBuffered();
+}
+
+extern "C" int AudioPlayer_GetOutputRate(void) {
+    return sDeviceOutputRate;
 }
 
 extern "C" int AudioPlayer_GetDesiredBuffered(void) {

@@ -552,9 +552,8 @@ bool ApplyFluidSynthFromCVars() {
         SPDLOG_INFO("[AudioEditor] FluidSynth: pack load order (last wins): {}", orderLog);
     }
 
-    // Render at the device rate so the mix needs no rate conversion. The device is
-    // opened at this CVar's value at startup, so reading it here matches the device.
-    double sampleRate = static_cast<double>(CVarGetInteger(CVAR_AUDIO("OutputSampleRate"), 32000));
+    // The rate setting only applies on restart, so the CVar can name a rate the device is not running at.
+    double sampleRate = static_cast<double>(AudioPlayer_GetOutputRate());
     SOH::FluidSynthConfig synthConfig;
     synthConfig.sampleRate = sampleRate;
 
