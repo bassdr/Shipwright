@@ -11,6 +11,8 @@
 #include <vector>
 #include <chrono>
 #include <optional>
+#include <array>
+#include <span>
 #include <spdlog/common.h>
 #include <imgui.h>
 
@@ -1132,6 +1134,86 @@ OTRAudioState audio;
 // Two thirds 528 one third 544 gives 533.33.
 static int32_t sSampleDebtThirds;
 
+static std::vector<s16> sResetRingOut;
+static size_t sResetRingOutPos = 0;
+static bool sResetRingOutCoversReset = false;
+
+// The reset cuts whatever still sounds. The console reached it late enough for sound effects
+// to have played out; the port gets there in a fraction of the time, so render that ahead from
+// the old state, which the reset wipes anyway, and play it over the reset.
+extern "C" void SOH_Audio_RenderResetRingOut() {
+    constexpr int32_t kInaudiblePeak = 33; // -60 dBFS
+    constexpr size_t kMaxFrames = 90;
+    constexpr size_t kQuietFramesToStop = 8;
+    constexpr size_t kFadeOutFrames = 320;
+
+    for (s32 i = 0; i < gAudioContext.audioBufferParameters.numSequencePlayers; i++) {
+        if (i != SEQ_PLAYER_SFX) {
+            AudioSeq_SequencePlayerDisableAsFinished(&gAudioContext.seqPlayers[i]);
+        }
+    }
+
+    std::vector<s16> ringOut;
+    std::array<s16, SAMPLES_HIGH * NUM_AUDIO_CHANNELS> frame{};
+    int32_t debtThirds = sSampleDebtThirds;
+    size_t quietFrames = 0;
+    for (size_t i = 0; i < kMaxFrames; i++) {
+        const u32 numSamples = debtThirds > 0 ? SAMPLES_MID : SAMPLES_LOW;
+        debtThirds += 1600 - 3 * static_cast<int32_t>(numSamples);
+
+        s32 writtenCmds;
+        AudioSynth_Update(gAudioContext.curAbiCmdBuf, &writtenCmds, frame.data(), static_cast<s32>(numSamples));
+        const auto rendered = std::span(frame).first(numSamples * NUM_AUDIO_CHANNELS);
+        ringOut.insert(ringOut.end(), rendered.begin(), rendered.end());
+
+        int32_t peak = 0;
+        for (const s16 sample : rendered) {
+            peak = std::max(peak, std::abs(static_cast<int32_t>(sample)));
+        }
+        quietFrames = peak < kInaudiblePeak ? quietFrames + 1 : 0;
+        if (quietFrames == kQuietFramesToStop) {
+            break;
+        }
+    }
+
+    const size_t fadeFrames = std::min(kFadeOutFrames, ringOut.size() / NUM_AUDIO_CHANNELS);
+    const size_t fadeStart = ringOut.size() - fadeFrames * NUM_AUDIO_CHANNELS;
+    for (size_t i = fadeStart; i < ringOut.size(); i++) {
+        const size_t framesLeft = (ringOut.size() - i + 1) / NUM_AUDIO_CHANNELS;
+        ringOut.at(i) =
+            static_cast<s16>(ringOut.at(i) * static_cast<int32_t>(framesLeft) / static_cast<int32_t>(fadeFrames + 1));
+    }
+
+    const size_t pending = sResetRingOut.size() - sResetRingOutPos;
+    ringOut.resize(std::max(ringOut.size(), pending), 0);
+    for (size_t i = 0; i < pending; i++) {
+        ringOut.at(i) =
+            static_cast<s16>(std::clamp(ringOut.at(i) + sResetRingOut.at(sResetRingOutPos + i), INT16_MIN, INT16_MAX));
+    }
+    sResetRingOut = std::move(ringOut);
+    sResetRingOutPos = 0;
+    sResetRingOutCoversReset = true;
+}
+
+static void MixResetRingOut(std::span<s16> output) {
+    if (sResetRingOutCoversReset) {
+        // The engine is playing the old state from after the ring-out; it was heard already.
+        std::fill(output.begin(), output.end(), 0);
+        sResetRingOutCoversReset = gAudioContext.resetStatus != 0;
+    }
+
+    const size_t count = std::min(output.size(), sResetRingOut.size() - sResetRingOutPos);
+    for (size_t i = 0; i < count; i++) {
+        output[i] =
+            static_cast<s16>(std::clamp(output[i] + sResetRingOut.at(sResetRingOutPos + i), INT16_MIN, INT16_MAX));
+    }
+    sResetRingOutPos += count;
+    if (sResetRingOutPos == sResetRingOut.size()) {
+        sResetRingOut.clear();
+        sResetRingOutPos = 0;
+    }
+}
+
 // Output rate is user-selectable (restart-applied); native synthesis is 32 kHz
 // and the pipeline resamples up to it. Default 32 kHz matches the console.
 constexpr int32_t kNativeRate = 32000;
@@ -1156,6 +1238,7 @@ static void OTRAudio_ProduceUpdate() {
     static thread_local s16 native_s16[SAMPLES_HIGH * NUM_AUDIO_CHANNELS];
 
     AudioMgr_CreateNextAudioBuffer(native_s16, num_audio_samples);
+    MixResetRingOut(std::span(native_s16, total_samples));
 
     // Mixed in here, not played by the speech engine, so it lands on the game's device under the game's volume.
     SOH::SpeechPlayer::Instance().Mix(native_s16, num_audio_samples, AUDIO_SAMPLE_RATE);
