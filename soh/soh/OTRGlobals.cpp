@@ -36,6 +36,7 @@
 #include <ship/utils/binarytools/MemoryStream.h>
 #include "soh/Enhancements/audio/MidiSynthManager.h"
 #include "soh/Enhancements/audio/AudioResampler.h"
+#include "soh/Enhancements/audio/EngineReverb.h"
 #include "Enhancements/speechsynthesizer/SpeechSynthesizer.h"
 #include "Enhancements/audio/SpeechPlayer.h"
 #include "Enhancements/controls/SohInputEditorWindow.h"
@@ -1261,6 +1262,8 @@ static void OTRAudio_ProduceUpdate() {
     static constexpr size_t kMaxSamples = 16384;
     static thread_local float native_f32[kMaxSamples];
     static thread_local float synth_f32[kMaxSamples];
+    static thread_local float synth_send_f32[kMaxSamples];
+    static thread_local SOH::EngineReverb synthReverb;
     static thread_local float mix_f32[kMaxSamples];
     static thread_local s16 out_s16[kMaxSamples];
 
@@ -1278,7 +1281,8 @@ static void OTRAudio_ProduceUpdate() {
 
 #if ENABLE_FLUIDSYNTH
     if (haveSynth) {
-        synth->Render(synth_f32, (uint32_t)outFrames);
+        synth->Render(synth_f32, synth_send_f32, (uint32_t)outFrames);
+        synthReverb.Process(synth_send_f32, synth_f32, (uint32_t)outFrames, sOutputRate);
         // tanh-style soft clip on the summed bus keeps peaks well-behaved when
         // the synth contributes alongside native SFX.
         auto softClip = [](float x) {
