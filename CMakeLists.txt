@@ -273,14 +273,16 @@ include(CheckLinkerFlag)
 # policy. Apple's ld64 prunes on its own defaults. Each candidate is held in its own variable
 # and reached by name: a list cannot hold a multi-flag element, since foreach(IN LISTS) cannot
 # tell an embedded separator from a real one and would silently split the policy off.
+# Size only, no expiry: expiry goes by access time, which a noatime mount never updates, so it
+# evicted entries still hit on every link, and a re-optimised module can cost minutes.
 set(_lto_cache_lld
     "-Wl,--thinlto-cache-dir=${SOH_LTO_CACHE_DIR}"
-    "-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=72h")
+    "-Wl,--thinlto-cache-policy=cache_size_bytes=4g:prune_after=0s")
 set(_lto_cache_ld64 "-Wl,-cache_path_lto,${SOH_LTO_CACHE_DIR}")
 set(_lto_cache_gold "-Wl,-plugin-opt,cache-dir=${SOH_LTO_CACHE_DIR}")
 set(_lto_cache_lld_link
     "/lldltocache:${SOH_LTO_CACHE_DIR}"
-    "/lldltocachepolicy:cache_size_bytes=4g:prune_after=72h")
+    "/lldltocachepolicy:cache_size_bytes=4g:prune_after=0s")
 
 # lld-link only warns about a flag it does not know, so probing cannot tell the two spellings
 # apart there and would settle on the GNU one it silently drops.
