@@ -503,7 +503,8 @@ void ModMenuWindow::DrawElement() {
     ImGui::TextColored(
         UIWidgets::ColorValues.at(UIWidgets::Colors::Yellow),
         "Mods are currently not reloaded at runtime. Close and re-open Ship for the changes to take effect.\n"
-        "Drag ordering for the enabled list is available.\nMods lower in the list override the ones above them.");
+        "Drag ordering for the enabled list is available.\nMod priority is top to bottom. They override mods listed "
+        "below them.");
 
     DrawCustomMusicSummary();
     if (sModsFolderMissing) {
