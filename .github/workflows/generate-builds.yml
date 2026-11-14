@@ -50,7 +50,7 @@ jobs:
 
   build-macos:
     needs: generate-soh-otr
-    runs-on: macos-14
+    runs-on: macos-15
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository

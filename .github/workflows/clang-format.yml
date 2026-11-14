@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   clang-format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A same-repo PR already got a push event for this commit; only fork PRs need the
     # pull_request one. Keeps every branch and main checked, exactly once.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
